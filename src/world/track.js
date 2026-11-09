@@ -1,0 +1,262 @@
+import * as THREE from 'three';
+import { TRACK_WIDTH } from '../config.js';
+import { fbm } from '../art/shade.js';
+
+// Pista gerada por semente: uma curva fechada em volta do centro, reamostrada em passos iguais, apoiada
+// num relevo. `track` é sempre o mesmo objeto; gerar outra pista troca o conteúdo dele.
+
+export const track = { length: 1, count: 0, step: 1, px: null, py: null, pz: null, tx: null, tz: null, slope: null, curvature: null, turn: null, wall: null, roll: null, gap: null, epic: null, drop: null, boost: null, heightAt: () => 0 };
+
+const CONTROL_COUNT = 18, HARMONICS = [[2, 0.8], [3, 0.55], [4, 0.3]];
+export const OPEN_WALL = TRACK_WIDTH / 2 + 4.5;       // até onde o centro do carro pode sair da pista, onde ficam os muros
+export const TWIST_RADIUS = 10;                       // distância da estrada ao eixo do tubo em que ela gira
+export const SHARP_RADIUS = 34;                       // raio (m) a partir do qual a curva conta como fechada
+const FLAT_OUT_RADIUS = 62;                           // acima desse raio dá para fazer a curva a 120 km/h sem frear
+const NOTCH_MIN_SPACING = 4, NOTCH_IN = [0.56, 0.7], NOTCH_OUT = [1.32, 1.5];
+const MIN_ARM_DISTANCE = 62, ARM_INDEX_GAP = 60, MAX_ATTEMPTS = 60;   // braços da pista precisam ficar longe um do outro
+const MAX_SLOPE = 0.2, MAX_RELIEF_RETRIES = 8, RELIEF_REDUCTION = 0.8;
+const FLAT_START_RADIUS = 150, ROAD_LIFT = 0.2;       // a largada é plana; a estrada fica um pouco acima do terreno
+const BLEND_FROM = 10, BLEND_TO = 30;                 // perto da estrada o terreno acompanha a altura dela
+const CHASM_FROM = 42, CHASM_TO = 80;
+const BANK_FROM = 16, BANK_TO = 50;                   // barrancos ao lado da estrada, nos biomas que têm
+const GROUND_SINK = 1.4, SINK_TO = 18;                // e passa por baixo do asfalto, para nunca atravessá-lo
+
+const smoothstep = (from, to, value) => {
+  const t = Math.max(0, Math.min(1, (value - from) / (to - from)));
+  return t * t * (3 - 2 * t);
+};
+
+export function createRandom(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Ao redor de um centro os ângulos só aumentam, então a curva nunca se cruza.
+function controlPoints(random, { wiggle, targetLength, sharpCurves = 0 }) {
+  const baseRadius = targetLength / (Math.PI * 2 * 1.1);
+  // Ondas longas dão curvas amplas, feitas sem frear; as fechadas vêm só de addNotches.
+  const waves = HARMONICS.map(([k, weight]) => ({ k, amplitude: wiggle * weight * (0.6 + random() * 0.4), phase: random() * Math.PI * 2 }));
+  const radii = Array.from({ length: CONTROL_COUNT }, (_, i) => {
+    const angle = i / CONTROL_COUNT * Math.PI * 2;
+    return 1 + waves.reduce((sum, { k, amplitude, phase }) => sum + amplitude * Math.sin(k * angle + phase), 0);
+  });
+  addNotches(radii, random, sharpCurves);
+  return radii.map((r, i) => {
+    const angle = i / CONTROL_COUNT * Math.PI * 2;
+    return new THREE.Vector3(Math.cos(angle) * r * baseRadius, 0, Math.sin(angle) * r * baseRadius);
+  });
+}
+
+// Um ponto muito para dentro ou para fora, com os vizinhos no raio normal, vira uma curva bem fechada.
+function addNotches(radii, random, wanted) {
+  const between = ([low, high]) => low + random() * (high - low);
+  const taken = [];
+  for (let tries = 0; tries < 80 && taken.length < wanted; tries++) {
+    const i = 3 + Math.floor(random() * (CONTROL_COUNT - 5));
+    if (taken.some(other => Math.min(Math.abs(other - i), CONTROL_COUNT - Math.abs(other - i)) < NOTCH_MIN_SPACING)) continue;
+    taken.push(i);
+    radii[i] *= between(random() < 0.6 ? NOTCH_IN : NOTCH_OUT);
+  }
+}
+
+function sampleCurve(points) {
+  const curve = new THREE.CatmullRomCurve3(points, true, 'centripetal');
+  curve.arcLengthDivisions = 3000;
+  curve.updateArcLengths();
+  const length = curve.getLength(), count = Math.round(length / 3);
+  return { length, count, step: length / count, points: curve.getSpacedPoints(count) };
+}
+
+function armsKeepApart({ count, points }) {
+  const limit = MIN_ARM_DISTANCE * MIN_ARM_DISTANCE;
+  for (let i = 0; i < count; i += 4) {
+    for (let k = i + ARM_INDEX_GAP; k < count; k += 4) {
+      if (Math.min(k - i, count - k + i) < ARM_INDEX_GAP) continue;
+      const dx = points[i].x - points[k].x, dz = points[i].z - points[k].z;
+      if (dx * dx + dz * dz < limit) return false;
+    }
+  }
+  return true;
+}
+
+function fillGeometry(sampled) {
+  const { count, step, points } = sampled;
+  const px = new Float32Array(count), pz = new Float32Array(count), tx = new Float32Array(count), tz = new Float32Array(count);
+  for (let i = 0; i < count; i++) { px[i] = points[i].x; pz[i] = points[i].z; }
+  for (let i = 0; i < count; i++) {
+    const a = (i - 1 + count) % count, b = (i + 1) % count, dx = px[b] - px[a], dz = pz[b] - pz[a], len = Math.hypot(dx, dz);
+    tx[i] = dx / len; tz[i] = dz / len;
+  }
+  // `turn` tem sinal (positivo vira à direita); `curvature` é o módulo.
+  const raw = new Float32Array(count), turn = new Float32Array(count), curvature = new Float32Array(count);
+  for (let i = 0; i < count; i++) {
+    const a = (i - 1 + count) % count, b = (i + 1) % count;
+    raw[i] = Math.atan2(tx[a] * tz[b] - tz[a] * tx[b], tx[a] * tx[b] + tz[a] * tz[b]) / (2 * step);
+  }
+  for (let i = 0; i < count; i++) {
+    let sum = 0;
+    for (let k = -3; k <= 3; k++) sum += raw[(i + k + count) % count];
+    turn[i] = sum / 7;
+    curvature[i] = Math.abs(turn[i]);
+  }
+  return { length: sampled.length, count, step, px, pz, tx, tz, turn, curvature };
+}
+
+// Relevo único para o mundo todo: a estrada e o terreno sempre concordam, mesmo entre braços próximos.
+function createHeightField(random, { relief, hillScale }, startX, startZ) {
+  const offsetX = random() * 1000, offsetZ = random() * 1000;
+  const raw = (x, z) => (fbm(x / hillScale + offsetX, z / hillScale + offsetZ) - 0.5) * 2 * relief;
+  const startHeight = raw(startX, startZ);
+  return (x, z) => {
+    const t = Math.min(1, Math.hypot(x - startX, z - startZ) / FLAT_START_RADIUS), blend = t * t * (3 - 2 * t);
+    return startHeight + (raw(x, z) - startHeight) * blend;
+  };
+}
+
+function measureRoad({ count, step, px, pz }, heightAt) {
+  const py = new Float32Array(count), slope = new Float32Array(count);
+  for (let i = 0; i < count; i++) py[i] = heightAt(px[i], pz[i]) + ROAD_LIFT;
+  let steepest = 0;
+  for (let i = 0; i < count; i++) {
+    slope[i] = (py[(i + 1) % count] - py[(i - 1 + count) % count]) / (2 * step);
+    steepest = Math.max(steepest, Math.abs(slope[i]));
+  }
+  return { py, slope, steepest };
+}
+
+// Altura final do terreno: livre longe da pista e assentada sob a estrada perto dela.
+function conformToRoad(terrainAt, { count, px, pz }, py, banks = 0) {
+  return (x, z) => {
+    let nearest = Infinity, index = 0;
+    for (let i = 0; i < count; i++) {
+      const dx = x - px[i], dz = z - pz[i], d = dx * dx + dz * dz;
+      if (d < nearest) { nearest = d; index = i; }
+    }
+    const distance = Math.sqrt(nearest), terrain = terrainAt(x, z);
+    const bank = banks * smoothstep(BANK_FROM, BANK_TO, distance) - track.drop[index] * (1 - smoothstep(CHASM_FROM, CHASM_TO, distance));   // sob os saltos o terreno afunda e vira abismo
+    if (distance >= BLEND_TO) return terrain + bank;
+    const road = py[index] - ROAD_LIFT;
+    return road + (terrain - road) * smoothstep(BLEND_FROM, BLEND_TO, distance) - GROUND_SINK * (1 - smoothstep(BLEND_FROM, SINK_TO, distance)) + bank;
+  };
+}
+
+// Trechos separados em que a curva é mais fechada que `radius`.
+function countSharpCurves({ count, curvature }, radius) {
+  let curves = 0;
+  for (let i = 0; i < count; i++) {
+    const inside = curvature[i] > 1 / radius, before = curvature[(i - 1 + count) % count] > 1 / radius;
+    if (inside && !before) curves++;
+  }
+  return curves;
+}
+
+// `shape` traz wiggle, targetLength, relief e hillScale, definidos por bioma.
+export function generateTrack(seed, shape) {
+  const random = createRandom(seed);
+  const wanted = shape.sharpCurves ?? 0;
+  let geometry = null, bestScore = -Infinity;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const sampled = sampleCurve(controlPoints(random, shape));
+    if (!armsKeepApart(sampled)) continue;
+    const candidate = fillGeometry(sampled), sharp = countSharpCurves(candidate, SHARP_RADIUS), bends = countSharpCurves(candidate, FLAT_OUT_RADIUS);
+    // Fora as curvas fechadas pedidas, nenhuma outra deve exigir freada.
+    const score = -Math.abs(sharp - wanted) * 2 - Math.abs(bends - wanted);
+    if (score > bestScore) { geometry = candidate; bestScore = score; }
+    if (score === 0) break;
+  }
+  if (!geometry) geometry = fillGeometry(sampleCurve(controlPoints(random, { ...shape, sharpCurves: 0 })));
+
+  let heights = shape.relief, road, heightAt;
+  for (let i = 0; i < MAX_RELIEF_RETRIES; i++) {
+    heightAt = createHeightField(createRandom(seed + 1), { ...shape, relief: heights }, geometry.px[0], geometry.pz[0]);
+    road = measureRoad(geometry, heightAt);
+    if (road.steepest <= MAX_SLOPE) break;
+    heights *= RELIEF_REDUCTION;
+  }
+  Object.assign(track, geometry, {
+    py: road.py, slope: road.slope, wall: new Float32Array(geometry.count).fill(OPEN_WALL),
+    roll: new Float32Array(geometry.count), gap: new Uint8Array(geometry.count), epic: new Uint8Array(geometry.count),
+    drop: new Float32Array(geometry.count), boost: new Uint8Array(geometry.count),
+    heightAt: conformToRoad(heightAt, geometry, road.py, shape.banks),
+  });
+}
+
+const sample = { x: 0, y: 0, z: 0, tx: 0, tz: -1, slope: 0 };
+
+// Ponto da pista a uma distância (m) do início. Retorna um objeto compartilhado: use na hora.
+export function trackAt(distance) {
+  const { length, count, step, px, py, pz, tx, tz, slope } = track;
+  const f = ((distance % length) + length) % length / step;
+  const i = Math.floor(f) % count, j = (i + 1) % count, u = f - Math.floor(f);
+  sample.x = px[i] + (px[j] - px[i]) * u;
+  sample.y = py[i] + (py[j] - py[i]) * u;
+  sample.z = pz[i] + (pz[j] - pz[i]) * u;
+  sample.slope = slope[i] + (slope[j] - slope[i]) * u;
+  const x = tx[i] + (tx[j] - tx[i]) * u, z = tz[i] + (tz[j] - tz[i]) * u, n = Math.hypot(x, z) || 1;
+  sample.tx = x / n;
+  sample.tz = z / n;
+  return sample;
+}
+
+// Índice da amostra mais próxima; com `hint` >= 0 procura só na vizinhança.
+export function nearestIndex(x, z, hint) {
+  const { count, px, pz } = track;
+  let best = Infinity, bestIndex = Math.max(hint, 0);
+  const from = hint < 0 ? 0 : -20, to = hint < 0 ? count - 1 : 20;
+  for (let k = from; k <= to; k++) {
+    const i = hint < 0 ? k : (((hint + k) % count) + count) % count;
+    const dx = x - px[i], dz = z - pz[i], d = dx * dx + dz * dz;
+    if (d < best) { best = d; bestIndex = i; }
+  }
+  return bestIndex;
+}
+
+// Ponto do mapa sobre um abismo ou ao lado do tubo: ali o chão afunda, então não vai cenário.
+export function isOverChasm(x, z) {
+  let nearest = Infinity, index = 0;
+  for (let i = 0; i < track.count; i++) {
+    const dx = x - track.px[i], dz = z - track.pz[i], d = dx * dx + dz * dz;
+    if (d < nearest) { nearest = d; index = i; }
+  }
+  return track.drop[index] > 0 && nearest < CHASM_TO * CHASM_TO;
+}
+
+const sampleIndex = distance => Math.floor((((distance % track.length) + track.length) % track.length) / track.step) % track.count;
+export const isEpic = distance => track.epic[sampleIndex(distance)] === 1;
+export const inGap = distance => track.gap[sampleIndex(distance)] === 1;
+export const isBoosted = distance => track.boost[sampleIndex(distance)] === 1;
+
+const surface = { x: 0, y: 0, z: 0, roll: 0 };
+
+// Ponto da superfície da pista em (distância, faixa). A física segue plana; no tubo a estrada gira em volta
+// do eixo, e é aqui que a faixa vira parede e teto. Devolve um objeto compartilhado: use na hora.
+export function surfaceAt(distance, lane) {
+  const f = ((distance % track.length) + track.length) % track.length / track.step;
+  const i = Math.floor(f) % track.count, j = (i + 1) % track.count;
+  const roll = track.roll[i] + (track.roll[j] - track.roll[i]) * (f - Math.floor(f));
+  const t = trackAt(distance);
+  const side = TWIST_RADIUS * Math.sin(roll) + lane * Math.cos(roll);
+  surface.x = t.x - t.tz * side;
+  surface.y = t.y + TWIST_RADIUS * (1 - Math.cos(roll)) + lane * Math.sin(roll);
+  surface.z = t.z + t.tx * side;
+  surface.roll = roll;
+  return surface;
+}
+
+// Curvatura com sinal no ponto (1/m): positiva vira à direita.
+export function turnAt(distance) {
+  const { length, count, step, turn } = track;
+  return turn[Math.floor((((distance % length) + length) % length) / step) % count];
+}
+
+// Normaliza uma diferença de distância para o intervalo [-L/2, L/2).
+export function wrapDistance(d) {
+  const L = track.length;
+  return ((d % L) + L + L / 2) % L - L / 2;
+}

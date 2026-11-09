@@ -1,0 +1,217 @@
+import * as THREE from 'three';
+import { TRACK_WIDTH } from '../config.js';
+import { createMapLayout } from '../game/mapLayout.js';
+import { createAtmosphere } from './atmosphere.js';
+import { buildTunnels } from './tunnels.js';
+import { buildWalls } from './walls.js';
+import { buildEpicSections } from './epicVisuals.js';
+import { createRandom, generateTrack, isOverChasm, surfaceAt, track, trackAt } from './track.js';
+import { noiseTexture, pixelTexture } from './textures.js';
+
+// Cenário de cada corrida: terreno, estrada, largada e objetos do bioma, refeitos a cada mapa novo.
+
+const OPEN_MARGIN = 12;
+const KERB_WIDTH = 1.4, SHOULDER_WIDTH = 6, GROUND_MARGIN = 340, GROUND_CELL = 12, GROUND_TILE = 8;
+
+// Faixa ao longo da pista. `skip(k)` deixa um trecho sem faixa (o vão dos saltos, por exemplo).
+function stripGeometry(offsetA, offsetB, tileLength, heightA, heightB, skip = () => false) {
+  const { count, step, px, pz, tx, tz } = track;
+  const pos = new Float32Array((count + 1) * 6), uv = new Float32Array((count + 1) * 4), index = [];
+  for (let i = 0; i <= count; i++) {
+    const k = i % count, rx = -tz[k], rz = tx[k], a = i * 2, v = i * step / tileLength;
+    const ax = px[k] + rx * offsetA, az = pz[k] + rz * offsetA, bx = px[k] + rx * offsetB, bz = pz[k] + rz * offsetB;
+    pos.set([ax, heightA(k, ax, az), az, bx, heightB(k, bx, bz), bz], a * 3);
+    if (track.roll[k] !== 0) {                       // no tubo a faixa acompanha a estrada girando
+      const distance = k * step;
+      for (const [offset, at] of [[offsetA, 0], [offsetB, 3]]) {
+        const point = surfaceAt(distance, offset);
+        pos.set([point.x, point.y, point.z], a * 3 + at);
+      }
+    }
+    uv.set([0, v, 1, v], a * 2);
+    if (i < count && !skip(k) && !skip((k + 1) % count)) index.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geometry.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  geometry.setIndex(index);
+  return geometry;
+}
+
+function trackBounds() {
+  const { px, pz } = track;
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  px.forEach((x, i) => {
+    minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+    minZ = Math.min(minZ, pz[i]); maxZ = Math.max(maxZ, pz[i]);
+  });
+  return { minX, maxX, minZ, maxZ };
+}
+
+function addGround(group, biome, bounds, groundMaterial) {
+  const minX = bounds.minX - GROUND_MARGIN, minZ = bounds.minZ - GROUND_MARGIN;
+  const width = bounds.maxX + GROUND_MARGIN - minX, depth = bounds.maxZ + GROUND_MARGIN - minZ;
+  const nx = Math.ceil(width / GROUND_CELL), nz = Math.ceil(depth / GROUND_CELL);
+  const pos = new Float32Array((nx + 1) * (nz + 1) * 3), uv = new Float32Array((nx + 1) * (nz + 1) * 2), index = [];
+  for (let j = 0; j <= nz; j++) {
+    for (let i = 0; i <= nx; i++) {
+      const x = minX + width * i / nx, z = minZ + depth * j / nz, v = j * (nx + 1) + i;
+      pos.set([x, track.heightAt(x, z), z], v * 3);
+      uv.set([x / GROUND_TILE, z / GROUND_TILE], v * 2);
+      if (i < nx && j < nz) index.push(v, v + nx + 1, v + 1, v + 1, v + nx + 1, v + nx + 2);
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geometry.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  geometry.setIndex(index);
+  group.add(new THREE.Mesh(geometry, groundMaterial));
+}
+
+function roadTexture({ base, variation, edge, center, paint }) {
+  const asphalt = noiseTexture(base, variation);
+  const ctx = asphalt.image.getContext('2d');
+  paint?.(ctx);
+  ctx.fillStyle = edge; ctx.fillRect(2, 0, 2, 64); ctx.fillRect(60, 0, 2, 64);
+  ctx.fillStyle = center; ctx.fillRect(31, 0, 2, 32);
+  asphalt.needsUpdate = true;
+  return asphalt;
+}
+
+function kerbTexture([first, second]) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 2; canvas.height = 8;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = first; ctx.fillRect(0, 0, 2, 4);
+  ctx.fillStyle = second; ctx.fillRect(0, 4, 2, 4);
+  const texture = pixelTexture(canvas);
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  return texture;
+}
+
+function addRoad(group, biome, groundMaterial) {
+  const { py } = track, half = TRACK_WIDTH / 2, outer = half + KERB_WIDTH;
+  const offset = n => ({ polygonOffset: true, polygonOffsetFactor: n, polygonOffsetUnits: n });
+  const roadMaterial = new THREE.MeshBasicMaterial({ map: roadTexture(biome.road), side: THREE.DoubleSide, ...offset(-2) });
+  const kerbMaterial = new THREE.MeshBasicMaterial({ map: kerbTexture(biome.kerb), side: THREE.DoubleSide, ...offset(-3) });
+
+  const roadY = k => py[k], kerbY = k => py[k] + 0.005, groundY = (k, x, z) => track.heightAt(x, z);
+  const isGap = k => track.gap[k] === 1, overChasm = k => track.drop[k] > 0;
+  group.add(new THREE.Mesh(stripGeometry(-half, half, 10, roadY, roadY, isGap), roadMaterial));
+  group.add(new THREE.Mesh(stripGeometry(-outer, -half, 4, kerbY, kerbY, isGap), kerbMaterial));
+  group.add(new THREE.Mesh(stripGeometry(half, outer, 4, kerbY, kerbY, isGap), kerbMaterial));
+  // Faixa de terra que desce da beira da estrada até o terreno, para não sobrar degrau.
+  group.add(new THREE.Mesh(stripGeometry(-outer - SHOULDER_WIDTH, -outer, 3, groundY, roadY, overChasm), groundMaterial));
+  group.add(new THREE.Mesh(stripGeometry(outer, outer + SHOULDER_WIDTH, 3, roadY, groundY, overChasm), groundMaterial));
+}
+
+function addStartLine(group, biome) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 16; canvas.height = 4;
+  const ctx = canvas.getContext('2d');
+  for (let y = 0; y < 4; y++) for (let x = 0; x < 16; x++) {
+    ctx.fillStyle = (x + y) & 1 ? '#e8e0d4' : '#141010';
+    ctx.fillRect(x, y, 1, 1);
+  }
+
+  const t = trackAt(0), yaw = Math.atan2(-t.tx, -t.tz);
+  const line = new THREE.Mesh(new THREE.PlaneGeometry(TRACK_WIDTH, 2.4),
+    new THREE.MeshBasicMaterial({ map: pixelTexture(canvas), polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }));
+  line.position.set(t.x, t.y + 0.02, t.z);
+  line.rotation.set(-Math.PI / 2, 0, yaw);
+  group.add(line);
+
+  const gantry = new THREE.Group();
+  gantry.position.set(t.x, t.y, t.z);
+  gantry.rotation.y = yaw;
+  const box = (w, h, d, x, y, color) => {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshBasicMaterial({ color }));
+    mesh.position.set(x, y, 0);
+    gantry.add(mesh);
+  };
+  const postX = TRACK_WIDTH / 2 + 2.5, [post, banner, trim] = biome.gantry;
+  box(0.8, 8, 0.8, -postX, 4, post);
+  box(0.8, 8, 0.8, postX, 4, post);
+  box(TRACK_WIDTH + 5.8, 1.4, 1, 0, 8, banner);
+  box(TRACK_WIDTH + 5.8, 0.3, 1.1, 0, 7.2, trim);
+  group.add(gantry);
+}
+
+function spotChecker() {
+  const { count, px, pz } = track;
+  return (x, z, clearance) => {
+    const limit = clearance * clearance;
+    for (let k = 0; k < count; k += 2) {
+      const dx = x - px[k], dz = z - pz[k];
+      if (dx * dx + dz * dz < limit) return false;
+    }
+    return true;
+  };
+}
+
+// Trechos sem túnel nem parte épica, onde cabem enfeites na beira ou por cima da pista.
+function openCheck({ tunnels, epics }) {
+  const inside = (d, start, length) => {
+    const offset = ((d - start) % track.length + track.length) % track.length;
+    return offset < length || offset > track.length - OPEN_MARGIN;
+  };
+  return d => ![...tunnels, ...epics].some(t => inside(d, t.start - OPEN_MARGIN, t.length + OPEN_MARGIN * 2));
+}
+
+function disposeGroup(group) {
+  group.traverse(object => {
+    object.geometry?.dispose();
+    object.material?.map?.dispose();
+    object.material?.dispose();
+    object.dispose?.();
+  });
+}
+
+export function createWorldScene() {
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.Fog(0x000000, 15, 230);
+  const atmosphere = createAtmosphere(scene);
+  let content = null, time = 0, biomeAnimations = [];
+
+  // Gera pista e cenário novos com o bioma pedido.
+  scene.buildMap = (biome, seed) => {
+    if (content) {
+      scene.remove(content);
+      disposeGroup(content);
+    }
+    generateTrack(seed, biome.shape);
+    const layout = createMapLayout(biome.layout, seed);   // define também o relevo dos saltos, antes de desenhar o chão
+    content = new THREE.Group();
+    scene.add(content);
+
+    scene.background = new THREE.Color(biome.sky);
+    scene.fog.color.setHex(biome.sky);
+    [scene.fog.near, scene.fog.far] = biome.fog;
+
+    atmosphere.setBiome(biome);
+    const texture = noiseTexture(biome.ground.base, biome.ground.variation);
+    biome.ground.paint?.(texture.image.getContext('2d'));
+    const groundMaterial = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide });
+    const bounds = trackBounds();
+    addGround(content, biome, bounds, groundMaterial);
+    addRoad(content, biome, groundMaterial);
+    addStartLine(content, biome);
+
+    buildTunnels(content, layout, biome.tunnel);
+    buildEpicSections(content, layout, biome);
+    buildWalls(content, layout, biome.wall);
+    biomeAnimations = [];
+    biome.addProps({
+      onUpdate: animation => biomeAnimations.push(animation), group: content, random: createRandom(seed + 2), bounds, heightAt: track.heightAt, spotIsClear: (() => { const isClear = spotChecker(); return (x, z, distance) => isClear(x, z, distance) && !isOverChasm(x, z); })(), isOpen: openCheck(layout),
+    });
+    return layout;
+  };
+
+  // Anima céu, clima e bioma em volta da posição (x, y, z) do carro.
+  scene.updateMap = (dt, x, y, z) => {
+    time += dt;
+    atmosphere.update(dt, x, y, z);
+    for (const animate of biomeAnimations) animate(time);
+  };
+  return scene;
+}

@@ -1,0 +1,159 @@
+import { SLIPSTREAM_KMH, VIEW } from '../config.js';
+import { ctxText, textWidth } from '../art/font.js';
+import { bayer } from '../art/shade.js';
+import { clearClickable } from './panelKit.js';
+import { drawRacerNames } from './racerNames.js';
+
+// Elementos de tela: mãos e arma (ver hands.js), mira e avisos.
+
+const CENTER_X = VIEW.width / 2, CENTER_Y = VIEW.height / 2;
+
+const SLIPSTREAM_MIN_SHOWN = 0.08, SLIPSTREAM_STREAKS = 26, SLIPSTREAM_CENTER_Y = 145, SLIPSTREAM_TOP = 62, SLIPSTREAM_BOTTOM = 228;
+const TOP_MESSAGE_X = 275, TOP_MESSAGE_Y = 32;       // abaixo do título dos feitos, ainda no teto da cabine
+const SUPPLY_BIG_TEXT = 26;                          // mensagens maiores usam a letra pequena para não cobrir o placar
+const WRONG_WAY_BLINK = 5;                           // meias-piscadas por segundo do aviso de contramão
+
+function centered(ctx, text, y, color, scale = 1) {
+  const x = Math.round(CENTER_X - textWidth(text, scale) / 2);
+  ctxText(ctx, text, x + 1, y + 1, '#000000', scale);
+  ctxText(ctx, text, x, y, color, scale);
+}
+
+const DAMAGE_BAND = 22;                           // largura em pixels da borda vermelha ao levar dano
+const DAMAGE_COLOR = '#d01810';
+const SECTOR = Math.PI / 4;
+
+// Borda quadriculada, mais densa junto à beirada da tela. `edgeAt(x, y)` é a distância até a beirada.
+function paintDamageBand(width, height, edgeAt) {
+  const band = document.createElement('canvas');
+  band.width = width;
+  band.height = height;
+  const ctx = band.getContext('2d');
+  ctx.fillStyle = DAMAGE_COLOR;
+  for (let x = 0; x < width; x++) {
+    for (let y = 0; y < height; y++) if (bayer(x, y) < 1 - edgeAt(x, y) / DAMAGE_BAND) ctx.fillRect(x, y, 1, 1);
+  }
+  return band;
+}
+
+export function createHud(canvas, { featFeed, mainMenu, multiplayer, podium, matchSetup, results, matchLabel, biomeName, race, weapon, hands, garage, workshop, externalView, isLocked, combat, car, activeCamera, opponents, isBehindCabin, isInSmoke, roadsideHelp, traps }) {
+  canvas.width = VIEW.width;
+  canvas.height = VIEW.height;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+
+
+  const bands = {
+    front: paintDamageBand(VIEW.width, DAMAGE_BAND, (x, y) => y),
+    back: paintDamageBand(VIEW.width, DAMAGE_BAND, (x, y) => DAMAGE_BAND - 1 - y),
+    left: paintDamageBand(DAMAGE_BAND, VIEW.height, x => x),
+    right: paintDamageBand(DAMAGE_BAND, VIEW.height, x => DAMAGE_BAND - 1 - x),
+  };
+  const drawBand = {
+    front: () => ctx.drawImage(bands.front, 0, 0),
+    back: () => ctx.drawImage(bands.back, 0, VIEW.height - DAMAGE_BAND),
+    left: () => ctx.drawImage(bands.left, 0, 0),
+    right: () => ctx.drawImage(bands.right, VIEW.width - DAMAGE_BAND, 0),
+  };
+
+  // Mostra de que lado veio o tiro; o carro destruído fica com a tela toda cercada.
+  function drawDamage() {
+    if (car.wrecked > 0) {
+      Object.values(drawBand).forEach(draw => draw());
+      return;
+    }
+    if (combat.hitFlash <= 0) return;
+    const angle = combat.hitAngle;
+    if (Math.abs(angle) < SECTOR) drawBand.front();
+    else if (Math.abs(angle) > Math.PI - SECTOR) drawBand.back();
+    else if (angle > 0) drawBand.left();
+    else drawBand.right();
+  }
+
+  function drawCrosshair() {
+    ctx.fillStyle = weapon.hitMarker > 0 ? '#ff3030' : '#ffffff';
+    ctx.fillRect(CENTER_X - 7, CENTER_Y - 1, 5, 2);
+    ctx.fillRect(CENTER_X + 2, CENTER_Y - 1, 5, 2);
+    ctx.fillRect(CENTER_X - 1, CENTER_Y - 7, 2, 5);
+    ctx.fillRect(CENTER_X - 1, CENTER_Y + 2, 2, 5);
+  }
+
+  // Riscos de vento na direção do centro e o ganho atual; a força acompanha o vácuo.
+  function drawSlipstream() {
+    const strength = car.slipstream;
+    if (strength < SLIPSTREAM_MIN_SHOWN || !race.started || race.finished) return;
+    const time = performance.now() / 1000;
+    ctx.fillStyle = '#d8f0ff';
+    ctx.globalAlpha = Math.min(0.75, strength * 0.75);
+    for (let i = 0; i < SLIPSTREAM_STREAKS; i++) {
+      const angle = i * 2.399, phase = (time * 2.4 + i * 0.37) % 1, dx = Math.cos(angle), dy = Math.sin(angle) * 0.55;
+      for (let step = 0; step < 9; step++) {
+        const reach = 60 + phase * 190 + step * (2 + phase * 3), y = Math.round(SLIPSTREAM_CENTER_Y + dy * reach);
+        if (y > SLIPSTREAM_TOP && y < SLIPSTREAM_BOTTOM) ctx.fillRect(Math.round(CENTER_X + dx * reach), y, 1, 1);
+      }
+    }
+    ctx.globalAlpha = 1;
+    centered(ctx, `VACUO +${Math.ceil(strength * SLIPSTREAM_KMH)} KM/H`, 63, '#80e0ff');
+  }
+
+  function drawMessages() {
+    featFeed.draw(ctx, activeCamera());
+    drawSlipstream();
+    if (weapon.isReloading) centered(ctx, 'RECARREGANDO', 214, '#e8d8c0');
+    if (traps.notice.time > 0) centered(ctx, traps.notice.text, 228, traps.notice.good ? '#6fe070' : '#f06050');
+    if (roadsideHelp.messageTime > 0) {
+      const scale = roadsideHelp.message.length > SUPPLY_BIG_TEXT ? 1 : 2, x = Math.round(TOP_MESSAGE_X - textWidth(roadsideHelp.message, scale) / 2);
+      ctxText(ctx, roadsideHelp.message, x + 1, TOP_MESSAGE_Y + 1, '#000000', scale);
+      ctxText(ctx, roadsideHelp.message, x, TOP_MESSAGE_Y, '#6fe070', scale);
+    }
+    if (weapon.outOfAmmo > 0) centered(ctx, 'SEM MUNICAO', 214, '#f06050');
+    if (!isLocked()) centered(ctx, 'CLIQUE PARA CAPTURAR O MOUSE', 150, '#e8d8c0');
+    if (race.wrongWay && race.goTimer <= 0) {
+      if (Math.floor(race.time * WRONG_WAY_BLINK) % 2 === 0) centered(ctx, 'CONTRAMAO', 112, '#ff3a2a', 3);
+      centered(ctx, 'VIRE O CARRO', 142, '#ffe9a0');
+    }
+
+    if (!race.started) {
+      centered(ctx, matchLabel(), 80, '#e8d8c0', 2);
+      centered(ctx, biomeName(), 100, '#ffe9a0');
+    }
+    if (!race.started) centered(ctx, String(Math.min(3, Math.ceil(race.countdown))), 118, '#ffe9a0', 4);
+    else if (race.goTimer > 0) centered(ctx, 'GO!', 118, '#6fe070', 4);
+    if (car.wrecked > 0) {
+      centered(ctx, 'CARRO DESTRUIDO', 118, '#f06050', 2);
+      centered(ctx, `VOLTA EM ${Math.ceil(car.wrecked)}`, 142, '#e8d8c0');
+    } else if (car.overturned) {
+      centered(ctx, 'CAPOTOU', 118, '#f06050', 2);
+    }
+    if (race.crossed && !race.finished) {
+      centered(ctx, 'VOCE CHEGOU!', 118, '#ffe9a0', 2);
+      centered(ctx, 'AGUARDANDO OS OUTROS PILOTOS', 142, '#e8d8c0');
+    }
+    if (race.finished) {
+      centered(ctx, `CHEGOU EM ${race.finalRank} DE ${race.field.length}`, 118, '#ffe9a0', 2);
+    }
+  }
+
+  return () => {
+    ctx.clearRect(0, 0, VIEW.width, VIEW.height);
+    clearClickable();
+    if (mainMenu.isOpen) { mainMenu.draw(ctx); return; }
+    if (multiplayer.isOpen) { multiplayer.draw(ctx); return; }
+    if (podium.isOpen) { podium.draw(ctx); return; }
+    if (matchSetup.isOpen) { matchSetup.draw(ctx); return; }
+    if (results.isOpen) { results.draw(ctx); return; }
+    if (garage.isOpen) {
+      if (garage.view === 'cabin') hands.draw(ctx);
+      garage.draw(ctx);
+      return;
+    }
+    if (workshop.isOpen) { workshop.draw(ctx); return; }
+    if (!externalView.active) {
+      hands.draw(ctx);
+      if (hands.isHoldingGun()) drawCrosshair();
+    }
+    if (race.started) drawRacerNames(ctx, activeCamera(), opponents, (x, y, z) => isInSmoke(x, z) || (!externalView.active && isBehindCabin(x, y, z)));
+    drawDamage();
+    drawMessages();
+  };
+}
