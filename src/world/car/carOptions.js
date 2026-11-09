@@ -12,7 +12,23 @@ export const CAR_SLOTS = {
     label: 'Pintura', short: 'PINTURA', default: 'digital', colorDefault: 0x98161e,
     options: named([['plain', 'Lisa'], ['digital', 'Blocos'], ['bands', 'Faixas'], ['split', 'Duas cores'], ['stripe', 'Faixa central'], ['checker', 'Xadrez'], ['flames', 'Chamas'], ['rust', 'Ferrugem']]),
   },
-  decal: { label: 'Adesivo', short: 'ADESIVO', default: 'crosses', colorDefault: 0xe8e4dc, options: named([['none', 'Nenhum'], ['crosses', 'Cruzes'], ['number', 'Numero 27'], ['bolt', 'Raio'], ['stars', 'Estrelas'], ['bars', 'Barras']]) },
+  decal: { label: 'Adesivo', short: 'ADESIVO', default: 'crosses', colorDefault: 0xe8e4dc, options: named([['none', 'Nenhum'], ['crosses', 'Cruzes'], ['number', 'Numero'], ['bolt', 'Raio'], ['stars', 'Estrelas'], ['bars', 'Barras'], ['skull', 'Caveira'], ['flag', 'Bandeira xadrez'], ['flame', 'Chama'], ['chevrons', 'Setas']]) },
+  decalSpot: {
+    label: 'Posicao do adesivo', short: 'POSICAO', default: 'auto',
+    options: named([['auto', 'Padrao'], ['door', 'Porta'], ['fender', 'Lateral traseira'], ['nose', 'Lateral dianteira'], ['roof', 'Teto'], ['hood', 'Capo'], ['trunk', 'Porta-malas']]),
+  },
+  decalSize: {
+    label: 'Tamanho do adesivo', short: 'TAMANHO', default: 'normal',
+    options: { small: { name: 'Pequeno', value: 0.7 }, normal: { name: 'Normal', value: 1 }, large: { name: 'Grande', value: 1.4 } },
+  },
+  decalNumber: {
+    label: 'Numero do adesivo', short: 'NUMERO', default: '27',
+    options: named([['27', '27'], ['07', '07'], ['13', '13'], ['42', '42'], ['69', '69'], ['88', '88'], ['99', '99'], ['1', '1']]),
+  },
+  trim: {
+    label: 'Friso lateral', short: 'FRISO', default: 'none', colorDefault: 0xe8e4dc,
+    options: named([['none', 'Nenhum'], ['line', 'Fino'], ['thick', 'Grosso'], ['double', 'Duplo']]),
+  },
   spoiler: { label: 'Aerofolio', short: 'AEROF', default: 'wing', colorDefault: 0x7a1218, options: named([['none', 'Sem aerofolio'], ['lip', 'Discreto'], ['duck', 'Rabo de pato'], ['wing', 'Medio'], ['twin', 'Duplo'], ['gt', 'GT alto']]) },
   hood: {
     label: 'Capo', short: 'CAPO', default: 'none', colorDefault: 0xd8d4cc,
@@ -72,6 +88,11 @@ export function resolveCarSpec({ options, colors }) {
     pattern: value('pattern'),
     decal: value('decal'),
     glyph: colors.decal,
+    decalSpot: value('decalSpot'),
+    decalScale: value('decalSize'),
+    decalNumber: value('decalNumber'),
+    trim: value('trim'),
+    trimColor: colors.trim,
     spoiler: value('spoiler'),
     spoilerColor: colors.spoiler,
     hood: value('hood'),

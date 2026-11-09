@@ -1,5 +1,6 @@
 import { Raster } from '../../art/raster.js';
 import { mix } from '../../art/shade.js';
+import { rasterText, textWidth } from '../../art/font.js';
 import { PATTERNS, paintRim } from '../../world/car/carLivery.js';
 import { paintTrapIcon } from '../../art/trapIcons.js';
 import { createGunRig } from '../guns/gunRig.js';
@@ -86,10 +87,56 @@ function decalThumb(id) {
     }
   } else if (id === 'bars') {
     for (let i = 0; i < 4; i++) r.poly([[7 + i * 7, 23], [14 + i * 7, 5], [18 + i * 7, 5], [11 + i * 7, 23]], 0xe8e4dc);
+  } else if (id === 'skull') {
+    r.poly([[12, 12], [14, 5], [26, 5], [28, 12], [28, 17], [24, 17], [24, 23], [16, 23], [16, 17], [12, 17]], 0xe8e4dc);
+    r.rect(15, 10, 4, 4, 0x101012); r.rect(21, 10, 4, 4, 0x101012); r.rect(19, 16, 2, 2, 0x101012);
+  } else if (id === 'flag') {
+    r.rect(9, 4, 2, 20, 0xe8e4dc);
+    for (let i = 0; i < 5; i++) for (let j = 0; j < 3; j++) r.rect(12 + i * 5, 5 + j * 5, 5, 5, (i + j) & 1 ? 0x101012 : 0xe8e4dc);
+  } else if (id === 'flame') {
+    r.poly([[20, 3], [26, 11], [28, 19], [20, 25], [12, 19], [14, 11], [19, 10]], 0xe8e4dc);
+    r.poly([[20, 14], [24, 19], [20, 23], [16, 19]], 0xf8f4ec);
+  } else if (id === 'chevrons') {
+    for (const i of [-1, 0, 1]) r.poly([[20 + i * 9 - 6, 6], [20 + i * 9, 6], [20 + i * 9 + 6, 14], [20 + i * 9, 22], [20 + i * 9 - 6, 22], [20 + i * 9, 14]], 0xe8e4dc);
   } else {
     r.line(8, 6, 32, 22, 0x3a0a0a, 3);
     r.line(32, 6, 8, 22, 0x3a0a0a, 3);
   }
+  return r.commit();
+}
+
+// Silhueta do carro de lado com o ponto onde o adesivo vai.
+const SPOT_MARKS = { door: [18, 15], fender: [31, 16], nose: [7, 16], roof: [21, 9], hood: [9, 14], trunk: [32, 14] };
+function decalSpotThumb(id) {
+  const r = new Raster(W, H);
+  r.poly(CAR_SIDE, 0x6a6a74);
+  for (const x of [10, 30]) r.disc(x, 22, 4, 0x18181c);
+  const mark = SPOT_MARKS[id];
+  if (mark) r.rect(mark[0] - 3, mark[1] - 2, 6, 4, 0xe8c040);
+  else rasterText(r, 'AUTO', 8, 2, 0xe8c040);
+  return r.commit();
+}
+
+function decalSizeThumb(value) {
+  const r = new Raster(W, H), size = Math.round(10 * value);
+  r.rect(0, 0, W, H, 0x8a2020);
+  r.rect(Math.round(20 - size / 2), Math.round(14 - size / 2), size, size, 0xe8e4dc);
+  return r.commit();
+}
+
+function decalNumberThumb(label) {
+  const r = new Raster(W, H);
+  r.rect(0, 0, W, H, 0x8a2020);
+  rasterText(r, label, Math.round(20 - textWidth(label, 2) / 2), 7, 0xe8e4dc, 2);
+  return r.commit();
+}
+
+function trimThumb(id) {
+  const r = new Raster(W, H);
+  r.rect(0, 0, W, H, 0x8a2020);
+  if (id === 'line') r.rect(0, 14, W, 1, 0xe8e4dc);
+  else if (id === 'thick') r.rect(0, 12, W, 4, 0xe8e4dc);
+  else if (id === 'double') { r.rect(0, 10, W, 1, 0xe8e4dc); r.rect(0, 16, W, 1, 0xe8e4dc); }
   return r.commit();
 }
 
@@ -170,6 +217,10 @@ const EXTERIOR = {
   hood: option => hoodThumb(option.value),
   pattern: option => patternThumb(option.value),
   decal: option => decalThumb(option.value),
+  decalSpot: option => decalSpotThumb(option.value),
+  decalSize: option => decalSizeThumb(option.value),
+  decalNumber: option => decalNumberThumb(option.value),
+  trim: option => trimThumb(option.value),
   spoiler: option => spoilerThumb(option.value),
   height: option => heightThumb(option.value),
   tire: option => tireThumb(option.value),

@@ -92,8 +92,8 @@ export function createMainMenu({ stage, settings, net, onSingleplayer, onMultipl
   });
 
   function drawTitle(ctx) {
-    ctxText(ctx, 'HALF GRIP', BUTTON.x + 2, 52, '#000000', TITLE_SCALE);
-    ctxText(ctx, 'HALF GRIP', BUTTON.x, 50, TITLE_COLOR, TITLE_SCALE);
+    ctxText(ctx, 'CTI RACERS', BUTTON.x + 2, 52, '#000000', TITLE_SCALE);
+    ctxText(ctx, 'CTI RACERS', BUTTON.x, 50, TITLE_COLOR, TITLE_SCALE);
   }
 
   function drawBack(ctx, label = '< VOLTAR') {

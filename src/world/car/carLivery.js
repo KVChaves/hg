@@ -1,6 +1,6 @@
 import { Raster } from '../../art/raster.js';
 import { colorRamp, dither, hash, mix, vnoise } from '../../art/shade.js';
-import { rasterText } from '../../art/font.js';
+import { rasterText, textWidth } from '../../art/font.js';
 import { ATLAS, frontPixel, REGION, rearPixel, sidePixel, topPixel } from './carAtlas.js';
 import { CAR_SHAPES } from './carShapes.js';
 
@@ -56,39 +56,86 @@ function polygonFromSide(points) {
   return points.map(([z, y]) => sidePixel(z, y));
 }
 
+// Cada adesivo é desenhado em coordenadas locais, centrado em (0, 0), na escala `k` (1 = tamanho normal).
+const DECALS = {
+  crosses({ rect, k }) {
+    for (const i of [-1, 0, 1]) { rect(i * 11 - 1, -5, 3, 11); rect(i * 11 - 4, -1, 9, 3); }
+  },
+  number({ text }) { text(); },
+  bolt({ poly }) { poly([[2, -10], [-7, 1], [-1, 0], [-6, 11], [7, -2], [1, -1], [7, -10]]); },
+  stars({ rect }) {
+    for (const i of [-1, 0, 1]) { rect(i * 13 - 1, -5, 3, 11); rect(i * 13 - 5, -1, 11, 3); rect(i * 13 - 3, -3, 7, 7); }
+  },
+  bars({ poly }) {
+    for (let i = 0; i < 4; i++) { const x = (i - 1.5) * 7 - 5.5; poly([[x, 7.5], [x + 8, -7.5], [x + 11, -7.5], [x + 3, 7.5]]); }
+  },
+  skull({ rect, poly, dark }) {
+    poly([[-7, -3], [-5, -8], [5, -8], [7, -3], [7, 2], [4, 2], [4, 7], [-4, 7], [-4, 2], [-7, 2]]);
+    dark(-5, -4, 4, 4); dark(1, -4, 4, 4); dark(-1, 1, 2, 2); dark(-2, 4, 1, 3); dark(1, 4, 1, 3);
+  },
+  flag({ rect, dark }) {
+    rect(-10, -9, 2, 19);
+    for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) ((i + j) & 1 ? dark : rect)(-7 + i * 5, -9 + j * 5, 5, 5);
+  },
+  flame({ poly, light }) {
+    poly([[0, -11], [5, -4], [7, 3], [0, 10], [-7, 3], [-5, -4], [-1, -5]]);
+    light([[0, -2], [3, 3], [0, 8], [-3, 3]]);
+  },
+  chevrons({ poly }) {
+    for (const i of [-1, 0, 1]) poly([[i * 9 - 6, -8], [i * 9, -8], [i * 9 + 6, 0], [i * 9, 8], [i * 9 - 6, 8], [i * 9, 0]]);
+  },
+};
+
+// Onde cada adesivo ficava antes da escolha de posição (modo "Padrão"): metros na lateral.
+const AUTO_SPOT = {
+  crosses: { z: 1.5, y: 0.74 }, number: { z: -0.2, y: 0.67 }, bolt: { z: 0.16, y: 0.65 }, stars: { z: 0.5, y: 0.69 }, bars: { z: 1.41, y: 0.7 },
+  skull: { z: 0.2, y: 0.68 }, flag: { z: 0.2, y: 0.68 }, flame: { z: 0.2, y: 0.68 }, chevrons: { z: 1.4, y: 0.7 },
+};
+const SIDE_SPOTS = { door: { z: 0.1, y: 0.68 }, fender: { z: 1.5, y: 0.9 }, nose: { z: -1.5, y: 0.9 } };
+
+function decalSpot(spec) {
+  const shape = CAR_SHAPES[spec.model].greenhouse, spot = spec.decalSpot ?? 'auto';
+  if (spot === 'roof') return { region: 'top', z: (shape.roofFront.z + shape.roofRear.z) / 2 };
+  if (spot === 'hood') return { region: 'top', z: (-2.1 + shape.front.z) / 2 };
+  if (spot === 'trunk') return { region: 'top', z: (shape.rear.z + 2.2) / 2 };
+  return { region: 'side', ...(SIDE_SPOTS[spot] ?? AUTO_SPOT[spec.decal]) };
+}
+
 function plotDecal(r, spec) {
-  const color = spec.glyph ?? mix(spec.secondary, 0xffffff, 0.75);
-  if (spec.decal === 'crosses') {
-    const [gx, gy] = sidePixel(1.72, 0.84);
-    for (let i = 0; i < 3; i++) {
-      const cx = gx + i * 11;
-      r.rect(cx, gy, 3, 11, color);
-      r.rect(cx - 3, gy + 4, 9, 3, color);
-    }
-  } else if (spec.decal === 'number') {
-    const [nx, ny] = sidePixel(0.02, 0.82);
-    rasterText(r, '27', nx, ny, color, 2, 2);
-  } else if (spec.decal === 'bolt') {
-    const [bx, by] = sidePixel(0.12, 0.86);
-    r.poly([[bx, by], [bx - 9, by + 11], [bx - 3, by + 10], [bx - 8, by + 21], [bx + 5, by + 8], [bx - 1, by + 9], [bx + 5, by]], color);
-  } else if (spec.decal === 'stars') {
-    const [sx, sy] = sidePixel(0.5, 0.82);
-    for (let i = 0; i < 3; i++) {
-      const cx = sx - i * 13, cy = sy + 6;
-      r.rect(cx - 1, cy - 5, 3, 11, color);
-      r.rect(cx - 5, cy - 1, 11, 3, color);
-      r.rect(cx - 3, cy - 3, 7, 7, color);
-    }
-  } else if (spec.decal === 'bars') {
-    const [bx, by] = sidePixel(1.7, 0.86);
-    for (let i = 0; i < 4; i++) r.poly([[bx + i * 7, by + 15], [bx + i * 7 + 8, by], [bx + i * 7 + 11, by], [bx + i * 7 + 3, by + 15]], color);
-  }
+  const draw = DECALS[spec.decal];
+  if (!draw) return;
+  const color = spec.glyph ?? mix(spec.secondary, 0xffffff, 0.75), k = spec.decalScale ?? 1;
+  const spot = decalSpot(spec);
+  const [ox, oy] = spot.region === 'top' ? topPixel(spot.z, 0) : sidePixel(spot.z, spot.y);
+  const px = v => Math.round(v * k);
+  const tools = {
+    k,
+    rect: (x, y, w, h) => r.rect(Math.round(ox + x * k), Math.round(oy + y * k), Math.max(1, px(w)), Math.max(1, px(h)), color),
+    dark: (x, y, w, h) => r.rect(Math.round(ox + x * k), Math.round(oy + y * k), Math.max(1, px(w)), Math.max(1, px(h)), 0x101012),
+    poly: points => r.poly(points.map(([x, y]) => [ox + x * k, oy + y * k]), color),
+    light: points => r.poly(points.map(([x, y]) => [ox + x * k, oy + y * k]), mix(color, 0xffffff, 0.55)),
+    text() {
+      const scale = Math.max(1, Math.round(2 * k)), label = spec.decalNumber ?? '27';
+      rasterText(r, label, Math.round(ox - textWidth(label, scale) / 2), Math.round(oy - 3.5 * scale), color, scale, scale);
+    },
+  };
+  draw(tools);
 }
 
 // Posições das janelas e colunas, derivadas da cabine de cada modelo.
 function cabinLines({ front, roofFront, roofRear, rear }) {
   const pillar = (roofFront.z + roofRear.z) / 2 - 0.1;
   return { pillar, backOfFront: pillar + 0.12, roofY: roofFront.y - 0.05 };
+}
+
+// Friso na lateral, logo abaixo da linha de cintura.
+function plotTrim(r, spec) {
+  if (!spec.trim || spec.trim === 'none') return;
+  const color = spec.trimColor ?? 0xe8e4dc;
+  const [ax, ay] = sidePixel(-2.1, 0.5), [bx] = sidePixel(2.1, 0.5);
+  if (spec.trim === 'line') r.line(ax, ay, bx, ay, color);
+  else if (spec.trim === 'thick') r.line(ax, ay, bx, ay, color, 4);
+  else if (spec.trim === 'double') { r.line(ax, ay - 3, bx, ay - 3, color); r.line(ax, ay + 2, bx, ay + 2, color); }
 }
 
 function paintSide(r, spec, seed) {
@@ -120,14 +167,16 @@ function paintSide(r, spec, seed) {
   r.poly(polygonFromSide([[front.z + 0.17, front.y + 0.04], [roofFront.z + 0.01, roofY], [pillar, roofY], [pillar, front.y + 0.04]]), glass);
   r.poly(polygonFromSide([[backOfFront, rear.y + 0.03], [backOfFront, roofY], [roofRear.z - 0.03, roofY], [rear.z - 0.23, rear.y + 0.03]]), glass);
 
+  plotTrim(r, spec);
+  const decalAtSide = decalSpot(spec).region === 'side';
+  if (decalAtSide) plotDecal(r, spec);
+
   // caixas de roda
   for (const z of WHEEL_POSITIONS_Z) {
     const [cx, cy] = sidePixel(z, WHEEL_ARCH_Y);
     const rx = WHEEL_ARCH_RADIUS / 4.7 * width, ry = WHEEL_ARCH_RADIUS / 1.35 * height;
     r.ellipse(cx, cy, rx, ry, 0x07070a);
   }
-
-  plotDecal(r, spec);
 
   // luzes laterais
   r.poly(polygonFromSide([[2.2, 0.72], [2.2, 0.9], [2.0, 0.92], [2.0, 0.74]]), 0xd81818);
@@ -146,6 +195,8 @@ function paintTop(r, spec, seed) {
   const { front, roofFront, roofRear, rear } = CAR_SHAPES[spec.model].greenhouse;
   rect(front.z + 0.03, roofFront.z - 0.03, -0.84, 0.84, glass);
   rect(roofRear.z + 0.03, rear.z - 0.03, -0.8, 0.8, glass);
+
+  if (decalSpot(spec).region === 'top') plotDecal(r, spec);
 
   // capô e porta-malas
   const seam = mix(spec.primary, 0, 0.65);

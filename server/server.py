@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Servidor do Half Grip: entrega os arquivos do jogo e cuida das salas do multiplayer.
+"""Servidor do CTI Racers: entrega os arquivos do jogo e cuida das salas do multiplayer.
 
 Só usa a biblioteca padrão do Python. O servidor conhece salas e jogadores; a corrida em si é simulada
 nos navegadores, e ele apenas repassa as mensagens entre quem está na mesma sala.
@@ -463,7 +463,7 @@ async def main():
         del arguments[index:index + 2]
     port = int(arguments[0]) if arguments else 8000
     server = await asyncio.start_server(handle_connection, host, port, limit=MAX_HEADER_BYTES)
-    print(f"Half Grip em http://localhost:{port}")
+    print(f"CTI Racers em http://localhost:{port}")
     if host == "0.0.0.0":
         print(f"Na mesma rede, os outros jogadores abrem http://{local_address()}:{port}")
     sys.stdout.flush()

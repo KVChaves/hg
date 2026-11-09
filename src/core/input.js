@@ -14,7 +14,6 @@ const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
 export function setupInput(stage, { onFire, onReload, onDropTrap, onCycleTrap, canLockPointer, sensitivity, isTyping }) {
   stageEl = stage;
-  const help = document.getElementById('help');
 
   addEventListener('keydown', e => {
     if (isTyping()) return;                          // digitando o nome, as teclas não comandam o carro
@@ -29,7 +28,6 @@ export function setupInput(stage, { onFire, onReload, onDropTrap, onCycleTrap, c
 
   stage.addEventListener('click', () => { if (!isLocked() && canLockPointer()) stage.requestPointerLock(); });
   document.addEventListener('pointerlockchange', () => {
-    help.style.opacity = isLocked() ? 0.25 : 0.9;
     if (!isLocked()) { keys.AimButton = false; keys.FireButton = false; }
   });
 

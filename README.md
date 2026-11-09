@@ -1,4 +1,4 @@
-# Half Grip
+# CTI Racers
 
 Jogo de corrida e combate de carros para navegador, em visão de cabine e estilo pixel art.
 

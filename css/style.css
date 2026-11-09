@@ -8,4 +8,3 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
   image-rendering: pixelated;
 }
 
-#help { position: fixed; left: 8px; bottom: 6px; color: #a55; font: 12px monospace; opacity: .7; pointer-events: none; }

@@ -19,7 +19,7 @@ import { emptyTrunkThumb, exteriorThumb, interiorThumb, trunkItemThumb, weaponTh
 
 const TILE = { width: 46, height: 42, gapX: 48, gapY: 44 };
 const LEFT = { x: 6, y: 40, width: 106, columns: 2 };
-const RIGHT = { x: 528, y: 40, width: 106, columns: 2 };
+const RIGHT = { x: 484, y: 40, width: 152, columns: 3 };
 const EQUIPMENT = { x: 6, y: 196, width: 106, columns: 2 };
 const UPGRADE_PANEL = { x: 6, y: 306, width: 106, height: 50 };
 const UPGRADE_ROW = 12, NO_FUNDS_TIME = 1.2;
@@ -255,7 +255,7 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
   const stripPlacement = slot => (slot.group === 'interior' && slot.key !== 'charm' ? 'top' : 'bottom');
 
   const strip = createOptionStrip({
-    x: 118, width: 404, top: 36, bottom: 356,
+    x: 118, width: 362, top: 36, bottom: 356,
     placement: stripPlacement,
     getSlot: () => active, currentId, currentColor,
     priceOf: priceOfEquipment,

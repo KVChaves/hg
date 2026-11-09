@@ -12,6 +12,7 @@ const ROAD_HALF = TRACK_WIDTH / 2 + 1.4, SHOULDER_BLEND = 6;
 const WRONG_WAY_DELAY = 0.7, WRONG_WAY_MIN_SPEED = 3, WRONG_WAY_HEADING = -0.25;  // uma rodada rápida não dispara o aviso
 const WALL_BOUNCE = 0.4, TUNNEL_WALL_BOUNCE = 0.05, TUNNEL_SCRAPE_SPEED = 6;   // m/s de batida que no túnel não tiram vida
 const WALL_NOSE_IN = 0.05, WALL_KEEP_BACKWARD = -0.6, WALL_TURN_RATE = 3;   // rad/s
+const INTRO_TIME = 5;                                // segundos do pop-up de ajuda antes da contagem
 const MIN_JUMP_SPEED = 22;                           // m/s: a rampa garante o impulso para cruzar o vão
 const SLIPSTREAM_RESPONSE = 4;                       // o vácuo entra e sai aos poucos
 const MIN_TIME_GAP = 0.05;                           // segundos entre tempos estimados consecutivos
@@ -30,7 +31,7 @@ export function createRace(car, opponents, { onCrash, onDestroyed }) {
   const collisions = createCollisions({ car, field, onCrash, onDestroyed });
 
   const race = {
-    countdown: 3.8, started: false, goTimer: 0, time: 0,
+    intro: INTRO_TIME, countdown: 3.8, started: false, goTimer: 0, time: 0,
     playerDist: 0, lastS: 0,
     finished: false, finalRank: 0, rank: 1, order: [], finishOrder: [], finishResults: [], wrongWay: false,
     online: false, crossed: false,                   // online: o admin é quem encerra a corrida de todos
@@ -255,7 +256,7 @@ export function createRace(car, opponents, { onCrash, onDestroyed }) {
 
   // Prepara uma nova corrida. `finishNames` é a ordem de chegada da anterior; sem ela usa o grid inicial.
   race.reset = finishNames => {
-    Object.assign(race, { countdown: 3.8, started: false, goTimer: 0, time: 0, finished: false, crossed: false, finalRank: 0, finishOrder: [], finishResults: [] });
+    Object.assign(race, { intro: INTRO_TIME, countdown: 3.8, started: false, goTimer: 0, time: 0, finished: false, crossed: false, finalRank: 0, finishOrder: [], finishResults: [] });
     finishTimes.clear();
     wrongWayTime = 0;
     race.wrongWay = false;
@@ -295,7 +296,8 @@ export function createRace(car, opponents, { onCrash, onDestroyed }) {
 
   race.update = (dt, activeTraps) => {
     if (!race.started) {
-      if ((race.countdown -= dt) <= 0) { race.started = true; race.goTimer = 1.2; }
+      if (race.intro > 0) race.intro -= dt;               // pop-up de ajuda antes da contagem
+      else if ((race.countdown -= dt) <= 0) { race.started = true; race.goTimer = 1.2; }
     } else {
       race.goTimer -= dt;
       if (!race.finished) race.time += dt;

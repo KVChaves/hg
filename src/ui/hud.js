@@ -19,6 +19,33 @@ function centered(ctx, text, y, color, scale = 1) {
   ctxText(ctx, text, x, y, color, scale);
 }
 
+const CONTROLS = [
+  ['W / S', 'ACELERA / FREIA E RE'], ['A / D', 'DIRECAO'], ['ESPACO', 'NITRO'], ['SHIFT', 'DRIFT NAS CURVAS'],
+  ['E', 'USA ITEM DO BAGAGEIRO'], ['RODA DO MOUSE', 'TROCA ITEM'], ['Q (SEGURE)', 'VE O CARRO POR FORA'], ['H', 'BUZINA'],
+  ['MOUSE', 'OLHA'], ['CLIQUE', 'ATIRA'], ['BOTAO DIREITO', 'SEGURA A ARMA'], ['R', 'RECARREGA'], ['C', 'CENTRALIZA A CAMERA'],
+];
+const NPC_HELP = ['SE VOCE ESTIVER MUITO ATRAS, UM NPC ACENA', 'NA BEIRA DA PISTA COM UM ITEM ACIMA DA CABECA:', 'MUNICAO, NITRO, EXTINTOR OU ARMADILHA.', 'PASSE PERTO DELE PARA PEGAR O ITEM.'];
+
+// Pop-up antes da contagem: botões do jogo e o que querem dizer os NPCs da beira da pista.
+function drawIntroPopup(ctx, timeLeft) {
+  const w = 440, lineH = 11, rows = Math.ceil(CONTROLS.length / 2);
+  const h = 62 + rows * lineH + 14 + NPC_HELP.length * lineH + 16;
+  const x = Math.round(CENTER_X - w / 2), y = Math.round(VIEW.height / 2 - h / 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.88)'; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = '#f0d060'; ctx.fillRect(x, y, w, 2); ctx.fillRect(x, y + h - 2, w, 2); ctx.fillRect(x, y, 2, h); ctx.fillRect(x + w - 2, y, 2, h);
+  centered(ctx, 'COMO JOGAR', y + 8, '#f0d060', 2);
+  const colW = (w - 24) / 2;
+  CONTROLS.forEach(([key, text], i) => {
+    const cx = x + 12 + (i % 2) * colW, cy = y + 32 + Math.floor(i / 2) * lineH;
+    ctxText(ctx, key, cx, cy, '#ffe9a0');
+    ctxText(ctx, text, cx + 86, cy, '#e8d8c0');
+  });
+  let ny = y + 32 + rows * lineH + 8;
+  centered(ctx, 'NPCS NA BEIRA DA PISTA', ny, '#6fe070'); ny += lineH + 3;
+  for (const line of NPC_HELP) { centered(ctx, line, ny, '#e8d8c0'); ny += lineH; }
+  centered(ctx, `A CORRIDA COMECA EM ${Math.ceil(timeLeft)}`, y + h - 14, '#a89878');
+}
+
 const DAMAGE_BAND = 22;                           // largura em pixels da borda vermelha ao levar dano
 const DAMAGE_COLOR = '#d01810';
 const SECTOR = Math.PI / 4;
@@ -36,7 +63,7 @@ function paintDamageBand(width, height, edgeAt) {
   return band;
 }
 
-export function createHud(canvas, { featFeed, mainMenu, multiplayer, podium, matchSetup, results, matchLabel, biomeName, race, weapon, hands, garage, workshop, externalView, isLocked, combat, car, activeCamera, opponents, isBehindCabin, isInSmoke, roadsideHelp, traps }) {
+export function createHud(canvas, { featFeed, mainMenu, multiplayer, podium, matchSetup, results, matchLabel, biomeName, race, weapon, hands, garage, workshop, externalView, spectator, canSkipSpectate, isLocked, combat, car, activeCamera, opponents, isBehindCabin, isInSmoke, roadsideHelp, traps }) {
   canvas.width = VIEW.width;
   canvas.height = VIEW.height;
   const ctx = canvas.getContext('2d');
@@ -107,7 +134,7 @@ export function createHud(canvas, { featFeed, mainMenu, multiplayer, podium, mat
       ctxText(ctx, roadsideHelp.message, x, TOP_MESSAGE_Y, '#6fe070', scale);
     }
     if (weapon.outOfAmmo > 0) centered(ctx, 'SEM MUNICAO', 214, '#f06050');
-    if (!isLocked()) centered(ctx, 'CLIQUE PARA CAPTURAR O MOUSE', 150, '#e8d8c0');
+    if (!isLocked() && !spectator.active) centered(ctx, 'CLIQUE PARA CAPTURAR O MOUSE', 150, '#e8d8c0');
     if (race.wrongWay && race.goTimer <= 0) {
       if (Math.floor(race.time * WRONG_WAY_BLINK) % 2 === 0) centered(ctx, 'CONTRAMAO', 112, '#ff3a2a', 3);
       centered(ctx, 'VIRE O CARRO', 142, '#ffe9a0');
@@ -117,7 +144,8 @@ export function createHud(canvas, { featFeed, mainMenu, multiplayer, podium, mat
       centered(ctx, matchLabel(), 80, '#e8d8c0', 2);
       centered(ctx, biomeName(), 100, '#ffe9a0');
     }
-    if (!race.started) centered(ctx, String(Math.min(3, Math.ceil(race.countdown))), 118, '#ffe9a0', 4);
+    if (!race.started && race.intro <= 0) centered(ctx, String(Math.min(3, Math.ceil(race.countdown))), 118, '#ffe9a0', 4);
+    if (!race.started && race.intro > 0) drawIntroPopup(ctx, race.intro);
     else if (race.goTimer > 0) centered(ctx, 'GO!', 118, '#6fe070', 4);
     if (car.wrecked > 0) {
       centered(ctx, 'CARRO DESTRUIDO', 118, '#f06050', 2);
@@ -128,6 +156,10 @@ export function createHud(canvas, { featFeed, mainMenu, multiplayer, podium, mat
     if (race.crossed && !race.finished) {
       centered(ctx, 'VOCE CHEGOU!', 118, '#ffe9a0', 2);
       centered(ctx, 'AGUARDANDO OS OUTROS PILOTOS', 142, '#e8d8c0');
+    }
+    if (spectator.active) {
+      centered(ctx, `ESPECTANDO ${spectator.targetName}`, 20, '#ffe9a0', 2);
+      centered(ctx, canSkipSpectate() ? '< > TROCA DE PILOTO    ENTER VER RESULTADOS' : '< > TROCA DE PILOTO', 336, '#e8d8c0');
     }
     if (race.finished) {
       centered(ctx, `CHEGOU EM ${race.finalRank} DE ${race.field.length}`, 118, '#ffe9a0', 2);
@@ -148,7 +180,7 @@ export function createHud(canvas, { featFeed, mainMenu, multiplayer, podium, mat
       return;
     }
     if (workshop.isOpen) { workshop.draw(ctx); return; }
-    if (!externalView.active) {
+    if (!externalView.active && !spectator.active) {
       hands.draw(ctx);
       if (hands.isHoldingGun()) drawCrosshair();
     }

@@ -40,6 +40,7 @@ import { createResultsScreen } from './ui/resultsScreen.js';
 import { createWeaponWorkshop } from './ui/weaponWorkshop.js';
 import { createCarDamageEffects } from './world/carDamageEffects.js';
 import { createExternalView } from './world/externalView.js';
+import { createSpectator } from './game/spectator.js';
 import { createFoamEffect } from './world/foamEffect.js';
 import { BIOMES, pickBiome } from './world/biomes/index.js';
 import { createHarpoonVisual } from './world/harpoonVisual.js';
@@ -265,9 +266,10 @@ const garage = createGarageScreen({
   },
   onBack: () => mainMenu.open(),
 });
+const spectator = createSpectator({ opponents, race, camera: new THREE.PerspectiveCamera(VIEW.fov, VIEW.width / VIEW.height, 0.1, 400) });
 const externalView = createExternalView({ scene: world, car, look, initialSpec: garage.carSpec(), seed: PLAYER_CAR_SEED });
 applyEquipment(equipment);
-const drawHud = createHud(hudCanvas, { featFeed, mainMenu, multiplayer, podium, matchSetup, results, matchLabel: () => `CORRIDA ${match ? match.currentRace : 1} DE ${match ? match.raceCount : 1}`, biomeName: () => biome.name, race, weapon, hands, garage, workshop, externalView, isLocked, combat, car, roadsideHelp, traps, opponents, activeCamera: () => (externalView.active ? externalView.camera : camera), isBehindCabin: (x, y, z) => cabin.isBehindCabin(x, y, z), isInSmoke: (x, z) => car.effects.smoke > 0 || traps.smokeBlocks(car.x, car.z, x, z) });
+const drawHud = createHud(hudCanvas, { featFeed, mainMenu, multiplayer, podium, matchSetup, results, matchLabel: () => `CORRIDA ${match ? match.currentRace : 1} DE ${match ? match.raceCount : 1}`, biomeName: () => biome.name, race, weapon, hands, garage, workshop, externalView, spectator, canSkipSpectate: () => !online.active, isLocked, combat, car, roadsideHelp, traps, opponents, activeCamera: () => (spectator.active ? spectator.camera : externalView.active ? externalView.camera : camera), isBehindCabin: (x, y, z) => !spectator.active && cabin.isBehindCabin(x, y, z), isInSmoke: (x, z) => car.effects.smoke > 0 || traps.smokeBlocks(car.x, car.z, x, z) });
 const inMenus = () => mainMenu.isOpen || multiplayer.isOpen || podium.isOpen || matchSetup.isOpen || results.isOpen || garage.isOpen || workshop.isOpen;
 
 setupInput(stage, {
@@ -395,8 +397,16 @@ function beginRace(chosenBiome, seed, grid) {
   look.yaw = look.pitch = 0;
   raceRecorded = false;
   sinceFinish = 0;
+  skipSpectate = false;
+  spectator.reset();
   audio.startRace();
 }
+
+// Espectar vale depois de cruzar a linha: online até o fim da corrida; offline até o jogador apertar ENTER.
+let skipSpectate = false;
+const prevKeys = {};
+const pressed = code => { const down = Boolean(keys[code]); const fresh = down && !prevKeys[code]; prevKeys[code] = down; return fresh; };
+const wantsSpectate = () => !inMenus() && !skipSpectate && spectator.hasTargets() && (online.active ? race.crossed && !race.finished : race.finished);
 
 function finishRaceFlow(frameTime) {
   if (!race.finished || results.isOpen || !match) return;
@@ -406,6 +416,7 @@ function finishRaceFlow(frameTime) {
     addRaceResult({ position: race.finalRank, racers: race.field.length, time: race.time, kills: weapon.kills });
   }
   if ((sinceFinish += frameTime) < RESULTS_DELAY) return;
+  if (!online.active && !skipSpectate && spectator.hasTargets()) return;   // offline: espera o ENTER do espectador
   sinceFinish = -Infinity;                           // abre uma vez só
   audio.stopRace();
   document.exitPointerLock();
@@ -417,9 +428,16 @@ function step(frameTime) {
   multiplayer.update();
   matchSetup.update();
   results.update();
-  externalView.setActive(Boolean(keys.KeyQ) && !inMenus());
+  const left = pressed('ArrowLeft'), right = pressed('ArrowRight'), enter = pressed('Enter');
+  if (spectator.active) {
+    if (left) spectator.cycle(-1);
+    if (right) spectator.cycle(1);
+    if (enter && !online.active) skipSpectate = true;
+  }
+  spectator.update(frameTime, wantsSpectate());
+  externalView.setActive(Boolean(keys.KeyQ) && !inMenus() && !spectator.active);
   const dt = inMenus() ? 0 : frameTime;              // a corrida fica parada nas telas de menu
-  const driving = outOfAction() ? NO_KEYS : keys;
+  const driving = outOfAction() || spectator.active ? NO_KEYS : keys;
   updateCar(car, dt, driving, race.started, hands.isNitroReady());
   race.update(dt, traps.active);
   driftTracker.update(dt);
@@ -450,6 +468,9 @@ function step(frameTime) {
   online.update(frameTime);
   if (mainMenu.isOpen || multiplayer.isOpen || matchSetup.isOpen || garage.isOpen && garage.view === 'car') {
     garage.renderCar(renderer);
+  } else if (spectator.active) {
+    renderer.clear();
+    renderer.render(world, spectator.camera);
   } else if (externalView.active) {
     renderer.clear();
     renderer.render(world, externalView.camera);
