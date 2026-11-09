@@ -34,6 +34,19 @@ function plotMagazine(r, x, y) {
   r.rect(x + 2, y + 13, 5, 2, 0x34343a);
 }
 
+function plotBolt(r, x, y) {
+  r.rect(x + 1, y + 2, 2, 9, 0x9a8a6a);
+  r.poly([[x, y + 2], [x + 4, y + 2], [x + 2, y]], 0xd8d8dc);
+  r.rect(x, y + 3, 4, 3, 0xc02818);
+}
+
+function plotCanister(r, x, y) {
+  r.rect(x, y + 2, 10, 20, 0xb83c18);
+  r.rect(x, y + 2, 1, 20, 0xe05828);
+  r.rect(x, y + 9, 10, 2, 0x18181e);
+  r.rect(x + 3, y, 4, 2, 0x7c7e82);
+}
+
 const MAX_RACK_WIDTH = 60;                           // munição extra aperta o suporte em vez de sair do painel
 
 const RACKS = {
@@ -41,6 +54,8 @@ const RACKS = {
   shotgun: { roundsPerItem: 1, perRow: 6, stepX: 7, gapY: 13, itemW: 5, itemH: 11, tray: true, plot: plotShell },
   rifle: { roundsPerItem: 1, perRow: 8, stepX: 5, gapY: 13, itemW: 4, itemH: 11, tray: true, plot: plotLongRound },
   smg: { roundsPerItem: 30, perRow: 2, stepX: 14, gapY: 26, itemW: 9, itemH: 24, tray: false, plot: plotMagazine },
+  crossbow: { roundsPerItem: 1, perRow: 8, stepX: 5, gapY: 13, itemW: 4, itemH: 11, tray: true, plot: plotBolt },
+  flamethrower: { roundsPerItem: 80, perRow: 2, stepX: 14, gapY: 26, itemW: 10, itemH: 24, tray: false, plot: plotCanister },
 };
 
 export function createAmmoRack(parent) {
@@ -49,7 +64,7 @@ export function createAmmoRack(parent) {
   // `reserve` é o máximo que este carro leva, já com a melhoria de munição.
   function setWeapon(type, reserve = type.reserve) {
     sprite?.dispose();
-    rack = RACKS[type.id];
+    rack = RACKS[type.id] ?? RACKS[type.family];
     last = -1;
 
     const items = Math.ceil(reserve / rack.roundsPerItem);

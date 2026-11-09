@@ -1,11 +1,13 @@
 import * as THREE from 'three';
 import { damageOpponent } from './opponents.js';
 import { damageAtDistance, WEAPON_TYPES } from './weaponTypes.js';
+import { partHit } from './carParts.js';
 
 const DEFAULT_TRACER = 0xffe9a0;
+const HIT_PART_TIME = 0.7;
 const ROUND_PICKUP_AT = 0.5, OUT_OF_AMMO_NOTICE = 1, TRACER_LENGTH = 120, DRY_FIRE_INTERVAL = 0.35;
 
-export function createWeapon({ scene, camera, targets, shooter, canReload, onFired, onHit, onKill }) {
+export function createWeapon({ scene, camera, targets, extraTargets = () => [], shooter, canReload, onFired, onHit, onKill, onObstacleHit, onSplash = () => {} }) {
   const raycaster = new THREE.Raycaster();
   const aimOffset = new THREE.Vector2();
   const right = new THREE.Vector3();
@@ -18,7 +20,7 @@ export function createWeapon({ scene, camera, targets, shooter, canReload, onFir
   const weapon = {
     type: WEAPON_TYPES.revolver, ammo: 0, capacity: 0, reserve: 0, outOfAmmo: 0, cooldown: 0,
     isReloading: false, roundsToLoad: 0, roundProgress: 0, carryingRound: false,
-    flash: 0, hitMarker: 0, kills: 0, sinceShot: Infinity, shots: 0, dryFires: 0,
+    flash: 0, hitMarker: 0, hitPart: null, hitPartTime: 0, kills: 0, sinceShot: Infinity, shots: 0, dryFires: 0,
   };
 
   // `reserveFactor` é a melhoria de munição comprada.
@@ -27,10 +29,11 @@ export function createWeapon({ scene, camera, targets, shooter, canReload, onFir
     // A arma começa descarregada: a primeira recarga é por conta do piloto.
     Object.assign(weapon, { type, ammo: 0, capacity: type.magazine, maxReserve: Math.ceil(type.reserve * reserveFactor), reserve: Math.ceil(type.reserve * reserveFactor), isReloading: false, carryingRound: false, roundProgress: 0, roundsToLoad: 0, cooldown: 0, flash: 0, hitMarker: 0, outOfAmmo: 0, kills: 0, sinceShot: Infinity });
     raycaster.far = type.range;
+    tracer.material.color.setHex(type.tracer ?? DEFAULT_TRACER);
     bloom = 0;
   };
 
-  weapon.setTracerColor = color => tracer.material.color.setHex(color ?? DEFAULT_TRACER);
+  weapon.setTracerColor = color => tracer.material.color.setHex(color ?? weapon.type.tracer ?? DEFAULT_TRACER);
 
   weapon.reload = () => {
     if (!canReload() || weapon.isReloading || weapon.ammo >= weapon.capacity) return;
@@ -51,6 +54,20 @@ export function createWeapon({ scene, camera, targets, shooter, canReload, onFir
     tracer.visible = true;
     tracerTime = 0.06;
     onFired(weapon.type.id, start, end);
+  }
+
+  // Besta explosiva: a flecha explode onde acertou e machuca quem estiver em volta, menos quanto mais longe.
+  function explodeAt(point, direct) {
+    const { radius, min } = weapon.type.splash;
+    onSplash(point);
+    for (const target of [...targets.filter(t => !t.dead), ...extraTargets()]) {
+      if (target === direct) continue;
+      const distance = target.group.position.distanceTo(point);
+      if (distance > radius) continue;
+      const amount = weapon.type.damage * (1 - (1 - min) * distance / radius);
+      if (target.isObstacle) onObstacleHit(target, amount);
+      else if (damageOpponent(target, amount, shooter)) { onKill(target); weapon.hitMarker = 0.4; }
+    }
   }
 
   weapon.fire = () => {
@@ -75,7 +92,7 @@ export function createWeapon({ scene, camera, targets, shooter, canReload, onFir
 
     camera.updateMatrixWorld();
     raycaster.setFromCamera(aimOffset, camera);
-    const hits = raycaster.intersectObjects(targets.filter(t => !t.dead).map(t => t.group), true);
+    const hits = raycaster.intersectObjects([...targets.filter(t => !t.dead), ...extraTargets()].map(t => t.group), true);
     const { origin, direction } = raycaster.ray;
     let end = origin.clone().addScaledVector(direction, Math.min(type.range, TRACER_LENGTH));
 
@@ -83,11 +100,18 @@ export function createWeapon({ scene, camera, targets, shooter, canReload, onFir
       end = hits[0].point;
       weapon.hitMarker = 0.15;
       const target = hits[0].object.userData.opponent;
-      onHit(target);
-      if (damageOpponent(target, damageAtDistance(type, hits[0].distance), shooter)) {
-        onKill(target);
-        weapon.hitMarker = 0.4;
+      if (target.isObstacle) {                      // obstáculos quebram a tiro e não contam como abate
+        if (onObstacleHit(target, damageAtDistance(type, hits[0].distance))) weapon.hitMarker = 0.4;
+      } else {
+        onHit(target);
+        const part = partHit(hits[0].object, target.group.worldToLocal(hits[0].point.clone()));
+        if (part.label) { weapon.hitPart = part.label; weapon.hitPartTime = HIT_PART_TIME; }
+        if (damageOpponent(target, damageAtDistance(type, hits[0].distance) * part.multiplier, shooter)) {
+          onKill(target);
+          weapon.hitMarker = 0.4;
+        }
       }
+      if (type.splash) explodeAt(end, target);
     }
     showTracer(origin, direction, end);
   };
@@ -117,6 +141,7 @@ export function createWeapon({ scene, camera, targets, shooter, canReload, onFir
     weapon.sinceShot += dt;
     weapon.flash -= dt;
     weapon.hitMarker -= dt;
+    weapon.hitPartTime -= dt;
     weapon.outOfAmmo -= dt;
     if (weapon.type.bloom) bloom = Math.max(0, bloom - weapon.type.bloom.decay * dt);
     if (weapon.isReloading) loadRounds(dt);

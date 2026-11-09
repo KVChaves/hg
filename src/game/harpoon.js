@@ -1,10 +1,12 @@
 import { trackAt } from '../world/track.js';
 import { damageOpponent } from './opponents.js';
 
-// Arpão: sai da frente do carro e vai reto. Se encostar em outro carro até 20 m, puxa ele para trás.
-// Errou, volta sozinho. O cabo sempre liga a ponta à frente do carro. Cada piloto tem o seu.
+// Arpão: sai da frente do carro e vai reto. Se encostar em outro carro até 30 m, puxa ele para trás.
+// O do jogador (`holdToExtend`) segue esticando enquanto o E estiver apertado; soltou, recolhe. O dos bots voa
+// de uma vez até o alcance. Errou, volta sozinho. O cabo sempre liga a ponta à frente do carro. Cada piloto tem o seu.
 
-const RANGE = 20, FLIGHT_SPEED = 75;                 // metros e m/s a mais que o carro
+const RANGE = 30, FLIGHT_SPEED = 75;                 // metros e m/s a mais que o carro
+const EXTEND_SPEED = 38, MIN_HOLD = 0.15, HOLD_AT_MAX = 0.4;   // modo segurar: velocidade do cabo, tempo mínimo e espera no alcance máximo
 const NOSE_FORWARD = 2.3, HEIGHT = 0.62;
 const PULL_DISTANCE = 8, PULL_TIME = 0.45, PULL_SPEED_LOSS = 0.6, RETRACT_TIME = 0.15;
 const STEP = 0.5;                                    // de quanto em quanto a ponta procura um carro
@@ -54,7 +56,8 @@ export function createPullReceiver(car) {
 }
 
 // `owner` é o piloto de race.field que dispara. `onRemotePull` avisa quando o alvo é simulado em outro navegador.
-export function createHarpoon({ owner, car, race, visual, onSound, onRemotePull = () => {}, onHooked = () => {} }) {
+export function createHarpoon({ owner, car, race, visual, onSound, onRemotePull = () => {}, onHooked = () => {}, holdToExtend = false }) {
+  let held = false, flightTime = 0, atMaxTime = 0;
   let phase = 'idle', timer = 0, dirX = 0, dirZ = 0, tipX = 0, tipZ = 0, target = null, attachForward = 0, attachRight = 0;
 
   const noseX = () => owner.x - Math.sin(owner.yaw) * NOSE_FORWARD;
@@ -62,6 +65,7 @@ export function createHarpoon({ owner, car, race, visual, onSound, onRemotePull 
 
   function fire() {
     phase = 'flying';
+    flightTime = atMaxTime = 0;
     dirX = -Math.sin(owner.yaw);
     dirZ = -Math.cos(owner.yaw);
     tipX = noseX();
@@ -101,8 +105,16 @@ export function createHarpoon({ owner, car, race, visual, onSound, onRemotePull 
     timer = PULL_TIME;
   }
 
+  function retract() {
+    phase = 'retracting';
+    timer = RETRACT_TIME;
+  }
+
   function updateFlying(dt) {
-    let travel = (FLIGHT_SPEED + Math.max(0, owner.v)) * dt;
+    flightTime += dt;
+    if (holdToExtend && !held && flightTime > MIN_HOLD) { retract(); return; }   // soltou o E
+    // Segurando, o cabo estica numa velocidade própria; sem segurar (bots), voa de uma vez.
+    let travel = ((holdToExtend ? EXTEND_SPEED : FLIGHT_SPEED) + Math.max(0, owner.v)) * dt;
     while (travel > 0) {
       const step = Math.min(STEP, travel);
       travel -= step;
@@ -110,10 +122,14 @@ export function createHarpoon({ owner, car, race, visual, onSound, onRemotePull 
       tipZ += dirZ * step;
       const hit = carAt(tipX, tipZ);
       if (hit) { latch(hit); return; }
-      if (Math.hypot(tipX - noseX(), tipZ - noseZ()) >= RANGE) {
-        phase = 'retracting';
-        timer = RETRACT_TIME;
-        return;
+      const reach = Math.hypot(tipX - noseX(), tipZ - noseZ());
+      if (reach >= RANGE) {
+        if (!holdToExtend) { retract(); return; }
+        const k = RANGE / reach;                     // no alcance máximo o cabo só acompanha o carro
+        tipX = noseX() + (tipX - noseX()) * k;
+        tipZ = noseZ() + (tipZ - noseZ()) * k;
+        if ((atMaxTime += dt) >= HOLD_AT_MAX) { retract(); return; }
+        break;
       }
     }
   }
@@ -152,5 +168,6 @@ export function createHarpoon({ owner, car, race, visual, onSound, onRemotePull 
     get busy() { return phase !== 'idle'; },
     get tip() { return phase === 'idle' ? null : [tipX, (target ? target.y : owner.y) + HEIGHT, tipZ]; },
     fire, update, reset,
+    setHeld(value) { held = value; },
   };
 }

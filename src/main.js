@@ -41,6 +41,8 @@ import { createWeaponWorkshop } from './ui/weaponWorkshop.js';
 import { createCarDamageEffects } from './world/carDamageEffects.js';
 import { createExternalView } from './world/externalView.js';
 import { createSpectator } from './game/spectator.js';
+import { giveKillReward } from './game/killReward.js';
+import { createObstacles } from './game/obstacles.js';
 import { createFoamEffect } from './world/foamEffect.js';
 import { BIOMES, pickBiome } from './world/biomes/index.js';
 import { createHarpoonVisual } from './world/harpoonVisual.js';
@@ -81,7 +83,21 @@ function creditKill(victim) {
   weapon.kills++;
   matchKills++;
   featFeed.announce('DESTRUIDO');
+  rewardKillFor(race.field.find(racer => racer.isPlayer));
   if (victim) featFeed.setCount(victim, 'Abate', weapon.kills);
+}
+
+// Abate rende itens conforme a posição de quem abateu (jogador ou bot): líder ganha pouco, quem está atrás ganha mais.
+// Só quem é simulado neste navegador recebe aqui; os outros recebem no navegador que os simula.
+function rewardKillFor(racer) {
+  if (!racer || racer.remote || !race.started || race.finished) return;
+  const supplies = roadsideHelp.suppliesFor(racer);
+  if (!supplies) return;
+  const rank = racer.isPlayer ? race.rank : race.order.findIndex(entry => entry.name === racer.name) + 1;
+  const labels = giveKillReward(supplies, rank || race.field.length, race.field.length);
+  if (!racer.isPlayer) return;
+  roadsideHelp.showMessage(labels.map(label => `+${label}`).join(' '));
+  audio.playWorldSound('itemCollected', 0, 0);
 }
 
 function announceTrapCatch(racer, type) {
@@ -98,6 +114,7 @@ function onTrapCaught(racer, type, owner) {
 function onRacerDestroyed(victim, killer) {
   if (killer?.isPlayer) creditKill(victim);
   else if (killer?.remote) online.sendKill(victim, killer);
+  else rewardKillFor(killer);                        // bot simulado aqui
 }
 
 const DRIFT_GRADES = [[3, 'DRIFT INSANO'], [1.6, 'GRANDE DRIFT'], [0, 'DRIFT']];
@@ -110,19 +127,27 @@ const race = createRace(car, opponents, { onCrash: playAt, onDestroyed: onRacerD
 const net = createRoomClient();
 let online = null;                                   // criado mais abaixo; os sistemas só avisam quando há partida online
 const pulls = createPullReceiver(car);
-const weapon = createWeapon({ scene: world, camera, targets: opponents, shooter: race.field[0], canReload: () => race.started, onFired: (id, from, end) => online.sendShot(id, from, end), onHit: target => featFeed.addCount(target, 'Acerto'), onKill: creditKill });   // só recarrega depois do GO
-const harpoon = createHarpoon({ owner: race.field[0], car, race, visual: createHarpoonVisual(world), onSound: playAt, onRemotePull: (target, shooter) => online.sendPull(target, shooter), onHooked: target => {
+const weapon = createWeapon({ scene: world, camera, targets: opponents, shooter: race.field[0], canReload: () => race.started, onFired: (id, from, end) => online.sendShot(id, from, end), onHit: target => featFeed.addCount(target, 'Acerto'), onKill: creditKill, extraTargets: () => obstacles.active, onObstacleHit: (ob, damage) => obstacles.shoot(ob, damage), onSplash: point => { combat.explodeAt(point.x, point.y, point.z); playAt('dynamite', point.x, point.z); } });   // só recarrega depois do GO
+const harpoon = createHarpoon({ owner: race.field[0], car, race, holdToExtend: true, visual: createHarpoonVisual(world), onSound: playAt, onRemotePull: (target, shooter) => online.sendPull(target, shooter), onHooked: target => {
   featFeed.announce('ARPOADO');
   featFeed.addCount(target, 'Arpao');
 } });
 const foam = createFoamEffect(world);
-const traps = createTraps({ scene: world, car, race, harpoon, onCaught: onTrapCaught, onSound: playAt, onExtinguisher: racer => { foam.spray(racer); online.sendExtinguisher(racer); }, onPlaced: (type, dist, lane, owner) => online.sendTrap(type, dist, lane, owner) });
+const traps = createTraps({ scene: world, car, race, harpoon, onCaught: onTrapCaught, onSound: playAt, onExtinguisher: racer => { foam.spray(racer); online.sendExtinguisher(racer); }, onPlaced: (type, dist, lane, owner, id) => online.sendTrap(type, dist, lane, owner, id), onDetonated: id => online.sendTrapBoom(id) });
+const obstacles = createObstacles({
+  scene: world, race, car, getBiome: () => biome, onSound: playAt,
+  isAuthority: () => !online.active || net.isAdmin,
+  onPlayerHit: type => featFeed.announce(`BATEU ${type.hitText}`),
+  onSpawned: ob => online.sendObstacle(ob),
+  onBroken: ob => online.sendObstacleBreak(ob),
+});
 const combat = createOpponentCombat({
   scene: world, car, race, opponents, traps, look, onSound: playAt,
   onShot: (weaponId, distance, pan) => audio.playEnemyShot(weaponId, distance, pan),
   onDestroyed: (x, z) => playAt('crash', x, z),
   onBotShot: (id, from, to) => online.sendShot(id, from, to),
   onRemotePull: (target, shooter) => online.sendPull(target, shooter),
+  onKill: (victim, killer) => rewardKillFor(killer),
 });
 const roadsideNpcs = createRoadsideNpcs(world);
 const roadsideHelp = createRoadsideHelp({
@@ -189,6 +214,7 @@ const mainMenu = createMainMenu({
   net,
   onSingleplayer: () => matchSetup.open(),
   onMultiplayer: () => multiplayer.open(),
+  onGarage: () => garage.openFromMenu(),
   onSettingChange: (key, value) => SETTING_APPLIERS[key](value),
   onEffectsPreview: () => audio.playWeaponSound('revolver', 'fire'),
   onQuit: () => window.close(),                      // o navegador só permite em abas abertas por script
@@ -204,6 +230,8 @@ const multiplayer = createMultiplayerScreen({
   getName: () => playerName,
   setName: changePlayerName,
   onBack: () => { net.leave(); mainMenu.open(); },
+  onGarage: () => garage.openFromMenu(() => multiplayer.open()),
+  isWaiting: () => Boolean(net.room) && net.room.phase === 'playing' && !online.active,   // entrou com a partida em andamento
 });
 const matchSetup = createMatchSetupScreen({
   stage,
@@ -226,6 +254,7 @@ const podium = createPodiumScreen({
     else location.reload();                          // recarregar volta ao menu com tudo zerado
   },
 });
+let garageReopening = false;
 const workshop = createWeaponWorkshop({
   stage,
   customs,
@@ -234,7 +263,10 @@ const workshop = createWeaponWorkshop({
     if (id === weapon.type.id) weapon.setTracerColor(customs[id].colors.flash);
   },
   // Só depois deste clique, senão ele acionaria a garagem. Se o intervalo acabou nesse meio-tempo, a corrida já começou.
-  onClose: () => setTimeout(() => { if (!match || garage.isBetweenRaces()) garage.open(); }),
+  onClose: () => {
+    garageReopening = true;                          // neste intervalo nenhuma tela está aberta: o clique não pode capturar o mouse
+    setTimeout(() => { garageReopening = false; if (!match || garage.isBetweenRaces()) garage.open(); });
+  },
 });
 const garage = createGarageScreen({
   stage,
@@ -244,7 +276,7 @@ const garage = createGarageScreen({
   getName: () => (online.active ? race.field[0].name : playerName),   // online vale o nome confirmado pelo servidor
   setName: name => {
     changePlayerName(name);
-    if (online.active) net.setName(name);
+    if (online.active || net.room) net.setName(name);
     else renameSoloDriver(name);
   },
   getReadyRoster: () => online.readyRoster(),
@@ -280,7 +312,7 @@ setupInput(stage, {
     hands.requestTrap();
   },
   onCycleTrap: traps.cycle,
-  canLockPointer: () => !inMenus(),
+  canLockPointer: () => !inMenus() && !garageReopening,
   sensitivity: () => settings.sensitivity,
   isTyping: () => garage.isTyping() || multiplayer.isTyping(),
 });
@@ -317,7 +349,8 @@ function setRacerCount(cars) {
 }
 
 online = createOnlineMatch({
-  net, scene: world, race, car, opponents, combat, traps, foam, harpoon, pulls, weapon, look, garage, results, podium, playAt, setRacerCount, creditKill, announceTrapCatch,
+  net, scene: world, race, car, opponents, combat, traps, foam, harpoon, pulls, weapon, look, garage, results, podium, playAt, setRacerCount, creditKill, rewardKillFor, announceTrapCatch, obstacles,
+  onLateJoin: () => multiplayer.close(),
   getSpec: () => garage.carSpec(),
   setMatch: created => {
     match = created;
@@ -393,6 +426,7 @@ function beginRace(chosenBiome, seed, grid) {
   applyEquipment(equipment);
   combat.reset();
   roadsideHelp.reset();
+  obstacles.reset();
   damageEffects.reset();
   look.yaw = look.pitch = 0;
   raceRecorded = false;
@@ -435,6 +469,7 @@ function step(frameTime) {
     if (enter && !online.active) skipSpectate = true;
   }
   spectator.update(frameTime, wantsSpectate());
+  if (inMenus() && isLocked()) document.exitPointerLock();   // numa tela de menu o mouse nunca fica preso
   externalView.setActive(Boolean(keys.KeyQ) && !inMenus() && !spectator.active);
   const dt = inMenus() ? 0 : frameTime;              // a corrida fica parada nas telas de menu
   const driving = outOfAction() || spectator.active ? NO_KEYS : keys;
@@ -444,6 +479,8 @@ function step(frameTime) {
   lapSupplies.update();
   featFeed.update(dt);
   traps.update(dt);
+  obstacles.update(dt);
+  harpoon.setHeld(Boolean(keys.KeyE) && !outOfAction());   // o arpão estica enquanto o E estiver apertado
   harpoon.update(dt);
   pulls.update(dt);
   foam.update(dt);
@@ -494,4 +531,4 @@ function frame(now) {
 }
 requestAnimationFrame(frame);
 
-export const game = { supplyCrates, lapSupplies, roadsideNpcs, featFeed, podium, multiplayer, net, online: () => online, pulls, world, getBiome: () => biome, harpoon, matchSetup, results, getMatch: () => match, roadsideHelp, mainMenu, settings, step, keys, look, car, race, opponents, combat, weapon, traps, cabin, hands, audio, garage, workshop, externalView, renderer, glCanvas, hudCanvas };
+export const game = { obstacles, supplyCrates, lapSupplies, roadsideNpcs, featFeed, podium, multiplayer, net, online: () => online, pulls, world, getBiome: () => biome, harpoon, matchSetup, results, getMatch: () => match, roadsideHelp, mainMenu, settings, step, keys, look, car, race, opponents, combat, weapon, traps, cabin, hands, audio, garage, workshop, externalView, renderer, glCanvas, hudCanvas };

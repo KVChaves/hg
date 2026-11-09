@@ -6,11 +6,14 @@ import { EXTINGUISHER_LIFE, TRAP_TYPES, TRAPS_UNLOCK_TIME } from './trapTypes.js
 const NOTICE_TIME = 1.4;
 const GAP_BACKOFF = 3;
 const DROP_DISTANCE_BEHIND = 8, EXPLOSION_VISIBLE_TIME = 0.4;
+const DROPPER_SAFE_TIME = 2.5;                       // quem soltou a dinamite não a aciona logo em seguida
+const THROW_BACK = 9, THROW_SIDE = 5, THROW_TIME = 0.5, THROW_SPEED_LOSS = 0.25, THROW_SPIN = 3, BOT_THROW_KNOCK = 8;   // o carro que pisa é jogado na diagonal para trás
 const BLAST_PUSH = 8, BOT_BLAST_KNOCK = 12, BLAST_FALLOFF = 0.6;   // m/s; o bot volta para a faixa sozinho, então o empurrão lateral nele é maior
 
 // O bagageiro: armadilhas e power-ups, usados com a tecla E.
-export function createTraps({ scene, car, race, harpoon, onSound, onExtinguisher, onPlaced, onCaught }) {
+export function createTraps({ scene, car, race, harpoon, onSound, onExtinguisher, onPlaced, onCaught, onDetonated = () => {} }) {
   const traps = { slots: [], selected: 0, active: [], notice: { text: '', time: 0, good: false } };
+  const throws = [];                                  // carros sendo jogados por uma explosão
 
   Object.defineProperty(traps, 'current', { get: () => traps.slots[traps.selected] });
 
@@ -70,7 +73,7 @@ export function createTraps({ scene, car, race, harpoon, onSound, onExtinguisher
 
   // `owner` é o piloto que soltou; nulo quando foi o jogador deste navegador. `dropper` é sempre quem soltou:
   // a armadilha já vale ao cair, mas não pega quem ainda está dentro da área dela nesse momento (a fumaça é longa).
-  function place(type, dist, lane, owner, dropper) {
+  function place(type, dist, lane, owner, dropper, id = Math.random().toString(36).slice(2, 8)) {
     while (inGap(dist)) dist -= GAP_BACKOFF;         // no vão não há chão: a armadilha fica na beirada
     const t = trackAt(dist), x = t.x - t.tz * lane, z = t.z + t.tx * lane;
     const pitch = Math.atan(t.slope), yaw = Math.atan2(-t.tx, -t.tz);
@@ -82,12 +85,13 @@ export function createTraps({ scene, car, race, harpoon, onSound, onExtinguisher
     scene.add(visual.group);
 
     const trap = {
-      type, visual, x, z, dist, lane, owner,
-      age: 0, fuse: type.fuse ?? 0, explodedFor: -1,
+      type, visual, x, z, dist, lane, owner, dropper, id,
+      age: 0, explodedFor: -1,
       hitBy: new Set(), dodgers: new Map(),
     };
     if (type.effect && touches(trap, dropper)) trap.hitBy.add(dropper);
     traps.active.push(trap);
+    return trap;
   }
 
   traps.drop = () => {
@@ -96,18 +100,23 @@ export function createTraps({ scene, car, race, harpoon, onSound, onExtinguisher
     slot.charges--;
     if (slot.type.powerup) POWERUPS[slot.type.id]();
     else {
-      place(slot.type, race.playerDist - DROP_DISTANCE_BEHIND, car.lateral, null, race.field[0]);
-      onPlaced(slot.type, race.playerDist - DROP_DISTANCE_BEHIND, car.lateral, race.field[0]);
+      const trap = place(slot.type, race.playerDist - DROP_DISTANCE_BEHIND, car.lateral, null, race.field[0]);
+      onPlaced(slot.type, race.playerDist - DROP_DISTANCE_BEHIND, car.lateral, race.field[0], trap.id);
     }
   };
 
   traps.dropFrom = (opponent, type) => {
-    place(type, opponent.dist - DROP_DISTANCE_BEHIND, opponent.lane, opponent, opponent);
-    onPlaced(type, opponent.dist - DROP_DISTANCE_BEHIND, opponent.lane, opponent);
+    const trap = place(type, opponent.dist - DROP_DISTANCE_BEHIND, opponent.lane, opponent, opponent);
+    onPlaced(type, opponent.dist - DROP_DISTANCE_BEHIND, opponent.lane, opponent, trap.id);
   };
 
   // Armadilha solta em outro navegador: aparece aqui e só afeta os carros simulados aqui.
-  traps.placeFromNetwork = (typeId, dist, lane, owner) => place(TRAP_TYPES[typeId], dist, lane, owner, owner);
+  traps.placeFromNetwork = (typeId, dist, lane, owner, id) => { place(TRAP_TYPES[typeId], dist, lane, owner, owner, id); };
+  // Outro navegador acionou a dinamite: aqui ela explode também, para quem estiver perto.
+  traps.detonateFromNetwork = id => {
+    const trap = traps.active.find(candidate => candidate.id === id && candidate.explodedFor < 0);
+    if (trap) explode(trap, null);
+  };
 
   // A linha de visão de (x0, z0) até (x1, z1) passa por alguma nuvem de fumaça?
   traps.smokeBlocks = (x0, z0, x1, z1) => traps.active.some(({ type, x, z }) => {
@@ -119,6 +128,7 @@ export function createTraps({ scene, car, race, harpoon, onSound, onExtinguisher
 
   traps.reset = () => {
     for (const trap of [...traps.active]) remove(trap);
+    throws.length = 0;
     traps.notice.time = 0;
   };
 
@@ -128,12 +138,41 @@ export function createTraps({ scene, car, race, harpoon, onSound, onExtinguisher
     traps.active.splice(traps.active.indexOf(trap), 1);
   }
 
-  // A dinamite não causa dano: só empurra para longe quem estiver perto da explosão.
-  function explode(trap) {
+  // O carro que pisou na dinamite é jogado na diagonal para trás; os outros perto da explosão só são empurrados.
+  function throwCar(racer, trap) {
+    const side = Math.sign(racer.lane - trap.lane) || (Math.random() < 0.5 ? -1 : 1), spin = side * THROW_SPIN;
+    if (racer.isPlayer) {
+      car.vx *= THROW_SPEED_LOSS;
+      car.vz *= THROW_SPEED_LOSS;
+      car.spin += spin;
+    } else {
+      racer.v *= THROW_SPEED_LOSS;
+      racer.spin += spin;
+      racer.knock += side * BOT_THROW_KNOCK;
+    }
+    throws.push({ racer, side, left: THROW_TIME });
+  }
+
+  function updateThrows(dt) {
+    for (let i = throws.length - 1; i >= 0; i--) {
+      const { racer, side } = throws[i], step = dt / THROW_TIME;
+      const t = trackAt(racer.dist);
+      if (racer.isPlayer) {
+        car.x += (-t.tx * THROW_BACK + -t.tz * side * THROW_SIDE) * step;
+        car.z += (-t.tz * THROW_BACK + t.tx * side * THROW_SIDE) * step;
+      } else {
+        racer.dist -= THROW_BACK * step;
+      }
+      if ((throws[i].left -= dt) <= 0) throws.splice(i, 1);
+    }
+  }
+
+  function explode(trap, trigger) {
     trap.explodedFor = 0;
     onSound(trap.type.id, trap.x, trap.z);
     for (const racer of race.field) {
       if (racer.dead > 0 || racer.remote) continue;
+      if (racer === trigger) { throwCar(racer, trap); onCaught(racer, trap.type, trap.owner); continue; }
       const dx = racer.x - trap.x, dz = racer.z - trap.z, distance = Math.hypot(dx, dz);
       if (distance > trap.type.radius) continue;
       const d = distance || 1, awayX = dx / d, awayZ = dz / d, strength = 1 - BLAST_FALLOFF * distance / trap.type.radius;
@@ -170,13 +209,19 @@ export function createTraps({ scene, car, race, harpoon, onSound, onExtinguisher
       trap.explodedFor += dt;
       trap.visual.showExplosion(trap.explodedFor / EXPLOSION_VISIBLE_TIME);
       if (trap.explodedFor > EXPLOSION_VISIBLE_TIME) remove(trap);
-    } else if ((trap.fuse -= dt) <= 0) {
-      explode(trap);
+      return;
     }
+    if (trap.age > trap.type.life) { remove(trap); return; }
+    // Explode quando um carro simulado aqui passa por cima.
+    const trigger = race.field.find(racer => !racer.remote && racer.dead <= 0 && !(racer === trap.dropper && trap.age < DROPPER_SAFE_TIME) && touches(trap, racer));
+    if (!trigger) return;
+    explode(trap, trigger);
+    onDetonated(trap.id);
   }
 
   traps.update = dt => {
     traps.notice.time = Math.max(0, traps.notice.time - dt);
+    updateThrows(dt);
     for (const trap of [...traps.active]) {
       trap.age += dt;
       trap.visual.update(dt);

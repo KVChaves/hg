@@ -8,6 +8,7 @@ import { lifeAfterDestruction } from './carFlip.js';
 import { createHarpoon } from './harpoon.js';
 import { damageOpponent } from './opponents.js';
 import { damageAtDistance } from './weaponTypes.js';
+import { rollPart } from './carParts.js';
 
 // Combate dos adversários: cada piloto escolhe um alvo entre todos que estão à sua frente, atira,
 // recarrega, solta armadilhas em quem vem atrás e usa os power-ups. Vale a munição limitada do jogador.
@@ -29,10 +30,10 @@ const FIRING_ARC_COS = Math.cos(LOOK.maxYaw);         // o piloto só atira até
 
 const random = ([low, high]) => low + Math.random() * (high - low);
 
-export function createOpponentCombat({ scene, car, race, opponents, traps, look, onShot, onSound, onDestroyed, onBotShot, onRemotePull }) {
+export function createOpponentCombat({ scene, car, race, opponents, traps, look, onShot, onSound, onDestroyed, onBotShot, onRemotePull, onKill }) {
   const visuals = createCombatVisuals(scene);
   const from = new THREE.Vector3(), to = new THREE.Vector3();
-  const combat = { hitFlash: 0, hitAngle: 0, update, reset, showRemoteShot, harpoonTip: op => harpoons.get(op).tip };
+  const combat = { hitFlash: 0, hitAngle: 0, update, reset, showRemoteShot, explodeAt: (x, y, z) => visuals.explode(x, y, z), harpoonTip: op => harpoons.get(op).tip };
   const field = race.field;
   const attackersOn = new Map();                     // quantos já atiram em cada alvo neste quadro
   const harpoons = new Map(opponents.map(op => [op, createHarpoon({ owner: op, car, race, visual: createHarpoonVisual(scene), onSound, onRemotePull })]));
@@ -84,10 +85,12 @@ export function createOpponentCombat({ scene, car, race, opponents, traps, look,
 
   function hurt(target, op, amount, bearing) {
     if (!target.isPlayer) {
-      damageOpponent(target, amount, op);
+      if (damageOpponent(target, amount, op)) onKill(target, op);
       return;
     }
+    const wasAlive = car.health > 0 && car.wrecked <= 0;
     damagePlayer(car, amount / CAR_MAX_HP);
+    if (wasAlive && car.health <= 0) onKill(target, op);
     combat.hitFlash = HIT_FLASH_TIME;
     combat.hitAngle = bearing;
   }
@@ -119,7 +122,7 @@ export function createOpponentCombat({ scene, car, race, opponents, traps, look,
     const bearing = bearingFrom(car, look, op.x, op.z);
     onShot(type.id, Math.hypot(car.x - op.x, car.z - op.z), -Math.sin(bearing));
 
-    if (hit) hurt(target, op, damageAtDistance(type, distance), bearing);
+    if (hit) hurt(target, op, damageAtDistance(type, distance) * rollPart().multiplier, bearing);
   }
 
   // Pausa média entre ataques para a munição da arma durar a corrida.

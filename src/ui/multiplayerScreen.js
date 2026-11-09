@@ -18,13 +18,14 @@ const ROOM_PROMPT = { x: 150, y: 70, width: 340, height: 200 };
 const ROSTER = { x: 78, top: 66, height: 28 };
 const KICK = { x: 262, width: 70, height: 22 };
 const CONFIG_X = 356, CONFIG_ROWS = [78, 128], ARROW = 26, VALUE_WIDTH = 50, ARROW_X = 460;
+const GARAGE = { x: 368, y: 222, width: 190, height: 26 };
 const START = { x: 368, y: 256, width: 190, height: 26 };
 const LEAVE = { x: 368, y: 290, width: 190, height: 26 };
 const CONFIG_FIELDS = [{ key: 'cars', label: 'CORREDORES', min: 2, max: MAX_RACERS }, { key: 'races', label: 'CORRIDAS', min: 1, max: 10 }];
 
 const centered = (ctx, text, y, color, scale = 1) => ctxText(ctx, text, Math.round(VIEW.width / 2 - textWidth(text, scale) / 2), y, color, scale);
 
-export function createMultiplayerScreen({ stage, net, getName, setName, onBack }) {
+export function createMultiplayerScreen({ stage, net, getName, setName, onBack, onGarage, isWaiting }) {
   const screen = { isOpen: false };
   let pointer = { x: -1, y: -1 }, queued = null;
 
@@ -55,9 +56,12 @@ export function createMultiplayerScreen({ stage, net, getName, setName, onBack }
     });
   }
 
+  const canRemoveBot = room => room.config.cars > Math.max(2, room.players.length);
+
   function clickRoom(x, y) {
     const { room } = net;
     if (inside(LEAVE, x, y)) { net.leave(); return; }
+    if (inside(GARAGE, x, y)) { queued = () => { screen.isOpen = false; onGarage(); }; return; }   // a sala continua aberta
     if (!net.isAdmin) return;
     if (inside(START, x, y)) { net.start(); return; }
     const arrow = arrows.find(candidate => inside(candidate, x, y));
@@ -65,6 +69,12 @@ export function createMultiplayerScreen({ stage, net, getName, setName, onBack }
     room.players.forEach((player, i) => {
       if (player.id !== net.id && inside(kickButton(i), x, y)) net.kick(player.id);
     });
+    // Expulsar um bot tira uma vaga de corredor; os bots são iguais na lista, então sai um deles.
+    if (canRemoveBot(room)) {
+      for (let i = room.players.length; i < room.config.cars; i++) {
+        if (inside(kickButton(i), x, y)) { net.configure({ cars: room.config.cars - 1 }); return; }
+      }
+    }
   }
 
   addEventListener('mousemove', e => { if (screen.isOpen) pointer = pointerOnStage(e, stage); });
@@ -106,6 +116,7 @@ export function createMultiplayerScreen({ stage, net, getName, setName, onBack }
       const y = ROOM_ROW.top + i * ROOM_ROW.height + 7, button = joinButton(i), full = isOpenRoomFull(room);
       ctxText(ctx, room.name, PANEL.x + 20, y, COLOR.text);
       ctxText(ctx, `${room.players}/${room.cars}`, PANEL.x + 300, y, full ? COLOR.danger : COLOR.muted);
+      if (room.phase === 'playing') ctxText(ctx, 'EM JOGO', PANEL.x + 340, y, COLOR.selected);
       if (full) ctxText(ctx, 'CHEIA', button.x + 20, y, COLOR.danger);
       else drawButton(ctx, button, 'ENTRAR', inside(button, pointer.x, pointer.y));
     });
@@ -124,6 +135,7 @@ export function createMultiplayerScreen({ stage, net, getName, setName, onBack }
         if (net.isAdmin && player.id !== net.id) drawButton(ctx, kickButton(i), 'EXPULSAR', inside(kickButton(i), pointer.x, pointer.y));
       } else {
         ctxText(ctx, isBot ? 'BOT' : '-', ROSTER.x + 24, y, COLOR.muted);
+        if (isBot && net.isAdmin && canRemoveBot(room)) drawButton(ctx, kickButton(i), 'EXPULSAR', inside(kickButton(i), pointer.x, pointer.y));
       }
     }
   }
@@ -137,8 +149,13 @@ export function createMultiplayerScreen({ stage, net, getName, setName, onBack }
     if (net.isAdmin) for (const arrow of arrows) drawButton(ctx, arrow, arrow.label, inside(arrow, pointer.x, pointer.y));
     const bots = room.config.cars - room.players.length;
     ctxText(ctx, `${room.players.length} JOGADORES E ${bots} BOTS`, CONFIG_X, 172, COLOR.muted);
-    if (net.isAdmin) drawButton(ctx, START, 'INICIAR PARTIDA', inside(START, pointer.x, pointer.y));
+    if (isWaiting()) {
+      ctxText(ctx, 'PARTIDA EM ANDAMENTO', START.x + 12, START.y - 72, COLOR.selected);
+      ctxText(ctx, 'VOCE ENTRA QUANDO A', START.x + 12, START.y - 60, COLOR.text);
+      ctxText(ctx, 'CORRIDA ACABAR', START.x + 12, START.y - 48, COLOR.text);
+    } else if (net.isAdmin) drawButton(ctx, START, 'INICIAR PARTIDA', inside(START, pointer.x, pointer.y));
     else ctxText(ctx, 'AGUARDANDO O ADMIN', START.x + 42, START.y + 9, COLOR.muted);
+    drawButton(ctx, GARAGE, 'GARAGEM', inside(GARAGE, pointer.x, pointer.y));
     drawButton(ctx, LEAVE, net.isAdmin ? 'ENCERRAR SALA' : 'SAIR DA SALA', inside(LEAVE, pointer.x, pointer.y));
   }
 

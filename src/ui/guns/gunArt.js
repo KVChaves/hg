@@ -1,43 +1,13 @@
 import { Raster } from '../../art/raster.js';
-import { colorRamp, dither, hash, vnoise } from '../../art/shade.js';
+import { colorRamp, dither } from '../../art/shade.js';
+import { familyOf } from '../../game/weaponTypes.js';
+import { DARK_STEEL, layerOf, materials, STEEL } from './gunPaint.js';
+import { buildAutoShotgun, buildCrossbow, buildFlamethrower, buildMagnum, buildSniper } from './gunArtNew.js';
 
 // Armas desenhadas em partes móveis (mesmos ids de game/weaponTypes.js). Cada camada é uma imagem do
 // tamanho da arma, e `pose(p)` diz como ela se move. Todos os pontos são pixels da imagem:
 // pivot = eixo das animações, muzzle = saída do tiro, hand = onde a mão segura, load = onde a munição
 // entra, eject = de onde saem as cápsulas.
-
-const STEEL = [0x1e1e20, 0x38383c, 0x56585c, 0x7c7e82, 0xa8aaae];
-const DARK_STEEL = [0x101012, 0x1e1e22, 0x2e2e34, 0x46464e, 0x62626c];
-const WOOD = [0x1a0f0a, 0x2c1a12, 0x42281a, 0x5a3a26, 0x764e30];
-const FLASH = [0xff9a30, 0xffd060, 0xfff2b0];
-
-const PATTERN_TEST = {
-  none: () => false,
-  camo: (x, y) => vnoise(x / 9, y / 6) > 0.55,
-  tiger: (x, y) => Math.sin((x + y * 0.6) / 3 + vnoise(x / 14, y / 9) * 4) > 0.55,
-  engraved: (x, y) => (x * 3 + y * 5) % 7 === 0 && vnoise(x / 11, y / 7) > 0.4,
-  worn: (x, y) => hash(x >> 1, y >> 1) > 0.86,
-};
-const PATTERN_DEFAULT = { none: 0x000000, camo: 0x4a5a30, tiger: 0xb08020, engraved: 0xd8b860, worn: 0xc0c0c0 };
-
-function materials(base, custom) {
-  const metal = custom.colors.metal === null ? base : colorRamp(custom.colors.metal);
-  const grip = custom.colors.grip === null ? WOOD : colorRamp(custom.colors.grip);
-  const patternRamp = colorRamp(custom.colors.pattern ?? PATTERN_DEFAULT[custom.options.pattern]);
-  const isPattern = PATTERN_TEST[custom.options.pattern];
-  return {
-    metal, grip,
-    steel: tone => (x, y) => dither(x, y, tone - (y % 16) / 60, isPattern(x, y) ? patternRamp : metal, 0.8),
-    wood: (tone, x0) => (x, y) => dither(x, y, tone - (x - x0) / 120 + ((y >> 1) & 1) * 0.08, grip, 0.9),
-    flash: custom.colors.flash === null ? FLASH : [custom.colors.flash, colorRamp(custom.colors.flash)[4], 0xffffff],
-  };
-}
-
-const layerOf = (width, height, paint) => {
-  const r = new Raster(width, height);
-  paint(r);
-  return r.commit();
-};
 
 function buildRevolver(custom, m) {
   const W = 62, H = 54, accessory = custom.options.accessory;
@@ -272,10 +242,17 @@ function buildRifle(custom, m) {
   };
 }
 
-const BUILDERS = { revolver: buildRevolver, shotgun: buildShotgun, smg: buildSmg, rifle: buildRifle };
-const BASE_METAL = { revolver: STEEL, shotgun: STEEL, smg: DARK_STEEL, rifle: STEEL };
+const BUILDERS = {
+  revolver: buildRevolver, shotgun: buildShotgun, smg: buildSmg, rifle: buildRifle,
+  magnum: buildMagnum, sniper: buildSniper, autoshotgun: buildAutoShotgun, crossbow: buildCrossbow, flamethrower: buildFlamethrower,
+};
+const BASE_METAL = {
+  revolver: STEEL, shotgun: STEEL, smg: DARK_STEEL, rifle: STEEL,
+  // Armas que dividem o desenho de outra ganham cor própria.
+  magnum: colorRamp(0x6c6c78), sniper: DARK_STEEL, autoshotgun: DARK_STEEL, crossbow: colorRamp(0x7a5a34), flamethrower: colorRamp(0xb04820),
+};
 
 export function buildGunArt(id, custom) {
   const m = materials(BASE_METAL[id], custom);
-  return { ...BUILDERS[id](custom, m), flash: m.flash };
+  return { ...(BUILDERS[id] ?? BUILDERS[familyOf(id)])(custom, m), flash: m.flash };
 }

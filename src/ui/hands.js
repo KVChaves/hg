@@ -36,7 +36,7 @@ const ease = (current, target, speed, dt) => current + (target - current) * (1 -
 export function createHands({ weapon, traps, look, cabin, customs, isAiming, wantsFire, wantsNitro, onGunSound }) {
   const leftFist = paintLeftFist();
   const rightFist = paintRightFist();
-  const fists = { round: paintFistHolding('round'), shell: paintFistHolding('shell'), magazine: paintFistHolding('magazine') };
+  const fists = { round: paintFistHolding('round'), shell: paintFistHolding('shell'), magazine: paintFistHolding('magazine'), bolt: paintFistHolding('bolt'), canister: paintFistHolding('canister') };
   const gunHand = paintGunHand(false);
   const gunHandFiring = paintGunHand(true);
 
@@ -226,7 +226,7 @@ export function createHands({ weapon, traps, look, cabin, customs, isAiming, wan
     if (travel < 0.75) return rightFist;
     if (state === 'gun') return weapon.flash > 0 ? gunHandFiring : gunHand;
     if (state === 'reload') {
-      const delivered = art().carry === 'magazine' && weapon.roundProgress >= MAGAZINE_SEAT_AT;
+      const delivered = (art().carry === 'magazine' || art().carry === 'canister') && weapon.roundProgress >= MAGAZINE_SEAT_AT;
       return weapon.carryingRound && !delivered ? fists[art().carry] : rightFist;
     }
     return rightFist;

@@ -150,7 +150,7 @@ class Lobby:
         self.ranking = Ranking(RANKING_FILE)
 
     def room_list(self):
-        return [room.public_info() for room in self.rooms.values() if room.phase == "lobby"]
+        return [room.public_info() for room in self.rooms.values()]
 
     def publish_rooms(self):
         rooms = self.room_list()
@@ -204,9 +204,7 @@ class Lobby:
             return client.send({"t": "error", "code": "no_room"})
         if client.id in room.banned:
             return client.send({"t": "error", "code": "banned"})
-        if room.phase != "lobby":
-            return client.send({"t": "error", "code": "in_progress"})
-        if len(room.members) >= room.cars:
+        if len(room.members) >= room.cars:                # em partida, o jogador entra e espera a próxima corrida
             return client.send({"t": "error", "code": "full"})
         self.join(client, room)
         self.publish_room(room)

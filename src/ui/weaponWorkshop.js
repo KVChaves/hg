@@ -1,7 +1,7 @@
 import { VIEW } from '../config.js';
 import { ctxText, textWidth } from '../art/font.js';
-import { saveWeaponCustoms, WEAPON_ACCESSORIES, WEAPON_PATTERNS } from '../game/weaponCustomization.js';
-import { WEAPON_TYPES } from '../game/weaponTypes.js';
+import { accessoriesOf, saveWeaponCustoms, WEAPON_PATTERNS } from '../game/weaponCustomization.js';
+import { familyOf, WEAPON_TYPES } from '../game/weaponTypes.js';
 import { createGunAnimator } from './guns/gunAnimator.js';
 import { createGunEffects } from './guns/gunEffects.js';
 import { createGunRig } from './guns/gunRig.js';
@@ -11,12 +11,12 @@ import { COLOR, drawButton, drawSlotTile, drawTooltip, inside, panelBox, pointer
 // Oficina: a arma fica no centro, atirando e recarregando em demonstração, e cada parte é personalizável.
 
 const TILE = { width: 46, height: 42, gapX: 48, gapY: 44 };
-const LEFT = { x: 6, y: 40, width: 106, height: 112, columns: 2 };
+const LEFT = { x: 6, y: 40, width: 106, height: 16 + Math.ceil(Object.keys(WEAPON_TYPES).length / 2) * 44 + 4, columns: 2 };
 const RIGHT = { x: 528, y: 40, width: 106, height: 156, columns: 2 };
 const BACK_BUTTON = { x: 240, y: 6, width: 160, height: 26 };
 const PREVIEW = { x: 320, y: 150, maxWidth: 400, maxScale: 3 };
 const DEMO = { pause: 0.9, shotsPerRound: 3, minInterval: 0.55, burstInterval: 0.09, burstShots: 8 };
-const WEAPON_SHORT = { revolver: 'REVOLV', shotgun: 'ESCOP', smg: 'SUBM', rifle: 'RIFLE' };
+const WEAPON_SHORT = { revolver: 'REVOLV', shotgun: 'ESCOP', smg: 'SUBM', rifle: 'RIFLE', magnum: 'MAGNUM', sniper: 'SNIPER', autoshotgun: 'ESC AUT', crossbow: 'BESTA', flamethrower: 'CHAMAS' };
 
 const SLOT_DEFS = [
   { key: 'metal', short: 'METAL', label: 'Cor do metal', hasColor: true },
@@ -50,7 +50,7 @@ export function createWeaponWorkshop({ stage, customs, onChange, onClose }) {
   }));
   let active = slots[0];
 
-  const optionsFor = slot => (slot.optionGroup === 'pattern' ? WEAPON_PATTERNS : WEAPON_ACCESSORIES[weaponId]);
+  const optionsFor = slot => (slot.optionGroup === 'pattern' ? WEAPON_PATTERNS : accessoriesOf(weaponId));
   const withOption = (group, id) => ({ colors: custom().colors, options: { ...custom().options, [group]: id } });
 
   function refreshThumbs() {

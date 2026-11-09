@@ -61,9 +61,42 @@ export const CAR_SLOTS = {
 
 const STORAGE_KEY = 'halfgrip.car';
 
+// Carro do primeiro acesso: peças e cores sorteadas, só nas peças de aparência. Vidro, farol e pneu ficam no padrão.
+const RANDOM_EXCLUDE = { height: ['slammed', 'lifted'], glass: ['dark', 'black'] };
+const RANDOM_COLORED = ['body', 'pattern', 'decal', 'spoiler', 'hood', 'rim', 'trim'];
+
+function randomColor() {
+  const hue = Math.random(), saturation = 0.55 + Math.random() * 0.35, lightness = 0.35 + Math.random() * 0.25;
+  const f = n => {
+    const k = (n + hue * 12) % 12, a = saturation * Math.min(lightness, 1 - lightness);
+    return lightness - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+  };
+  return [f(0), f(8), f(4)].reduce((hex, channel) => (hex << 8) | Math.round(channel * 255), 0);
+}
+
+function randomCarSelection() {
+  const selection = { options: {}, colors: {} };
+  for (const [key, slot] of Object.entries(CAR_SLOTS)) {
+    if (slot.options) {
+      const ids = Object.keys(slot.options).filter(id => !RANDOM_EXCLUDE[key]?.includes(id));
+      selection.options[key] = ids[Math.floor(Math.random() * ids.length)];
+    }
+    if (slot.colorDefault !== undefined) selection.colors[key] = RANDOM_COLORED.includes(key) ? randomColor() : slot.colorDefault;
+  }
+  return selection;
+}
+
 export function loadCarSelection() {
+  let raw = null;
+  try { raw = localStorage.getItem(STORAGE_KEY); } catch { /* sem armazenamento: segue sem salvo */ }
+  if (raw === null) {                                // primeiro acesso: carro aleatório, que passa a ser o dele
+    const selection = randomCarSelection();
+    saveCarSelection(selection);
+    return selection;
+  }
+
   let saved = {};
-  try { saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch { /* sem armazenamento: usa o padrão */ }
+  try { saved = JSON.parse(raw || '{}'); } catch { /* salvo corrompido: usa o padrão */ }
 
   const selection = { options: {}, colors: {} };
   for (const [key, slot] of Object.entries(CAR_SLOTS)) {

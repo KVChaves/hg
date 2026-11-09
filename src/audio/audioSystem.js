@@ -1,6 +1,7 @@
 import { MENU_MUSIC, PHASE_MUSIC, SOUND_FILES } from './soundFiles.js';
 import { effectiveRpm, ENGINE_LAYERS, engineMix } from './engineMix.js';
 import { WEAPON_SOUNDS } from './weaponSounds.js';
+import { familyOf } from '../game/weaponTypes.js';
 
 // Som do jogo: efeitos e motor pelo Web Audio; música por streaming, sem carregar tudo na memória.
 
@@ -30,8 +31,9 @@ const WORLD_SOUNDS = {
 };
 
 // Vários momentos usam o mesmo arquivo; cada um é carregado uma vez só.
-const weaponSoundFiles = () => [...new Set(Object.values(WEAPON_SOUNDS).flatMap(moments => Object.values(moments).map(sound => sound.url)))]
+const weaponSoundFiles = () => [...new Set(Object.values(WEAPON_SOUNDS).flatMap(moments => Object.values(moments).flatMap(sound => [sound.url, sound.fallback ?? sound.url, ...(sound.remote ? [sound.remote.url] : [])])))]
   .map(url => [url, url]);
+const FIRE_LOOP_HOLD = 0.15, REMOTE_BURST_GAP = 0.3;   // segundos
 const firePitch = () => 1 + (Math.random() - 0.5) * FIRE_PITCH_VARIATION;
 
 // `settings` traz os volumes escolhidos pelo jogador.
@@ -126,10 +128,28 @@ export function createAudioSystem(settings) {
   let launch = null, hornSound = null, wasThrottle = false, lastGear = null, finished = false;
   let reloadSound = null;
 
+  // Som novo que ainda não existe como arquivo: toca o `fallback` (o da arma parecida).
+  const resolveSound = sound => (sound.fallback && !buffers[sound.url] ? { url: sound.fallback, volume: sound.fallbackVolume } : sound);
+  const soundsOf = weaponId => WEAPON_SOUNDS[weaponId] ?? WEAPON_SOUNDS[familyOf(weaponId)];
+
+  // Lança-chamas: cada tiro renova o laço; quando os tiros param, `updateFireLoop` o apaga.
+  let fireLoop = null, fireLoopUntil = 0, nextRemoteBurst = 0;
+  function holdFireLoop(sound) {
+    fireLoop ??= play(sound.url, sound.volume, { loop: true });
+    fireLoopUntil = performance.now() / 1000 + FIRE_LOOP_HOLD;
+  }
+  function updateFireLoop() {
+    if (!fireLoop || performance.now() / 1000 < fireLoopUntil) return;
+    stop(fireLoop);
+    fireLoop = null;
+  }
+
   function playWeaponSound(weaponId, moment) {
     // O som de abrir a arma pode ser mais longo que uma recarga curta.
     if (moment === 'reloadEnd') { stop(reloadSound); reloadSound = null; }
-    const sound = WEAPON_SOUNDS[weaponId][moment];
+    const original = soundsOf(weaponId)[moment];
+    if (original?.loop && buffers[original.url]) { holdFireLoop(original); return; }
+    const sound = original && resolveSound(original);
     if (!sound) return;
     const voice = play(sound.url, sound.volume, { rate: moment === 'fire' ? firePitch() : 1 });
     if (moment === 'reloadStart') reloadSound = voice;
@@ -138,7 +158,13 @@ export function createAudioSystem(settings) {
   // Tiro de um adversário: mais baixo de longe e vindo do lado em que ele está (`pan` de -1 a 1).
   function playEnemyShot(weaponId, distance, pan) {
     if (distance > WORLD_SOUND_RANGE) return;
-    const { url, volume } = WEAPON_SOUNDS[weaponId].fire;
+    const fire = soundsOf(weaponId).fire;
+    if (fire.remote) {                                // rajada contínua de outro jogador: não empilha uma voz por tiro
+      const now = performance.now() / 1000;
+      if (now < nextRemoteBurst) return;
+      nextRemoteBurst = now + REMOTE_BURST_GAP;
+    }
+    const { url, volume } = resolveSound(fire.remote ?? fire);
     play(url, volume * ENEMY_SHOT_VOLUME / (1 + distance / DISTANCE_FALLOFF), { rate: firePitch(), pan });
   }
 
@@ -243,6 +269,7 @@ export function createAudioSystem(settings) {
       engineTimer = setTimeout(startEngine, ENGINE_DELAY_AFTER_START * 1000);
     },
     update({ gear, race, keys, nitroOpen, drifting }) {
+      updateFireLoop();
       if (!raceOn) return;
       const throttle = Boolean(race.started && (keys.KeyW || keys.ArrowUp));
       updateEngine(gear, throttle, nitroOpen);

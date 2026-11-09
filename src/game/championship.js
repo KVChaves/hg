@@ -37,6 +37,21 @@ export function createMatch({ racerNames, raceCount }) {
       if (match.lastOrder) match.lastOrder = match.lastOrder.map(name => (name === oldName ? newName : name));
     },
 
+    // Para quem entra no meio da partida: o placar atual vai para ele e os nomes da lista nova assumem a tabela.
+    // Quem é novo começa como se tivesse chegado em último em todas as corridas já feitas.
+    snapshot() {
+      return { racesDone: match.racesDone, lastOrder: match.lastOrder, entries: [...table.values()] };
+    },
+    restore(data, names) {
+      match.racesDone = data.racesDone;
+      match.lastOrder = data.lastOrder ? data.lastOrder.filter(name => names.includes(name)) : null;
+      const old = new Map(data.entries.map(entry => [entry.name, entry]));
+      table.clear();
+      for (const name of names) {
+        table.set(name, old.get(name) ?? { name, wins: 0, silvers: 0, bronzes: 0, totalPositions: data.racesDone * names.length, lastPosition: names.length });
+      }
+    },
+
     standings() {
       return [...table.values()].sort((a, b) =>
         b.wins - a.wins || b.silvers - a.silvers || b.bronzes - a.bronzes || a.totalPositions - b.totalPositions || a.lastPosition - b.lastPosition);

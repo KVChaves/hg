@@ -91,6 +91,7 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
   });
 
   let active = slots.find(slot => slot.key === 'body');
+  let browsing = false, browseDone = null;           // aberta só para personalizar (menu ou sala), sem corrida; `browseDone` diz para onde voltar
   let noFunds = 0, betweenRaces = 0;                 // segundos que restam do intervalo; 0 fora dele
   let waitsForHost = false, waiting = false;         // online: o intervalo termina quando o admin largar
   const nameField = createNameField({ box: NAME_BOX, getName, setName });
@@ -296,7 +297,7 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
       screen.proceed();
       return;
     }
-    if (betweenRaces <= 0 && !waiting && inside(MENU_BUTTON, x, y)) { screen.isOpen = false; onBack(); return; }
+    if (betweenRaces <= 0 && !waiting && !browsing && inside(MENU_BUTTON, x, y)) { screen.isOpen = false; onBack(); return; }
     if (inside(WORKSHOP_BUTTON, x, y)) { screen.isOpen = false; onOpenWorkshop(equipment.weaponId); return; }
     const control = quantityControl();
     if (control && inside(control.minus, x, y)) { changeQuantity(control.slotIndex, -1); return; }
@@ -384,10 +385,10 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
     strip.draw(ctx, pointer);
     drawQuantity(ctx);
     const timeLeft = Number.isFinite(betweenRaces) ? ` (${Math.ceil(betweenRaces)})` : '';
-    const nextLabel = waiting ? 'AGUARDANDO...' : betweenRaces > 0 ? `${waitsForHost ? 'PRONTO' : 'CORRER AGORA'}${timeLeft}` : 'CORRER >';
+    const nextLabel = waiting ? 'AGUARDANDO...' : betweenRaces > 0 ? `${waitsForHost ? 'PRONTO' : 'CORRER AGORA'}${timeLeft}` : browsing ? '< VOLTAR AO MENU' : 'CORRER >';
     drawButton(ctx, NEXT_BUTTON, nextLabel, inside(NEXT_BUTTON, pointer.x, pointer.y));
     drawButton(ctx, WORKSHOP_BUTTON, 'OFICINA >', inside(WORKSHOP_BUTTON, pointer.x, pointer.y));
-    if (betweenRaces <= 0 && !waiting) drawButton(ctx, MENU_BUTTON, '< MENU', inside(MENU_BUTTON, pointer.x, pointer.y));
+    if (betweenRaces <= 0 && !waiting && !browsing) drawButton(ctx, MENU_BUTTON, '< MENU', inside(MENU_BUTTON, pointer.x, pointer.y));
     nameField.draw(ctx, pointer);
     drawButton(ctx, SAVED_CARS_BUTTON, 'MEUS CARROS', inside(SAVED_CARS_BUTTON, pointer.x, pointer.y));
     const stripBox = strip.box();
@@ -424,11 +425,20 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
     if (!screen.isOpen || waiting) return;
     if (betweenRaces > 0) { endBetweenRaces(); return; }
     screen.isOpen = false;
+    if (browsing) { browsing = false; (browseDone ?? onBack)(); return; }
     onProceed();
   };
 
   // Entre as corridas a garagem abre com tempo contado; o relógio segue mesmo com o jogador na oficina.
+  screen.openFromMenu = onDone => {
+    browsing = true;
+    browseDone = onDone ?? null;
+    betweenRaces = 0;
+    waiting = false;
+    screen.open();
+  };
   screen.openBetweenRaces = (seconds, options = {}) => {
+    browsing = false;
     betweenRaces = seconds;
     waitsForHost = Boolean(options.waitsForHost);
     waiting = false;

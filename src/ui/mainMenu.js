@@ -4,7 +4,7 @@ import { loadRaceResults } from '../game/raceResults.js';
 import { saveSettings, SETTINGS_RANGE } from '../game/settings.js';
 import { COLOR, drawButton, inside, markClickable, outline, panelBox, pointerOnStage } from './panelKit.js';
 
-// Menu inicial: Singleplayer, Multiplayer, Ranking, Configurações e Sair.
+// Menu inicial: Singleplayer, Multiplayer, Garagem, Ranking, Configurações e Sair.
 
 const BUTTON = { x: 24, y: 112, width: 176, height: 30, gap: 8 };
 const PANEL = { x: 130, y: 44, width: 380, height: 272 };
@@ -31,7 +31,7 @@ const sliderBox = index => ({ x: SLIDER.x, y: SLIDER.firstY + index * SLIDER.gap
 
 const formatTime = seconds => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
 
-export function createMainMenu({ stage, settings, net, onSingleplayer, onMultiplayer, onSettingChange, onEffectsPreview, onQuit }) {
+export function createMainMenu({ stage, settings, net, onSingleplayer, onMultiplayer, onGarage, onSettingChange, onEffectsPreview, onQuit }) {
   let page = 'main', pointer = { x: -1, y: -1 }, dragging = null, queued = null, results = [], showingOnline = true;
 
   const screen = { isOpen: true };
@@ -49,6 +49,7 @@ export function createMainMenu({ stage, settings, net, onSingleplayer, onMultipl
     // Trocar de tela só no próximo quadro evita que este clique acione também a tela seguinte.
     { label: 'SINGLEPLAYER', action: () => { queued = () => { screen.isOpen = false; onSingleplayer(); }; } },
     { label: 'MULTIPLAYER', action: () => { queued = () => { screen.isOpen = false; onMultiplayer(); }; } },
+    { label: 'GARAGEM', action: () => { queued = () => { screen.isOpen = false; onGarage(); }; } },
     { label: 'RANKING', action: () => setPage('ranking') },
     { label: 'CONFIGURACOES', action: () => setPage('settings') },
     { label: 'SAIR', action: () => { setPage('bye'); onQuit(); } },

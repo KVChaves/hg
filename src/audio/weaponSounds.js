@@ -47,3 +47,51 @@ export const WEAPON_SOUNDS = {
     casing: CASING,
   },
 };
+
+// Armas com som próprio. Cada som tem `fallback`: enquanto o arquivo novo não existe, toca o da arma parecida.
+// Arquivos novos: assets/audio/weapons/<arma>/<nome>.wav (veja a lista em NOVOS-SONS.md).
+const own = (path, volume, fallback, fallbackVolume = volume) => ({ ...sound(path, volume), fallback: fallback.url ?? fallback, fallbackVolume: fallback.volume ?? fallbackVolume });
+const HARPOON_SOUND = { url: 'assets/audio/traps/harpoon.wav', volume: 0.5 };
+const EXTINGUISHER_SOUND = { url: 'assets/audio/traps/extinguisher.wav', volume: 0.8 };
+const BASE = WEAPON_SOUNDS;
+
+WEAPON_SOUNDS.magnum = {
+  fire: own('magnum/fire', 1.8, BASE.revolver.fire, 0.45),
+  dry: DRY_FIRE,
+  reloadStart: own('magnum/open', 0.45, BASE.revolver.reloadStart),
+  roundIn: ROUND_IN,
+  reloadEnd: own('magnum/close', 1, BASE.revolver.reloadEnd),
+  casing: CASING,
+};
+WEAPON_SOUNDS.sniper = {
+  fire: own('sniper/fire', 0.9, BASE.rifle.fire),
+  dry: DRY_FIRE,
+  reloadStart: own('sniper/bolt-open', 1.2, LEVER_OPEN),
+  roundIn: ROUND_IN,
+  reloadEnd: own('sniper/bolt-close', 0.5, LEVER_CLOSE),
+  boltOpen: own('sniper/bolt-open', 1.2, LEVER_OPEN),
+  boltClose: own('sniper/bolt-close', 0.5, LEVER_CLOSE),
+  casing: CASING,
+};
+WEAPON_SOUNDS.autoshotgun = {
+  fire: own('autoshotgun/fire', 0.55, BASE.shotgun.fire),
+  dry: DRY_FIRE,
+  reloadStart: own('autoshotgun/port-open', 0.5, BASE.shotgun.reloadStart),
+  roundIn: ROUND_IN,
+  reloadEnd: own('autoshotgun/slide', 0.6, BASE.shotgun.reloadEnd),
+  casing: CASING,
+};
+WEAPON_SOUNDS.crossbow = {
+  fire: own('crossbow/fire', 0.35, HARPOON_SOUND),
+  dry: DRY_FIRE,
+  reloadStart: own('crossbow/crank', 0.5, LEVER_OPEN),
+  roundIn: own('crossbow/bolt-in', 0.5, ROUND_IN),
+  reloadEnd: own('crossbow/latch', 0.4, LEVER_CLOSE),
+};
+WEAPON_SOUNDS.flamethrower = {
+  // Som contínuo: toca em laço enquanto a arma atira. De longe (outro jogador) usa a rajada curta.
+  fire: { ...own('flamethrower/fire-loop', 1.1, EXTINGUISHER_SOUND), loop: true, remote: own('flamethrower/fire-short', 1, EXTINGUISHER_SOUND) },
+  dry: DRY_FIRE,
+  reloadStart: own('flamethrower/tank-out', 0.6, BASE.smg.reloadStart),
+  magazineIn: own('flamethrower/tank-in', 0.6, BASE.smg.magazineIn),
+};

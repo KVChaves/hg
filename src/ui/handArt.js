@@ -59,13 +59,24 @@ export function paintLeftFist() {
 
 // Punho segurando munição acima dos dedos, para a recarga: 'round', 'shell' ou 'magazine'.
 export function paintFistHolding(kind) {
-  const top = kind === 'magazine' ? 18 : 10;
+  const top = kind === 'magazine' || kind === 'canister' ? 18 : kind === 'bolt' ? 14 : 10;
   const r = new Raster(31, 36 + top);
   if (kind === 'round') {
     r.rect(13, 0, 5, 7, 0xc08438);
     r.rect(13, 0, 1, 7, 0xe0a858);
     r.rect(13, 7, 5, 6, 0x9a9088);
     r.rect(17, 7, 1, 6, 0x6a625c);
+  } else if (kind === 'bolt') {
+    r.rect(14, 4, 3, 14, 0x9a8a6a);
+    r.poly([[13, 4], [18, 4], [15.5, 0]], 0xd8d8dc);
+    r.rect(13, 6, 5, 4, 0xc02818);
+    r.poly([[14, 17], [10, 20], [14, 20]], 0xc84a30);
+    r.poly([[17, 17], [21, 20], [17, 20]], 0xc84a30);
+  } else if (kind === 'canister') {
+    r.rect(10, 2, 11, 18, 0xb83c18);
+    r.rect(10, 2, 1, 18, 0xe05828);
+    r.rect(10, 8, 11, 2, 0x18181c);
+    r.rect(13, 0, 5, 2, 0x7c7e82);
   } else if (kind === 'shell') {
     r.rect(12, 0, 7, 9, 0xa02418);
     r.rect(12, 0, 1, 9, 0xd04830);

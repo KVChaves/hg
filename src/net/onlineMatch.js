@@ -18,11 +18,11 @@ const BOT_PREFIX = 'bot';
 const round = value => Math.round(value * 100) / 100;
 const isBotId = id => id.startsWith(BOT_PREFIX);
 
-export function createOnlineMatch({ net, scene, race, car, opponents, combat, traps, foam, harpoon, pulls, weapon, look, garage, results, podium, getSpec, setRacerCount, setMatch, getMatch, getMatchKills, beginRace, getBiome, playAt, creditKill, announceTrapCatch }) {
+export function createOnlineMatch({ net, scene, race, car, opponents, combat, traps, foam, harpoon, pulls, weapon, look, garage, results, podium, getSpec, setRacerCount, setMatch, getMatch, getMatchKills, beginRace, getBiome, playAt, creditKill, rewardKillFor, announceTrapCatch, obstacles, onLateJoin }) {
   const byId = new Map(), harpoonVisuals = new Map(), ready = new Set(), pool = [...opponents], killsOf = new Map();
   let isHost = false, phase = 'idle', phaseTimer = 0, snapshotTimer = 0, finishGrace = 0;
 
-  const online = { active: false, start, update, markReady, readyRoster, returnToLobby, onRoomChange, sendKill, sendCaught, sendShot, sendTrap, sendExtinguisher, sendPull };
+  const online = { active: false, start, update, markReady, readyRoster, returnToLobby, onRoomChange, sendKill, sendCaught, sendShot, sendTrap, sendTrapBoom, sendExtinguisher, sendPull, sendObstacle, sendObstacleBreak };
   const me = () => race.field[0];
   const humanIds = () => race.field.filter(racer => !isBotId(racer.netId)).map(racer => racer.netId);
   const ownerOf = racer => (isBotId(racer.netId) ? net.room.hostId : racer.netId);
@@ -107,7 +107,7 @@ export function createOnlineMatch({ net, scene, race, car, opponents, combat, tr
       if (done === humans.length || finishGrace >= FINISH_GRACE) broadcast({ k: 'end', r: race.closeForAll() });
     } else if (phase === 'results' && (phaseTimer -= dt) <= 0) {
       phase = 'waiting';
-      broadcast({ k: getMatch().isOver ? 'podium' : 'inter' });
+      broadcast({ k: getMatch().isOver ? 'podium' : 'inter', m: getMatch().snapshot() });
     } else if (phase === 'podium' && humanIds().every(id => ready.has(id))) {
       phase = 'waiting';
       net.endMatch(matchResults());
@@ -198,6 +198,7 @@ export function createOnlineMatch({ net, scene, race, car, opponents, combat, tr
     s: data => data.r.forEach(receiveSnapshot),
     hit: receiveHit,
     kill: data => {
+      if (data.b) { rewardKillFor(byId.get(data.b)); return; }
       creditKill(byId.get(data.t));
       weapon.hitMarker = 0.4;
     },
@@ -206,7 +207,10 @@ export function createOnlineMatch({ net, scene, race, car, opponents, combat, tr
       if (data.by === net.id && racer) announceTrapCatch(racer, TRAP_TYPES[data.i]);
     },
     shot: data => combat.showRemoteShot(data.w, data.f, data.e),
-    trap: data => traps.placeFromNetwork(data.i, data.d, data.l, byId.get(data.by)),
+    ob: data => obstacles.spawnFromNetwork(data),
+    obx: data => obstacles.removeFromNetwork(data.n),
+    trap: data => traps.placeFromNetwork(data.i, data.d, data.l, byId.get(data.by), data.n),
+    boom: data => traps.detonateFromNetwork(data.n),
     ext: data => {
       const racer = byId.get(data.r);
       if (!racer) return;
@@ -236,7 +240,11 @@ export function createOnlineMatch({ net, scene, race, car, opponents, combat, tr
       phase = 'results';
       phaseTimer = RESULTS_TIME;
     },
-    inter: () => openGarage(GARAGE_TIME),
+    inter: data => {
+      if (!online.active) { joinLate(data.m); return; }
+      resyncRoster(data.m);
+      openGarage(GARAGE_TIME);
+    },
     podium: () => {
       results.close();
       ready.clear();
@@ -262,8 +270,33 @@ export function createOnlineMatch({ net, scene, race, car, opponents, combat, tr
     setMatch(null);
   }
 
+  // Entrou com a partida em andamento: esperou a corrida acabar e agora entra na garagem entre as corridas.
+  function joinLate(matchData) {
+    const room = net.room;
+    if (!room || room.phase !== 'playing' || !matchData) return;
+    online.active = true;
+    race.setOnline(true);
+    setUpRacers(room);
+    const names = race.field.map(racer => racer.name);
+    const created = createMatch({ racerNames: names, raceCount: room.config.races });
+    created.restore(matchData, names);
+    setMatch(created);
+    onLateJoin();
+    openGarage(GARAGE_TIME);
+  }
+
+  // Quem entrou (ou saiu) durante a corrida passa a valer na garagem seguinte: o lugar de um bot vira o jogador.
+  function resyncRoster(matchData) {
+    const room = net.room;
+    if (!room || !matchData) return;
+    const known = race.field.filter(racer => !isBotId(racer.netId)).map(racer => racer.netId);
+    if (room.players.length === known.length && room.players.every(player => known.includes(player.id))) return;
+    setUpRacers(room);
+    getMatch().restore(matchData, race.field.map(racer => racer.name));
+  }
+
   function handle(from, data) {
-    if (online.active) HANDLERS[data.k]?.(data, from);
+    if (online.active || (data.k === 'inter' && net.room?.phase === 'playing')) HANDLERS[data.k]?.(data, from);
   }
   net.onGame = handle;
 
@@ -298,7 +331,10 @@ export function createOnlineMatch({ net, scene, race, car, opponents, combat, tr
 
   // Avisa o piloto humano que destruiu ou pegou numa armadilha um carro simulado aqui.
   function sendKill(victim, killer) {
-    if (online.active && !isBotId(killer.netId)) net.relay({ k: 'kill', t: victim.netId }, killer.netId);
+    if (!online.active) return;
+    // Bot: quem recompensa é o admin, que simula os bots (`b` diz qual bot).
+    if (isBotId(killer.netId)) net.relay({ k: 'kill', t: victim.netId, b: killer.netId }, net.room.hostId);
+    else net.relay({ k: 'kill', t: victim.netId }, killer.netId);
   }
   function sendCaught(victim, type, owner) {
     if (online.active && !isBotId(owner.netId)) net.relay({ k: 'caught', t: victim.netId, i: type.id, by: owner.netId }, owner.netId);
@@ -308,8 +344,17 @@ export function createOnlineMatch({ net, scene, race, car, opponents, combat, tr
     if (!online.active) return;
     net.relay({ k: 'shot', w: weaponId, f: [round(from.x), round(from.y), round(from.z)], e: [round(end.x), round(end.y), round(end.z)] });
   }
-  function sendTrap(type, dist, lane, owner) {
-    if (online.active) net.relay({ k: 'trap', i: type.id, d: round(dist), l: round(lane), by: owner.netId });
+  function sendTrap(type, dist, lane, owner, id) {
+    if (online.active) net.relay({ k: 'trap', i: type.id, d: round(dist), l: round(lane), by: owner.netId, n: id });
+  }
+  function sendTrapBoom(id) {
+    if (online.active) net.relay({ k: 'boom', n: id });
+  }
+  function sendObstacle(ob) {
+    if (online.active) net.relay({ k: 'ob', n: ob.id, i: ob.type.id, d: round(ob.dist), l: round(ob.lane), s: ob.side });
+  }
+  function sendObstacleBreak(ob) {
+    if (online.active) net.relay({ k: 'obx', n: ob.id });
   }
   function sendExtinguisher(racer) {
     if (online.active) net.relay({ k: 'ext', r: racer.netId });

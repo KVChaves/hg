@@ -133,6 +133,7 @@ export function createHud(canvas, { featFeed, mainMenu, multiplayer, podium, mat
       ctxText(ctx, roadsideHelp.message, x + 1, TOP_MESSAGE_Y + 1, '#000000', scale);
       ctxText(ctx, roadsideHelp.message, x, TOP_MESSAGE_Y, '#6fe070', scale);
     }
+    if (weapon.hitPartTime > 0 && weapon.hitPart) centered(ctx, `${weapon.hitPart}!`, 198, '#ff8040');
     if (weapon.outOfAmmo > 0) centered(ctx, 'SEM MUNICAO', 214, '#f06050');
     if (!isLocked() && !spectator.active) centered(ctx, 'CLIQUE PARA CAPTURAR O MOUSE', 150, '#e8d8c0');
     if (race.wrongWay && race.goTimer <= 0) {
