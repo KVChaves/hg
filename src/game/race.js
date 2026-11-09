@@ -1,6 +1,6 @@
 import { CAR_MAX_HP, LAPS, TRACK_WIDTH } from '../config.js';
 import { isBoosted, isEpic, nearestIndex, OPEN_WALL, surfaceAt, track, trackAt } from '../world/track.js';
-import { damagePlayer, resetCar } from './car.js';
+import { damagePlayer, resetCar, trackCapsizes } from './car.js';
 import { resetRig, rigLean } from './carRoll.js';
 import { createFlip, flipLandingTime, lifeAfterDestruction, RESPAWN_PROTECTION } from './carFlip.js';
 import { createCollisions } from './collisions.js';
@@ -10,6 +10,7 @@ import { slipstreamStrength } from './slipstream.js';
 const CRASH_MIN_IMPACT = 4, CRASH_FULL_IMPACT = 25, CRASH_MIN_STRENGTH = 0.25;
 const ROAD_HALF = TRACK_WIDTH / 2 + 1.4, SHOULDER_BLEND = 6;
 const WRONG_WAY_DELAY = 0.7, WRONG_WAY_MIN_SPEED = 3, WRONG_WAY_HEADING = -0.25;  // uma rodada rápida não dispara o aviso
+const WALL_BOUNCE = 0.4, TUNNEL_WALL_BOUNCE = 0.05, TUNNEL_SCRAPE_SPEED = 6;   // m/s de batida que no túnel não tiram vida
 const WALL_NOSE_IN = 0.05, WALL_KEEP_BACKWARD = -0.6, WALL_TURN_RATE = 3;   // rad/s
 const MIN_JUMP_SPEED = 22;                           // m/s: a rampa garante o impulso para cruzar o vão
 const SLIPSTREAM_RESPONSE = 4;                       // o vácuo entra e sai aos poucos
@@ -97,13 +98,17 @@ export function createRace(car, opponents, { onCrash, onDestroyed }) {
       offset = wall * sign;
       const vn = car.vx * nx + car.vz * nz;
       if (vn * sign > 0) {
-        reportWallCrash(Math.abs(vn));
-        car.vx -= nx * vn * 1.4;
-        car.vz -= nz * vn * 1.4;
-        damagePlayer(car, Math.abs(vn) * IMPACT_DAMAGE / CAR_MAX_HP);
+        const impact = Math.abs(vn), enclosed = track.enclosed[i] === 1;     // no túnel a parede raspa em vez de rebater
+        const bounce = 1 + (enclosed ? TUNNEL_WALL_BOUNCE : WALL_BOUNCE);
+        reportWallCrash(impact);
+        car.vx -= nx * vn * bounce;
+        car.vz -= nz * vn * bounce;
+        damagePlayer(car, Math.max(0, impact - (enclosed ? TUNNEL_SCRAPE_SPEED : 0)) * IMPACT_DAMAGE / CAR_MAX_HP);
       }
       turnAlongWall(nx * sign, nz * sign, tx[i], tz[i], dt);
     }
+    car.enclosed = track.enclosed[i] === 1;
+    car.roadTurn = track.turn[i] * (-Math.sin(car.yaw) * tx[i] - Math.cos(car.yaw) * tz[i]);   // a curva como o carro a enxerga, de frente ou de ré
     car.offTrack = wall < OPEN_WALL ? 0 : Math.abs(offset);   // túnel e tubo não têm mato: a faixa junto da parede não freia
     car.lateral = offset;
 
@@ -128,6 +133,9 @@ export function createRace(car, opponents, { onCrash, onDestroyed }) {
     car.pitch = Math.atan(t.slope * forward);
     const point = surfaceAt(race.playerDist, offset);
     car.twist = point.roll;
+    car.twistHeading = point.heading;
+    car.twistYaw = point.twistYaw;
+    car.twistPitch = point.twistPitch;
     car.wx = point.roll ? point.x : car.x;
     car.wy = point.roll ? point.y : car.y;
     car.wz = point.roll ? point.z : car.z;
@@ -203,6 +211,7 @@ export function createRace(car, opponents, { onCrash, onDestroyed }) {
       resetRig(car.rig);
       car.overturned = false;
     }
+    trackCapsizes(car, dt);
     playerProxy.dead = Math.max(0, car.wrecked);
     playerProxy.protectedFor = car.invulnerable;
   }
@@ -256,6 +265,13 @@ export function createRace(car, opponents, { onCrash, onDestroyed }) {
     placeOnGrid(finishNames ? finishNames.map(name => field.find(racer => racer.name === name)).filter(Boolean) : firstGrid());
   };
   race.setPlayerName = name => { playerProxy.name = name; };
+  race.renameRacer = (racer, name) => {
+    if (finishTimes.has(racer.name)) {
+      finishTimes.set(name, finishTimes.get(racer.name));
+      finishTimes.delete(racer.name);
+    }
+    racer.name = name;
+  };
   race.setOnline = value => { race.online = value; };
   race.hasFinished = racer => finishTimes.has(racer.name);
 

@@ -268,8 +268,25 @@ export function createOnlineMatch({ net, scene, race, car, opponents, combat, tr
   net.onGame = handle;
 
   // Quem saiu durante a partida sai também da pista.
+  function renameRacer(racer, name) {
+    getMatch().renameRacer(racer.name, name);
+    race.renameRacer(racer, name);
+  }
+
+  // Renomear na garagem: o servidor garante nome único entre os jogadores e o bot cede o dele, como na montagem da sala.
+  function applyRenames(room) {
+    for (const player of room.players) {
+      const racer = byId.get(player.id);
+      if (!racer || racer.name === player.name) continue;
+      const bot = race.field.find(candidate => isBotId(candidate.netId) && candidate.name === player.name);
+      if (bot) renameRacer(bot, `${player.name} Bot`);
+      renameRacer(racer, player.name);
+    }
+  }
+
   function onRoomChange(room) {
     if (!online.active) return;
+    applyRenames(room);
     for (const racer of [...race.field]) {
       if (racer === me() || isBotId(racer.netId) || room.players.some(player => player.id === racer.netId)) continue;
       harpoonVisuals.get(racer)?.hide();

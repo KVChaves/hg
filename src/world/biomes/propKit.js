@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { TRACK_WIDTH } from '../../config.js';
 import { OPEN_WALL, track, trackAt } from '../track.js';
 import { pixelTexture } from '../textures.js';
 
@@ -8,6 +9,8 @@ const matrix = new THREE.Matrix4(), quaternion = new THREE.Quaternion(), euler =
 const position = new THREE.Vector3(), scale = new THREE.Vector3(), tint = new THREE.Color();
 const MAX_TRIES = 40;
 const BEHIND_WALL = OPEN_WALL + 2.6;                 // árvores e enfeites ficam atrás do muro
+const ROAD_KEEP = TRACK_WIDTH / 2 + 2;               // nada na altura dos carros chega mais perto do centro de qualquer trecho da pista
+const CAR_ZONE = 8, FOOTPRINT_STEP = 6;              // metros: altura que atrapalha a vista e espaçamento dos pontos testados
 
 export const solid = (color, extra = {}) => new THREE.MeshBasicMaterial({ color, ...extra });
 export const pickFrom = list => random => list[Math.floor(random() * list.length)];
@@ -21,8 +24,41 @@ function instancedParts(ctx, parts, count) {
   });
 }
 
+const dimensions = size => (Array.isArray(size) ? size : [size, size, size]);
+
+// Retângulo que a peça ocupa no chão, contando só o que fica na altura dos carros: copa alta não atrapalha.
+function footprintOf(parts, size) {
+  const [w, h, d] = dimensions(size);
+  const area = { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity };
+  for (const { geometry } of parts) {
+    const position = geometry.attributes.position;
+    for (let i = 0; i < position.count; i++) {
+      if (position.getY(i) * h > CAR_ZONE) continue;
+      area.minX = Math.min(area.minX, position.getX(i) * w);
+      area.maxX = Math.max(area.maxX, position.getX(i) * w);
+      area.minZ = Math.min(area.minZ, position.getZ(i) * d);
+      area.maxZ = Math.max(area.maxZ, position.getZ(i) * d);
+    }
+  }
+  return area.minX === Infinity ? null : area;
+}
+
+// A distância até a pista é medida do centro; peça grande precisa ter o corpo todo longe de qualquer trecho.
+function footprintIsClear({ spotIsClear }, area, x, z, yaw) {
+  if (!area) return true;
+  const c = Math.cos(yaw), s = Math.sin(yaw), { minX, maxX, minZ, maxZ } = area;
+  const columns = Math.max(1, Math.ceil((maxX - minX) / FOOTPRINT_STEP)), rows = Math.max(1, Math.ceil((maxZ - minZ) / FOOTPRINT_STEP));
+  for (let i = 0; i <= columns; i++) {
+    for (let j = 0; j <= rows; j++) {
+      const localX = minX + (maxX - minX) * i / columns, localZ = minZ + (maxZ - minZ) * j / rows;
+      if (!spotIsClear(x + localX * c + localZ * s, z - localX * s + localZ * c, ROAD_KEEP)) return false;
+    }
+  }
+  return true;
+}
+
 function placeInstance(meshes, parts, index, x, y, z, yaw, size, random) {
-  const [w, h, d] = Array.isArray(size) ? size : [size, size, size];
+  const [w, h, d] = dimensions(size);
   euler.set(0, yaw, 0);
   matrix.compose(position.set(x, y, z), quaternion.setFromEuler(euler), scale.set(w, h, d));
   meshes.forEach((mesh, m) => {
@@ -37,14 +73,16 @@ export function scatter(ctx, { count, clearance, parts, sizeOf = () => 1 }) {
   const meshes = instancedParts(ctx, parts, count), distance = Math.max(clearance, BEHIND_WALL);
   let placed = 0;
   for (let i = 0; i < count; i++) {
-    let x = 0, z = 0, found = false;
+    const size = sizeOf(random), area = footprintOf(parts, size);
+    let x = 0, z = 0, yaw = 0, found = false;
     for (let tries = 0; tries < MAX_TRIES && !found; tries++) {
       x = bounds.minX - 90 + random() * (bounds.maxX - bounds.minX + 180);
       z = bounds.minZ - 90 + random() * (bounds.maxZ - bounds.minZ + 180);
-      found = spotIsClear(x, z, distance);
+      yaw = random() * Math.PI * 2;
+      found = spotIsClear(x, z, distance) && footprintIsClear(ctx, area, x, z, yaw);
     }
     if (!found) continue;
-    placeInstance(meshes, parts, placed++, x, heightAt(x, z), z, random() * Math.PI * 2, sizeOf(random), random);
+    placeInstance(meshes, parts, placed++, x, heightAt(x, z), z, yaw, size, random);
   }
   for (const mesh of meshes) mesh.count = placed;
 }
@@ -77,8 +115,9 @@ export function nearRoad(ctx, { count, from, to, parts, sizeOf = () => 1 }) {
     const start = Math.max(from, BEHIND_WALL);
     const t = trackAt(d), lateral = (random() < 0.5 ? -1 : 1) * (start + random() * (to - from));
     const x = t.x - t.tz * lateral, z = t.z + t.tx * lateral;
-    if (!spotIsClear(x, z, start * 0.9)) continue;
-    placeInstance(meshes, parts, placed++, x, heightAt(x, z), z, random() * Math.PI * 2, sizeOf(random), random);
+    const yaw = random() * Math.PI * 2, size = sizeOf(random);
+    if (!spotIsClear(x, z, start * 0.9) || !footprintIsClear(ctx, footprintOf(parts, size), x, z, yaw)) continue;
+    placeInstance(meshes, parts, placed++, x, heightAt(x, z), z, yaw, size, random);
   }
   for (const mesh of meshes) mesh.count = placed;
 }
@@ -107,8 +146,9 @@ export function alongRoad(ctx, { every, offset, parts, sizeOf = () => 1, facesRo
     for (const side of [-1, 1]) {
       const distance = Math.max(offset, BEHIND_WALL);
       const t = trackAt(d), x = t.x - t.tz * side * distance, z = t.z + t.tx * side * distance;
-      const yaw = Math.atan2(-t.tx, -t.tz) + (facesRoad ? side * Math.PI / 2 : 0);
-      placeInstance(meshes, parts, placed++, x, heightAt(x, z), z, yaw, sizeOf(random), random);
+      const yaw = Math.atan2(-t.tx, -t.tz) + (facesRoad ? side * Math.PI / 2 : 0), size = sizeOf(random);
+      if (!footprintIsClear(ctx, footprintOf(parts, size), x, z, yaw)) continue;    // no grampo o outro trecho da pista passa perto
+      placeInstance(meshes, parts, placed++, x, heightAt(x, z), z, yaw, size, random);
     }
   }
   for (const mesh of meshes) mesh.count = placed;
@@ -116,10 +156,12 @@ export function alongRoad(ctx, { every, offset, parts, sizeOf = () => 1, facesRo
 
 // Pórticos que atravessam a pista. `build(random)` devolve um grupo com origem no centro da estrada.
 export function acrossRoad(ctx, { every, build }) {
-  const { group, random, isOpen } = ctx;
+  const { group, random, isOpen, spotIsClear } = ctx;
   for (let d = every * 0.7; d < track.length - 40; d += every + random() * every * 0.4) {
     if (!isOpen(d)) continue;
-    const t = trackAt(d), arch = build(random);
+    const t = trackAt(d);
+    if (![-1, 1].every(side => spotIsClear(t.x - t.tz * side * BEHIND_WALL, t.z + t.tx * side * BEHIND_WALL, ROAD_KEEP))) continue;
+    const arch = build(random);
     arch.position.set(t.x, t.y, t.z);
     arch.rotation.y = Math.atan2(-t.tx, -t.tz);
     group.add(arch);

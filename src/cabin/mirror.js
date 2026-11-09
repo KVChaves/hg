@@ -1,3 +1,4 @@
+import { alignToTwist } from '../world/track.js';
 import * as THREE from 'three';
 import { VIEW } from '../config.js';
 import { pixelTexture } from '../world/textures.js';
@@ -53,6 +54,7 @@ export function createMirror(parent, car, rig) {
     rig.getWorldPosition(eyePosition);
     camera.position.copy(eyePosition);
     camera.rotation.set(-car.pitch, car.yaw + Math.PI, -car.twist);
+    alignToTwist(camera, car, -1);
     renderer.setRenderTarget(target);
     renderer.clear();
     renderer.render(worldScene, camera);

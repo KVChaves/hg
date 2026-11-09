@@ -42,7 +42,7 @@ const trunkOptions = () => ({
   ...Object.fromEntries(Object.values(TRAP_TYPES).map(type => [type.id, { name: `${type.label}: ${type.summary}`, detail: `R$ ${type.price} CADA  ATE ${type.maxCharges} UNIDADES` }])),
 });
 
-export function createGarageScreen({ stage, cabin, customs, equipment, getName, setName, isNameLocked, getReadyRoster, onKickPlayer, onProceed, onBetweenRacesEnd, onBack, onOpenWorkshop }) {
+export function createGarageScreen({ stage, cabin, customs, equipment, getName, setName, getReadyRoster, onKickPlayer, onProceed, onBetweenRacesEnd, onBack, onOpenWorkshop }) {
   const carSelection = loadCarSelection();
   const carScene = createGarageScene(resolveCarSpec(carSelection));
 
@@ -93,7 +93,7 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
   let active = slots.find(slot => slot.key === 'body');
   let noFunds = 0, betweenRaces = 0;                 // segundos que restam do intervalo; 0 fora dele
   let waitsForHost = false, waiting = false;         // online: o intervalo termina quando o admin largar
-  const nameField = createNameField({ box: NAME_BOX, getName, setName, isReadOnly: isNameLocked });
+  const nameField = createNameField({ box: NAME_BOX, getName, setName });
   const readyPanel = createReadyPanel({ getRoster: getReadyRoster, onKick: onKickPlayer });
 
   const savedCars = loadSavedCars();
@@ -103,8 +103,10 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
       const saved = savedCars[index];
       return saved && `${WEAPON_TYPES[saved.equipment.weaponId].label}  R$ ${loadoutCost(saved.equipment)}`;
     },
-    onSave: index => {
-      savedCars[index] = { selection: structuredClone(carSelection), cabin: structuredClone(cabin.loadout), equipment: structuredClone(equipment) };
+    nameOf: index => savedCars[index]?.name ?? '',
+    isActive: () => screen.isOpen,
+    onSave: (index, name) => {
+      savedCars[index] = { name, selection: structuredClone(carSelection), cabin: structuredClone(cabin.loadout), equipment: structuredClone(equipment) };
       storeSavedCars(savedCars);
     },
     onLoad: index => useSavedCar(savedCars[index]),
@@ -407,6 +409,7 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
   };
   screen.renderCar = renderer => carScene.render(renderer);
   screen.open = () => {
+    savedCarsPanel.cancelNaming();
     screen.isOpen = true;
     refreshEquipmentThumbs();
   };
@@ -441,7 +444,7 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
     waiting = waitsForHost = false;
     betweenRaces = 0;
   };
-  screen.isTyping = () => nameField.isEditing();
+  screen.isTyping = () => nameField.isEditing() || savedCarsPanel.isNaming();
   screen.changeUpgrade = changeUpgrade;
   screen.savedCarsPanel = savedCarsPanel;
   screen.readyPanel = readyPanel;

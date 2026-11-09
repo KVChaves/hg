@@ -44,6 +44,7 @@ import { createFoamEffect } from './world/foamEffect.js';
 import { BIOMES, pickBiome } from './world/biomes/index.js';
 import { createHarpoonVisual } from './world/harpoonVisual.js';
 import { createRoadsideNpcs } from './world/roadsideNpcs.js';
+import { createSupplyCrates } from './world/supplyCrates.js';
 import { createWorldScene } from './world/scenery.js';
 
 const MAX_FRAME_TIME = 0.05;
@@ -131,9 +132,13 @@ const roadsideHelp = createRoadsideHelp({
     audio.playWorldSound('itemCollected', 0, 0);
   },
 });
+const supplyCrates = createSupplyCrates(world);
 const lapSupplies = createLapSupplies({
   race,
   suppliesFor: racer => roadsideHelp.suppliesFor(racer),
+  canPickUp: racer => roadsideHelp.canPickUp(racer),
+  onStation: station => supplyCrates.show(station),
+  onStationTaken: reached => supplyCrates.taken(reached),
   onPlayerSupplied: ({ nitro, ammo, items }) => {
     const percent = value => `${Math.round(value * 100)}%`;
     featFeed.announce('SUPRIMENTOS');
@@ -235,9 +240,12 @@ const garage = createGarageScreen({
   cabin,
   customs,
   equipment,
-  getName: () => playerName,
-  setName: changePlayerName,
-  isNameLocked: () => online.active,                 // online o nome é o da sala
+  getName: () => (online.active ? race.field[0].name : playerName),   // online vale o nome confirmado pelo servidor
+  setName: name => {
+    changePlayerName(name);
+    if (online.active) net.setName(name);
+    else renameSoloDriver(name);
+  },
   getReadyRoster: () => online.readyRoster(),
   onKickPlayer: id => net.kick(id),
   onOpenWorkshop: id => workshop.open(id),
@@ -342,6 +350,18 @@ if (pendingNotice !== null) {
   multiplayer.open(pendingNotice);
 }
 
+// Entre as corridas o piloto muda de nome e continua com os pontos; o bot de mesmo nome cede, como na largada.
+function renameSoloDriver(name) {
+  if (!match || race.field[0].name === name) return;
+  const rename = (racer, newName) => {
+    match.renameRacer(racer.name, newName);
+    race.renameRacer(racer, newName);
+  };
+  const bot = opponents.find(op => op.name === name);
+  if (bot) rename(bot, `${name} Bot`);
+  rename(race.field[0], name);
+}
+
 function startMatch({ cars, races }) {
   setRacerCount(cars);
   race.setPlayerName(playerName);
@@ -412,6 +432,7 @@ function step(frameTime) {
   combat.update(dt);
   roadsideHelp.update(dt);
   roadsideNpcs.update(dt, car.x, car.z);
+  supplyCrates.update(dt, car.x, car.z);
   damageEffects.update(dt, readRacerConditions());
   world.updateMap(dt, car.x, car.y, car.z);
   cabin.setAmbient(garage.isOpen ? NEUTRAL_AMBIENT : biome.cabinTint);
@@ -452,4 +473,4 @@ function frame(now) {
 }
 requestAnimationFrame(frame);
 
-export const game = { roadsideNpcs, featFeed, podium, multiplayer, net, online: () => online, pulls, world, getBiome: () => biome, harpoon, matchSetup, results, getMatch: () => match, roadsideHelp, mainMenu, settings, step, keys, look, car, race, opponents, combat, weapon, traps, cabin, hands, audio, garage, workshop, externalView, renderer, glCanvas, hudCanvas };
+export const game = { supplyCrates, lapSupplies, roadsideNpcs, featFeed, podium, multiplayer, net, online: () => online, pulls, world, getBiome: () => biome, harpoon, matchSetup, results, getMatch: () => match, roadsideHelp, mainMenu, settings, step, keys, look, car, race, opponents, combat, weapon, traps, cabin, hands, audio, garage, workshop, externalView, renderer, glCanvas, hudCanvas };

@@ -9,7 +9,7 @@ import { trackAt } from './track.js';
 
 // Os dois NPCs que o jogador vê na beira da pista, acenando com o item oferecido acima da cabeça.
 
-const PLATE_WIDTH = 58, PLATE_HEIGHT = 38;
+const PLATE_WIDTH = 58, PLATE_HEIGHT = 38, CRATE_SIZE = 30;
 const NPC_SIZE = [1.35, 1.9], ITEM_SIZE = [3.24, 2.12], ITEM_HEIGHT = 3.2, ITEM_BOB = 0.12, ITEM_BOB_SPEED = 3;
 const FRAMES_PER_SECOND = 9, WAVE_LOOP = [0, 1, 2, 1];  // quadros do aceno, indo e voltando
 const HOP_SPEED = 7, HOP_HEIGHT = 0.16, CHEER_HOP_SPEED = 11, CHEER_HOP_HEIGHT = 0.5;
@@ -69,11 +69,6 @@ const ITEM_ICONS = {
     r.rect(ox + 8, oy + 11, 8, 4, 0x1a1a22);
     r.rect(ox + 11, oy + 12, 2, 2, 0xe8e8e8);
   },
-  life(r, ox, oy) {
-    r.rect(ox + 9, oy + 3, 6, 18, 0xd82020);
-    r.rect(ox + 3, oy + 9, 18, 6, 0xd82020);
-    r.rect(ox + 10, oy + 4, 2, 16, 0xf07060);
-  },
 };
 
 // Placa com o ícone e, embaixo, o nome exato do que o NPC vai entregar.
@@ -87,8 +82,19 @@ function paintItemPlate(plotIcon, label) {
   return r.commit();
 }
 
+// Caixa de madeira que o NPC segura acima da cabeça.
+function paintCrate() {
+  const r = new Raster(CRATE_SIZE, CRATE_SIZE);
+  r.rect(0, 0, CRATE_SIZE, CRATE_SIZE, 0x2a1a0c);
+  r.rect(2, 2, CRATE_SIZE - 4, CRATE_SIZE - 4, 0xb07a3c);
+  for (const y of [10, 19]) r.rect(2, y, CRATE_SIZE - 4, 1, 0x7a5024);
+  r.line(2, 2, CRATE_SIZE - 3, CRATE_SIZE - 3, 0x7a5024, 2);
+  r.rect(2, 2, CRATE_SIZE - 4, 1, 0xd8a868);
+  return r.commit();
+}
+
 function createPlates() {
-  const plates = {};
+  const plates = { crate: pixelTexture(paintCrate()) };
   for (const [id, plot] of Object.entries(ITEM_ICONS)) plates[id] = pixelTexture(paintItemPlate(plot, HELP_ITEMS[id]));
   for (const type of Object.values(TRAP_TYPES)) {
     plates[type.id] = pixelTexture(paintItemPlate((r, ox) => plotTrapIcon(r, type.id, ox + 3, 5), type.label));
@@ -104,8 +110,10 @@ function sprite(scene, map, center) {
   return object;
 }
 
+let sharedPlates = null;                             // as placas são iguais para todas as duplas de NPCs
+
 export function createRoadsideNpcs(scene) {
-  const icons = createPlates();
+  const icons = sharedPlates ??= createPlates();
 
   // Placas com quantia (como o nitro) são criadas na primeira vez que aparecem.
   function plateFor(item) {
@@ -122,7 +130,7 @@ export function createRoadsideNpcs(scene) {
     body.scale.set(NPC_SIZE[0], NPC_SIZE[1], 1);
     const item = sprite(scene, icons.ammo, [0.5, 0.5]);
     item.scale.set(ITEM_SIZE[0], ITEM_SIZE[1], 1);
-    return { wave, cheer, body, item, x: 0, y: 0, z: 0, outX: 0, outZ: 0, cheering: false, phase: Math.random() * 6 };
+    return { wave, cheer, body, item, x: 0, y: 0, z: 0, outX: 0, outZ: 0, itemHeight: ITEM_HEIGHT, cheering: false, phase: Math.random() * 6 };
   });
   let clock = 0, showing = false, items = [];
 
@@ -147,8 +155,11 @@ export function createRoadsideNpcs(scene) {
         npc.y = t.y;
         npc.outX = -t.tz * side;
         npc.outZ = t.tx * side;
-        npc.item.material.map = plateFor(offer.items[i]);
+        const plate = plateFor(offer.items[i]), { width, height } = plate.image;
+        npc.item.material.map = plate;
         npc.item.material.needsUpdate = true;
+        npc.item.scale.set(width * ITEM_SIZE[0] / PLATE_WIDTH, height * ITEM_SIZE[1] / PLATE_HEIGHT, 1);
+        npc.itemHeight = ITEM_HEIGHT + (height / PLATE_HEIGHT - 1) * ITEM_SIZE[1] / 2;    // placa mais alta sobe para não entrar no NPC
       });
     },
     // Item entregue: quem deu comemora e os dois ficam de mãos vazias.
@@ -174,7 +185,7 @@ export function createRoadsideNpcs(scene) {
 
         npc.body.position.set(x, npc.y + hop, z);
         npc.body.material.rotation = Math.sin(time * SWAY_SPEED) * SWAY_TILT;
-        npc.item.position.set(x, npc.y + ITEM_HEIGHT + hop + Math.sin(time * ITEM_BOB_SPEED) * ITEM_BOB, z);
+        npc.item.position.set(x, npc.y + npc.itemHeight + hop + Math.sin(time * ITEM_BOB_SPEED) * ITEM_BOB, z);
       }
     },
   };

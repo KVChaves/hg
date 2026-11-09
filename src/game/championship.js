@@ -27,6 +27,16 @@ export function createMatch({ racerNames, raceCount }) {
       match.racesDone++;
     },
 
+    // O jogador trocou de nome entre as corridas: os pontos continuam com ele.
+    renameRacer(oldName, newName) {
+      const entry = table.get(oldName);
+      if (!entry) return;
+      table.delete(oldName);
+      entry.name = newName;
+      table.set(newName, entry);
+      if (match.lastOrder) match.lastOrder = match.lastOrder.map(name => (name === oldName ? newName : name));
+    },
+
     standings() {
       return [...table.values()].sort((a, b) =>
         b.wins - a.wins || b.silvers - a.silvers || b.bronzes - a.bronzes || a.totalPositions - b.totalPositions || a.lastPosition - b.lastPosition);

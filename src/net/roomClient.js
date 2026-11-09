@@ -8,6 +8,8 @@ const SERVER_ERRORS = {
 };
 export const LEFT_REASONS = { kicked: 'VOCE FOI EXPULSO DA SALA', closed: 'O ADMIN ENCERROU A SALA', lost: 'CONEXAO COM O SERVIDOR PERDIDA' };
 
+export const ROOM_NAME_LENGTH = 20;
+
 export function createRoomClient() {
   let socket = null;
 
@@ -73,7 +75,8 @@ export function createRoomClient() {
   }
 
   function setName(name) { send({ t: 'name', name }); }
-  function create() { client.notice = ''; send({ t: 'create' }); }
+  // Sem nome, o servidor chama a sala de "Sala de <admin>".
+  function create(name = '') { client.notice = ''; send({ t: 'create', name }); }
   function join(room) { client.notice = ''; send({ t: 'join', room }); }
   function leave() { send({ t: 'leave' }); client.room = null; }
   function kick(id) { send({ t: 'kick', id }); }

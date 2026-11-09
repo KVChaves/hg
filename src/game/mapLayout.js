@@ -53,6 +53,11 @@ function narrowWalls(placer, start, length) {
   }
 }
 
+// Túneis e tubo têm parede perto: ali o carro segura melhor e acompanha a curva (ver updateCar).
+function markEnclosed(start, length) {
+  forEachSample(start - FUNNEL_LENGTH, length + FUNNEL_LENGTH * 2, i => { track.enclosed[i] = 1; });
+}
+
 function placeTunnels(plan, placer, random, layout) {
   for (let n = 0; n < plan.count; n++) {
     const length = plan.length[0] + random() * (plan.length[1] - plan.length[0]);
@@ -61,6 +66,7 @@ function placeTunnels(plan, placer, random, layout) {
     placer.reserve(start - TUNNEL_MARGIN, start + length + TUNNEL_MARGIN);
     layout.tunnels.push({ start, length, open: Boolean(plan.open) });
     if (!plan.open) narrowWalls(placer, start, length);
+    markEnclosed(start, length);
   }
 }
 
@@ -128,6 +134,7 @@ function placeTwist(placer, layout) {
     track.drop[i] = TWIST_GROUND_DROP;               // o chão desce para não atravessar o tubo por dentro
   });
   narrowWalls(placer, start, length);
+  markEnclosed(start, length);
   layout.epics.push({ type: 'twist', start, length });
 }
 

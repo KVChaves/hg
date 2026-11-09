@@ -161,7 +161,7 @@ export const JUNGLE = {
     const roofLeaves = billboard(paintCanopy(['#1e4a22', '#2e6a2a', '#16381c', '#3e8a34']), 24, 12);
     overRoad(ctx, { count: 240, height: [15, 22], lateral: 15, sizeOf: random => 0.7 + random() * 0.8, parts: [roofLeaves] });
     const vines = billboard(paintVine(), 2.4, 13, -13);
-    overRoad(ctx, { count: 150, height: [17, 21], lateral: 11, sizeOf: random => 0.7 + random() * 0.5, parts: [vines] });
+    overRoad(ctx, { count: 150, height: [17, 21], lateral: 11, sizeOf: random => 0.5 + random() * 0.25, parts: [vines] });   // a ponta do cipó fica acima dos carros
 
     const rock = new THREE.DodecahedronGeometry(2, 0);
     nearRoad(ctx, {

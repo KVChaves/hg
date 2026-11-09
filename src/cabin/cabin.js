@@ -14,6 +14,8 @@ import { PARTS } from './parts/index.js';
 import { buildShell, isShellMaterial, setShellAmbient, setShellTint } from './shell/shell.js';
 import { HALF_HEIGHT } from './sprite.js';
 import { Sprite } from './sprite.js';
+import { alignToTwist } from '../world/track.js';
+import { createWindshieldCracks } from './windshieldCracks.js';
 import { createWindshieldEffects } from './windshieldEffects.js';
 
 const STEER_VISUAL = 1.4;
@@ -48,6 +50,7 @@ export function createCabin({ camera, car, loadout }) {
   buildShell(cockpit);
   const dashboard = createDashboard(cockpit);
   const updateWindshield = createWindshieldEffects(cockpit);
+  const updateCracks = createWindshieldCracks(cockpit);
   const renderMirror = createMirror(cockpit, car, cockpit);
   const updateScoreboard = createScoreboard(cockpit);
 
@@ -131,6 +134,7 @@ export function createCabin({ camera, car, loadout }) {
     body.rotation.set(car.pitch + Math.sin(car.bob * 1.7) * 0.004 * motion, car.yaw, car.roll + car.twist);
     if (car.wrecked > 0) poseFlippingCar(body, car.flip, car.wrecked);
     else if (car.rig.active) poseRig(body, car.rig);
+    alignToTwist(body, car);
     head.rotation.set(look.pitch, look.yaw, 0);
     scene.updateMatrixWorld(true);
 
@@ -151,6 +155,7 @@ export function createCabin({ camera, car, loadout }) {
 
     dashboard.update({ gear, nitroLevel: car.nitro, nitroOpen: car.nitroActive, reserveAmmo: weapon.reserve, trapSlot: traps.current, trapReady: traps.isReady(), dt });
     updateWindshield(car.effects, dt);
+    updateCracks(car.capsizes);
     swingCharm(dt, frameTime);
     updateScoreboard(race, weapon.kills);
   }

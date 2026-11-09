@@ -5,6 +5,7 @@ import { createEffects, tickEffects } from './effects.js';
 const OFFROAD_LIMIT = TRACK_WIDTH / 2 + 1.4;
 const WRECK_BRAKING = 2.2, DRIFT_MIN_SPEED = 8, SPIN_DECAY = 3.5;
 const PUNCTURE_SPEED_FACTOR = 0.75, PUNCTURE_PULL = 0.16, OIL_WOBBLE = 0.5, OIL_GRIP = 0.6;
+const ENCLOSED_GRIP = 1.5, ENCLOSED_SIDE_GRIP = 13, ENCLOSED_CURVE_ASSIST = 0.8;   // em túnel e tubo o carro cola na pista e acompanha a curva
 const GRIP_ACCEL = 18, GRIP_MIN_SPEED = 8;           // aceleração lateral máxima sem derrapar: curva fechada em alta não dá
 const DRIFT_YAW_RATE = 2.3, DRIFT_FOLLOW = 0.55;     // no drift o bico gira mais rápido e a trajetória acompanha só parte do giro
 const OIL_SPIN = 1.4, OIL_SWING_RATE = 5.5, OIL_SPIN_FULL_SPEED = 15;      // rabeada: giro em rad/s e ritmo do vaivém
@@ -15,7 +16,7 @@ export function createCar() {
     steer: 0, speed: 0, nitro: 1, health: 1, roll: 0, bob: 0,
     trackIndex: -1, offTrack: 0, lateral: 0, nitroActive: false,
     visualSteer: 0, effects: createEffects(), wrecked: 0, flip: null, invulnerable: 0, destroyed: 0, slipping: false,
-    rig: createRig(), overturned: false, spin: 0, drifting: false, slipstream: 0, armor: 1, wx: 0, wy: 0, wz: 0, twist: 0, nitroCapacity: 1,
+    capsizes: 0, uprightFor: Infinity, rig: createRig(), overturned: false, spin: 0, drifting: false, slipstream: 0, armor: 1, wx: 0, wy: 0, wz: 0, twist: 0, twistHeading: 0, twistYaw: 0, twistPitch: 0, enclosed: false, roadTurn: 0, nitroCapacity: 1,
   };
 }
 
@@ -30,6 +31,18 @@ export function resetCar(car) {
 export function bearingFrom(car, look, x, z) {
   const angle = Math.atan2(car.x - x, car.z - z) - car.yaw - look.yaw;
   return Math.atan2(Math.sin(angle), Math.cos(angle));
+}
+
+const CAPSIZE_RESET_TIME = 1;                        // segundos com as rodas no chão antes de contar outra capotagem
+
+// Conta cada capotagem uma vez, mesmo que o carro gire várias vezes ou acabe destruído no mesmo tombo.
+export function trackCapsizes(car, dt) {
+  if (car.wrecked > 0 || car.overturned) {
+    if (car.uprightFor >= CAPSIZE_RESET_TIME) car.capsizes++;
+    car.uprightFor = 0;
+  } else {
+    car.uprightFor += dt;
+  }
 }
 
 // `amount` de 0 a 1, em relação à vida padrão; `armor` é a melhoria comprada. Logo depois de voltar à pista o carro não sofre dano.
@@ -70,7 +83,7 @@ export function updateCar(car, dt, keys, canAccelerate, nitroHandReady) {
   if (car.offTrack > OFFROAD_LIMIT) forward -= forward * 1.4 * dt;
   if (car.wrecked > 0) forward *= Math.exp(-WRECK_BRAKING * dt);
 
-  side *= Math.exp(-(oil > 0 ? OIL_GRIP : handbrake ? 1.2 : 7) * dt);
+  side *= Math.exp(-(oil > 0 ? OIL_GRIP : handbrake ? 1.2 : car.enclosed ? ENCLOSED_SIDE_GRIP : 7) * dt);
 
   // Pneu furado puxa para um lado; óleo faz o volante escapar sozinho.
   const disturbance = (puncture > 0 ? PUNCTURE_PULL : 0) + (oil > 0 ? Math.sin(car.bob * 3) * OIL_WOBBLE : 0);
@@ -79,9 +92,10 @@ export function updateCar(car, dt, keys, canAccelerate, nitroHandReady) {
   const angle = car.visualSteer * 0.62 / (1 + Math.abs(forward) / 22);
   const drifting = handbrake && Math.abs(forward) > DRIFT_MIN_SPEED;
   car.drifting = drifting;
-  const yawLimit = drifting ? DRIFT_YAW_RATE : GRIP_ACCEL / Math.max(Math.abs(forward), GRIP_MIN_SPEED);
+  const yawLimit = drifting ? DRIFT_YAW_RATE : GRIP_ACCEL * (car.enclosed ? ENCLOSED_GRIP : 1) / Math.max(Math.abs(forward), GRIP_MIN_SPEED);
   const yawRate = Math.max(-yawLimit, Math.min(yawLimit, forward * Math.tan(angle) / WHEELBASE));
   car.yaw -= yawRate * dt;
+  if (car.enclosed) car.yaw -= car.roadTurn * forward * ENCLOSED_CURVE_ASSIST * dt;
   car.yaw += car.spin * dt;
   car.spin *= Math.exp(-SPIN_DECAY * dt);
   if (oil > 0) car.yaw += Math.sin(oil * OIL_SWING_RATE) * OIL_SPIN * Math.min(1, Math.abs(forward) / OIL_SPIN_FULL_SPEED) * dt;

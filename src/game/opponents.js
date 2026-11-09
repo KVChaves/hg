@@ -1,7 +1,7 @@
 import { ACCEL, CAR_MAX_HP, MAX_SPEED, NITRO_ACCEL, NITRO_DRAIN, NITRO_MAX_SPEED, SLIPSTREAM_KMH } from '../config.js';
 import { LIVERIES } from '../world/car/carLivery.js';
 import { createCarModel } from '../world/car/carModel.js';
-import { SHARP_RADIUS, surfaceAt, track, trackAt, turnAt, wrapDistance } from '../world/track.js';
+import { alignToTwist, SHARP_RADIUS, surfaceAt, track, trackAt, turnAt, wrapDistance } from '../world/track.js';
 import { createFlip, lifeAfterDestruction, poseFlippingCar, RESPAWN_PROTECTION } from './carFlip.js';
 import { createRig, poseRig, resetRig, rigLean } from './carRoll.js';
 import { createEffects, tickEffects } from './effects.js';
@@ -59,7 +59,7 @@ function createOpponent(scene, index) {
   const profile = OPPONENT_PROFILES[index];
   const maxHp = CAR_MAX_HP * upgradeFactor('life', profile.upgrades.life);
   const opponent = {
-    livery, slipstream: 0, wx: 0, wy: 0, wz: 0, twist: 0, y: 0, yaw: 0, vx: 0, vz: 0, remote: false, netId: `local${index}`, snapshot: null, onRemoteDamage: null, group, model, name: profile.name, profile, arsenal: createArsenal(profile),
+    livery, slipstream: 0, wx: 0, wy: 0, wz: 0, twist: 0, twistHeading: 0, twistYaw: 0, twistPitch: 0, y: 0, yaw: 0, vx: 0, vz: 0, remote: false, netId: `local${index}`, snapshot: null, onRemoteDamage: null, group, model, name: profile.name, profile, arsenal: createArsenal(profile),
     dist: 0, v: 0, lane: 0, laneTarget: 0, preferredLane: 0, laneHold: 0, x: 0, z: 0,
     vmax: MAX_SPEED, grip: 25 * skill, acc: ACCEL, brake: 22,
     hp: maxHp, maxHp, nitroCapacity: upgradeFactor('nitro', profile.upgrades.nitro), destroyed: 0, protectedFor: 0, grudge: 0, grudgeTarget: null,
@@ -162,6 +162,9 @@ function speedFactorFromEffects({ puncture, oil, paint, smoke }) {
 function placeOnSurface(op) {
   const point = surfaceAt(op.dist, op.lane);
   op.twist = point.roll;
+  op.twistHeading = point.heading;
+  op.twistYaw = point.twistYaw;
+  op.twistPitch = point.twistPitch;
   op.wx = point.roll ? point.x : op.x;
   op.wy = point.roll ? point.y : op.y;
   op.wz = point.roll ? point.z : op.z;
@@ -186,6 +189,7 @@ export function poseOpponent(op) {
   op.group.rotation.y += op.nose + op.driftAngle;
   op.yaw = op.group.rotation.y;
   if (op.rig.active) poseRig(op.group, op.rig);
+  alignToTwist(op.group, op);
 }
 
 // Empurrão lateral recebido em batidas, para carros que não estão sendo pilotados.
@@ -235,6 +239,7 @@ function tumble(op, dt) {
   driftFromKnock(op, dt);
   placeOpponent(op);
   poseFlippingCar(op.group, op.flip, op.dead);
+  alignToTwist(op.group, op);
   op.model.setFlash(false);
 }
 
@@ -284,6 +289,7 @@ export function updateRemoteRacer(op, dt) {
     op.flip = null;
     if (op.rig.active) poseRig(op.group, op.rig);
   }
+  alignToTwist(op.group, op);
   op.model.setNitro(s.nitro && op.dead <= 0);
   op.model.roll(op.v * dt);
 }

@@ -37,14 +37,19 @@ MIN_RACES, MAX_RACES = 1, 10
 MAX_ROOMS = 64
 MAX_RESULT_COUNT = 999
 NAME_LENGTH = 12
+ROOM_NAME_LENGTH = 20
 DEFAULT_NAME = "Piloto"
 
 
-def clean_name(value):
+def clean_text(value, length):
     """Só letras sem acento, números e espaços, que é o que a fonte do jogo desenha."""
-    text = unicodedata.normalize("NFKD", str(value))
+    text = unicodedata.normalize("NFKD", value if isinstance(value, str) else "")
     text = re.sub(r"[^A-Za-z0-9 ]", "", text).strip()
-    return re.sub(r" +", " ", text)[:NAME_LENGTH].strip() or DEFAULT_NAME
+    return re.sub(r" +", " ", text)[:length].strip()
+
+
+def clean_name(value):
+    return clean_text(value, NAME_LENGTH) or DEFAULT_NAME
 
 
 class Ranking:
@@ -103,9 +108,9 @@ class Client:
 
 
 class Room:
-    def __init__(self, host):
+    def __init__(self, host, name):
         self.id = secrets.token_hex(3)
-        self.name = f"Sala de {host.name}"
+        self.name = clean_text(name, ROOM_NAME_LENGTH) or f"Sala de {host.name}"
         self.host = host
         self.members = []
         self.cars = MAX_RACERS
@@ -183,10 +188,10 @@ class Lobby:
         room.members.append(client)
         client.room = room
 
-    def on_create(self, client, _message):
+    def on_create(self, client, message):
         if client.room or len(self.rooms) >= MAX_ROOMS:
             return client.send({"t": "error", "code": "cannot_create"})
-        room = Room(client)
+        room = Room(client, message.get("name"))
         self.rooms[room.id] = room
         self.join(client, room)
         self.publish_room(room)
@@ -207,8 +212,14 @@ class Lobby:
         self.publish_room(room)
 
     def on_name(self, client, message):
-        if client.room is None:
-            client.name = clean_name(message.get("name", ""))
+        room, name = client.room, clean_name(message.get("name"))
+        if room is None:
+            client.name = name
+            return
+        name = room.unique_name(name, client)            # dentro da sala os nomes continuam únicos
+        if name != client.name:
+            client.name = name
+            self.publish_room(room)
 
     def on_leave(self, client, _message):
         self.remove_from_room(client)

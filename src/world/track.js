@@ -5,7 +5,7 @@ import { fbm } from '../art/shade.js';
 // Pista gerada por semente: uma curva fechada em volta do centro, reamostrada em passos iguais, apoiada
 // num relevo. `track` é sempre o mesmo objeto; gerar outra pista troca o conteúdo dele.
 
-export const track = { length: 1, count: 0, step: 1, px: null, py: null, pz: null, tx: null, tz: null, slope: null, curvature: null, turn: null, wall: null, roll: null, gap: null, epic: null, drop: null, boost: null, heightAt: () => 0 };
+export const track = { length: 1, count: 0, step: 1, px: null, py: null, pz: null, tx: null, tz: null, slope: null, curvature: null, turn: null, wall: null, roll: null, gap: null, epic: null, drop: null, boost: null, enclosed: null, heightAt: () => 0 };
 
 const CONTROL_COUNT = 18, HARMONICS = [[2, 0.8], [3, 0.55], [4, 0.3]];
 export const OPEN_WALL = TRACK_WIDTH / 2 + 4.5;       // até onde o centro do carro pode sair da pista, onde ficam os muros
@@ -182,7 +182,7 @@ export function generateTrack(seed, shape) {
   Object.assign(track, geometry, {
     py: road.py, slope: road.slope, wall: new Float32Array(geometry.count).fill(OPEN_WALL),
     roll: new Float32Array(geometry.count), gap: new Uint8Array(geometry.count), epic: new Uint8Array(geometry.count),
-    drop: new Float32Array(geometry.count), boost: new Uint8Array(geometry.count),
+    drop: new Float32Array(geometry.count), boost: new Uint8Array(geometry.count), enclosed: new Uint8Array(geometry.count),
     heightAt: conformToRoad(heightAt, geometry, road.py, shape.banks),
   });
 }
@@ -232,21 +232,38 @@ export const isEpic = distance => track.epic[sampleIndex(distance)] === 1;
 export const inGap = distance => track.gap[sampleIndex(distance)] === 1;
 export const isBoosted = distance => track.boost[sampleIndex(distance)] === 1;
 
-const surface = { x: 0, y: 0, z: 0, roll: 0 };
+const surface = { x: 0, y: 0, z: 0, roll: 0, heading: 0, twistYaw: 0, twistPitch: 0 };
 
 // Ponto da superfície da pista em (distância, faixa). A física segue plana; no tubo a estrada gira em volta
 // do eixo, e é aqui que a faixa vira parede e teto. Devolve um objeto compartilhado: use na hora.
 export function surfaceAt(distance, lane) {
   const f = ((distance % track.length) + track.length) % track.length / track.step;
   const i = Math.floor(f) % track.count, j = (i + 1) % track.count;
-  const roll = track.roll[i] + (track.roll[j] - track.roll[i]) * (f - Math.floor(f));
+  let delta = track.roll[j] - track.roll[i];
+  if (delta < -Math.PI) delta += Math.PI * 2;        // saída do tubo: o giro completo equivale a giro nenhum
+  const roll = track.roll[i] + delta * (f - Math.floor(f)), rate = delta / track.step;
   const t = trackAt(distance);
   const side = TWIST_RADIUS * Math.sin(roll) + lane * Math.cos(roll);
   surface.x = t.x - t.tz * side;
   surface.y = t.y + TWIST_RADIUS * (1 - Math.cos(roll)) + lane * Math.sin(roll);
   surface.z = t.z + t.tx * side;
   surface.roll = roll;
+  surface.heading = Math.atan2(-t.tx, -t.tz);
+  // A estrada é uma hélice: quem anda nela aponta um pouco para o lado para onde ela gira, e sobe ou desce conforme a faixa.
+  surface.twistYaw = Math.atan(TWIST_RADIUS * rate);
+  surface.twistPitch = Math.atan(lane * rate);
   return surface;
+}
+
+// Depois de posar o carro: alinha o objeto com a estrada dentro do tubo. O quanto o carro está virado em relação
+// à pista gira em volta do chão dele, não da vertical do mundo; senão, no teto, o volante pareceria invertido.
+// O retrovisor olha para trás, e para ele a subida da hélice tem o sinal contrário (`climbSign`).
+export function alignToTwist(object, racer, climbSign = 1) {
+  if (!racer.twist) return;
+  const relative = Math.atan2(Math.sin(racer.yaw - racer.twistHeading), Math.cos(racer.yaw - racer.twistHeading));
+  object.rotation.y -= relative;
+  object.rotateY(relative - racer.twistYaw);
+  object.rotateX(racer.twistPitch * climbSign);
 }
 
 // Curvatura com sinal no ponto (1/m): positiva vira à direita.

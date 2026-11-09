@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { VIEW } from '../config.js';
 import { poseFlippingCar } from '../game/carFlip.js';
+import { alignToTwist } from './track.js';
 import { poseRig } from '../game/carRoll.js';
 import { createCarModel } from './car/carModel.js';
 
@@ -36,17 +37,26 @@ export function createExternalView({ scene, car, look, initialSpec, seed }) {
       model.group.rotation.set(car.pitch, car.yaw, car.roll * ROLL_VISUAL + car.twist);
       if (car.wrecked > 0) poseFlippingCar(model.group, car.flip, car.wrecked);
       else if (car.rig.active) poseRig(model.group, car.rig);
+      alignToTwist(model.group, car);
       model.steer(car.visualSteer * FRONT_WHEEL_TURN);
       model.setNitro(car.nitroActive);
 
       cameraYaw += (car.yaw - cameraYaw) * Math.min(1, dt * FOLLOW_SPEED);
-      const angle = cameraYaw + look.yaw;
-      const fx = -Math.sin(angle), fz = -Math.cos(angle);
+      const angle = (car.twist ? car.twistHeading : cameraYaw) + look.yaw;   // no tubo a câmera segue a pista, não o giro do carro
+      let fx = -Math.sin(angle), fy = 0, fz = -Math.cos(angle);
       // No tubo o "para cima" do carro gira junto com a estrada.
       const sideUp = -Math.sin(car.twist), rightX = Math.cos(car.yaw), rightZ = -Math.sin(car.yaw), upY = Math.cos(car.twist);
+      if (car.twist) {                                // e a câmera segue o rumo da hélice, não o eixo do tubo
+        const skew = Math.tan(car.twistYaw);
+        fx += rightX * upY * skew;
+        fy = Math.sin(car.twist) * skew;
+        fz += rightZ * upY * skew;
+        const size = Math.hypot(fx, fy, fz);
+        fx /= size; fy /= size; fz /= size;
+      }
       camera.up.set(rightX * sideUp, upY, rightZ * sideUp);
-      camera.position.set(car.wx - fx * DISTANCE + rightX * sideUp * HEIGHT, car.wy + upY * HEIGHT, car.wz - fz * DISTANCE + rightZ * sideUp * HEIGHT);
-      camera.lookAt(car.wx + fx * LOOK_AHEAD + rightX * sideUp * LOOK_HEIGHT, car.wy + upY * LOOK_HEIGHT, car.wz + fz * LOOK_AHEAD + rightZ * sideUp * LOOK_HEIGHT);
+      camera.position.set(car.wx - fx * DISTANCE + rightX * sideUp * HEIGHT, car.wy - fy * DISTANCE + upY * HEIGHT, car.wz - fz * DISTANCE + rightZ * sideUp * HEIGHT);
+      camera.lookAt(car.wx + fx * LOOK_AHEAD + rightX * sideUp * LOOK_HEIGHT, car.wy + fy * LOOK_AHEAD + upY * LOOK_HEIGHT, car.wz + fz * LOOK_AHEAD + rightZ * sideUp * LOOK_HEIGHT);
       camera.updateMatrixWorld();
     },
   };

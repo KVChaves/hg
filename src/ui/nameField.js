@@ -6,6 +6,12 @@ import { COLOR, inside, markClickable, outline, panelBox } from './panelKit.js';
 
 const TYPABLE = /^[A-Za-z0-9 ]$/;
 
+// O caractere que a tecla digita, sem acento; vazio se a tecla não escreve nada aceito.
+export function typedCharacter(key) {
+  const typed = key.normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+  return TYPABLE.test(typed) ? typed : '';
+}
+
 export function createNameField({ box, getName, setName, isReadOnly = () => false }) {
   let editing = false, draft = '';
 
@@ -21,8 +27,7 @@ export function createNameField({ box, getName, setName, isReadOnly = () => fals
     if (e.key === 'Enter') { stopEditing(true); return; }
     if (e.key === 'Escape') { stopEditing(false); return; }
     if (e.key === 'Backspace') { draft = draft.slice(0, -1); return; }
-    const typed = e.key.normalize('NFKD').replace(/[̀-ͯ]/g, '');
-    if (TYPABLE.test(typed) && draft.length < NAME_LENGTH) draft += typed;
+    if (draft.length < NAME_LENGTH) draft += typedCharacter(e.key);
   });
 
   return {

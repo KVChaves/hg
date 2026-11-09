@@ -1,7 +1,9 @@
 import { MAX_RACERS, VIEW } from '../config.js';
 import { ctxText, textWidth } from '../art/font.js';
 import { createNameField } from './nameField.js';
+import { ROOM_NAME_LENGTH } from '../net/roomClient.js';
 import { COLOR, drawButton, inside, panelBox, pointerOnStage } from './panelKit.js';
+import { createTextPrompt } from './textPrompt.js';
 
 // Multiplayer: lista de salas e, dentro de uma sala, os corredores e a configuração do admin.
 
@@ -11,6 +13,7 @@ const CREATE = { x: 420, y: 64, width: 140, height: 26 };
 const BACK = { x: 245, y: 300, width: 150, height: 26 };
 const ROOM_ROW = { top: 122, height: 26, count: 6 };
 const JOIN_X = 484, JOIN_WIDTH = 76;
+const ROOM_PROMPT = { x: 150, y: 70, width: 340, height: 200 };
 
 const ROSTER = { x: 78, top: 66, height: 28 };
 const KICK = { x: 262, width: 70, height: 22 };
@@ -27,6 +30,12 @@ export function createMultiplayerScreen({ stage, net, getName, setName, onBack }
 
   const nameField = createNameField({ box: NAME_BOX, getName, setName: name => { setName(name); net.setName(name); } });
 
+  const roomPrompt = createTextPrompt({
+    box: ROOM_PROMPT, title: 'NOME DA SALA', confirmLabel: 'CRIAR', maxLength: ROOM_NAME_LENGTH, allowEmpty: true,
+    isActive: () => screen.isOpen,
+    onConfirm: name => net.create(name),
+  });
+
   const joinButton = index => ({ x: JOIN_X, y: ROOM_ROW.top + index * ROOM_ROW.height + 2, width: JOIN_WIDTH, height: ROOM_ROW.height - 6 });
   const kickButton = index => ({ ...KICK, y: ROSTER.top + index * ROSTER.height + 1 });
   const arrows = CONFIG_FIELDS.flatMap((field, row) => [
@@ -40,7 +49,7 @@ export function createMultiplayerScreen({ stage, net, getName, setName, onBack }
     if (nameField.click(x, y)) return;
     if (inside(BACK, x, y)) { queued = () => { screen.isOpen = false; onBack(); }; return; }
     if (net.status !== 'online') return;
-    if (inside(CREATE, x, y)) { net.create(); return; }
+    if (inside(CREATE, x, y)) { roomPrompt.open({ emptyHint: `EM BRANCO FICA SALA DE ${getName()}` }); return; }
     net.rooms.slice(0, ROOM_ROW.count).forEach((room, i) => {
       if (inside(joinButton(i), x, y) && !isOpenRoomFull(room)) net.join(room.id);
     });
@@ -62,17 +71,19 @@ export function createMultiplayerScreen({ stage, net, getName, setName, onBack }
   stage.addEventListener('click', e => {
     if (!screen.isOpen) return;
     const { x, y } = pointerOnStage(e, stage);
-    if (net.room) clickRoom(x, y);
+    if (roomPrompt.isOpen()) roomPrompt.click(x, y);
+    else if (net.room) clickRoom(x, y);
     else clickBrowse(x, y);
   });
 
   screen.open = notice => {
+    roomPrompt.cancel();
     screen.isOpen = true;
     if (notice) net.notice = notice;
     net.connect(() => net.setName(getName()));
   };
   screen.close = () => { screen.isOpen = false; };
-  screen.isTyping = () => nameField.isEditing();
+  screen.isTyping = () => nameField.isEditing() || roomPrompt.isOpen();
   screen.update = () => {
     if (!queued) return;
     queued();
@@ -133,6 +144,7 @@ export function createMultiplayerScreen({ stage, net, getName, setName, onBack }
 
   screen.draw = ctx => {
     panelBox(ctx, PANEL);
+    if (roomPrompt.isOpen()) { roomPrompt.draw(ctx, pointer); return; }
     const { room } = net;
     if (!room) { drawBrowse(ctx); return; }
     centered(ctx, room.name, PANEL.y + 12, COLOR.selected, 2);

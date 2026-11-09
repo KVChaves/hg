@@ -1,5 +1,5 @@
-import { CAR_MAX_HP } from '../config.js';
 import { lifeAfterDestruction } from './carFlip.js';
+import { EXTINGUISHER_LIFE, TRAP_TYPES } from './trapTypes.js';
 import { isEpic } from '../world/track.js';
 
 // Ajuda de beira de estrada para equilibrar a corrida. Quem ficou muito longe do carro da frente recebe
@@ -9,11 +9,12 @@ import { isEpic } from '../world/track.js';
 export const NPC_LANE = 6.8;                         // distância do centro da pista até cada NPC (na borda do asfalto)
 
 const GAP_FOR_HELP = 60;                             // metros até o carro da frente
-const EPIC_SKIP = 6, SPAWN_AHEAD = 220, REMOVE_BEHIND = 40, PICKUP_WINDOW = 3, PICKUP_REACH = 5;
+export const PICKUP_WINDOW = 3, PICKUP_REACH = 5;   // metros ao longo da pista e de lado até o NPC
+const EPIC_SKIP = 6, SPAWN_AHEAD = 220, REMOVE_BEHIND = 40;
 const FIRST_OFFER_DELAY = 12, COOLDOWN = 11, NO_NEED_RETRY = 3, MESSAGE_TIME = 1.8;
 const CHOICE_VARIATION = 0.15;                       // evita que a oferta seja sempre a mesma
 
-const LIFE_GIFT = 0.3, AMMO_GIFT = 0.5;
+const AMMO_GIFT = 0.5;
 const NITRO_GIFT = { min: 0.25, max: 1, fullAtGap: 300, step: 0.05 };   // quanto mais longe do carro da frente, mais nitro (fração do tanque padrão)
 
 function nitroGiftFor(gap) {
@@ -22,28 +23,41 @@ function nitroGiftFor(gap) {
   return Math.round((min + (max - min) * t) / step) * step;
 }
 
-export const HELP_ITEMS = { ammo: 'MUNICAO', nitro: 'NITRO', life: 'REPARO' };
+export const HELP_ITEMS = { ammo: 'MUNICAO', nitro: 'NITRO', extinguisher: TRAP_TYPES.extinguisher.label };
 
 const fill = slots => slots.reduce((sum, s) => sum + s.charges, 0) / Math.max(1, slots.reduce((sum, s) => sum + s.capacity, 0));
 const emptiest = slots => [...slots].sort((a, b) => a.charges / a.capacity - b.charges / b.capacity)[0];
+const isExtinguisher = slot => slot.type.id === 'extinguisher';
+// O extintor tem oferta própria; assim os dois NPCs não aparecem com o mesmo item.
+const pickThrowable = slots => emptiest(slots.filter(slot => !isExtinguisher(slot))) ?? emptiest(slots);
+
+// Quanto mais vida faltando e menos extintores na mala, maior a necessidade (1 = não precisa).
+const extinguisherLevel = (slots, life) => Math.min(1, life + EXTINGUISHER_LIFE * (slots.find(isExtinguisher)?.charges ?? 0));
+
+function addExtinguisher(slots) {
+  const slot = slots.find(isExtinguisher);
+  if (slot) slot.charges++;
+  else slots.push({ type: TRAP_TYPES.extinguisher, charges: 1, capacity: 1 });
+}
 
 // O que cada piloto tem e como receber. `levels` vão de 0 (acabou) a 1 (cheio); ausente = não usa aquilo.
 function playerSupplies(car, weapon, traps) {
   const lifeCap = () => lifeAfterDestruction(car.destroyed);
   return {
+    slots: () => traps.slots,
     hasTraps: () => traps.slots.length > 0,
-    pickTrap: () => emptiest(traps.slots),
+    pickTrap: () => pickThrowable(traps.slots),
     levels: () => ({
       ammo: (weapon.ammo + weapon.reserve) / (weapon.type.magazine + weapon.maxReserve),
       nitro: car.nitro,
       trap: traps.slots.length ? fill(traps.slots) : 1,
-      life: car.health / lifeCap(),
+      extinguisher: extinguisherLevel(traps.slots, car.health / lifeCap()),
     }),
     give: {
       ammo(item) { weapon.reserve = Math.min(weapon.maxReserve, weapon.reserve + Math.ceil(weapon.type.reserve * (item.amount ?? AMMO_GIFT))); },
       nitro(item) { car.nitro = Math.min(1, car.nitro + item.amount / car.nitroCapacity); },
       trap(item) { item.slot.charges++; },
-      life() { car.health = Math.min(lifeCap(), car.health + LIFE_GIFT / car.armor); },
+      extinguisher() { addExtinguisher(traps.slots); },
     },
   };
 }
@@ -51,19 +65,20 @@ function playerSupplies(car, weapon, traps) {
 function opponentSupplies(op) {
   const { arsenal } = op, lifeCap = () => op.maxHp * lifeAfterDestruction(op.destroyed);
   return {
+    slots: () => arsenal.traps,
     hasTraps: () => arsenal.traps.length > 0,
-    pickTrap: () => emptiest(arsenal.traps),
+    pickTrap: () => pickThrowable(arsenal.traps),
     levels: () => ({
       ammo: (arsenal.ammo + arsenal.reserve) / (arsenal.type.magazine + arsenal.maxReserve),
       nitro: op.nitro,
       trap: fill(arsenal.traps),
-      life: op.hp / lifeCap(),
+      extinguisher: extinguisherLevel(arsenal.traps, op.hp / lifeCap()),
     }),
     give: {
       ammo(item) { arsenal.reserve = Math.min(arsenal.maxReserve, arsenal.reserve + Math.ceil(arsenal.type.reserve * (item.amount ?? AMMO_GIFT))); },
       nitro(item) { op.nitro = Math.min(1, op.nitro + item.amount / op.nitroCapacity); },
       trap(item) { item.slot.charges++; },
-      life() { op.hp = Math.min(lifeCap(), op.hp + CAR_MAX_HP * LIFE_GIFT); },
+      extinguisher() { addExtinguisher(arsenal.traps); },
     },
   };
 }
@@ -91,7 +106,7 @@ export function createRoadsideHelp({ race, car, weapon, traps, onPlayerOffer, on
     supplies: racer.isPlayer ? playerSupplies(car, weapon, traps) : opponentSupplies(racer),
   }]));
   const help = {
-    message: '', messageTime: 0, update, reset,
+    message: '', messageTime: 0, update, reset, canPickUp: racer => canPickUp(racer),
     offerFor: racer => states.get(racer).offer,
     suppliesFor: racer => states.get(racer).supplies,
     showMessage(text) {

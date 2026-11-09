@@ -2,6 +2,7 @@
 
 const STORAGE_KEY = 'halfgrip.savedCars';
 export const SAVED_CAR_SLOTS = 6;
+export const CAR_NAME_LENGTH = 16;
 
 export function loadSavedCars() {
   let saved = [];

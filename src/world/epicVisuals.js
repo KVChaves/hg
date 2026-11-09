@@ -5,7 +5,8 @@ import { wallTexture } from './tunnels.js';
 // Aparência dos trechos épicos: abismo sob os saltos e o tubo em que a estrada gira.
 
 const TUBE_RADIUS = 14.5, TUBE_SEGMENTS = 18, TUBE_OVERHANG = 10, RIB_EVERY = 14, PORTAL_DEPTH = 3, PORTAL_GROW = 1.2;
-const ABYSS_HALF_WIDTH = 96, ABYSS_BELOW = 18, EDGE_HEIGHT = 0.35;
+const ABYSS_HALF_WIDTH = 96, ABYSS_BELOW = 18;
+const EDGE_THICKNESS = 0.04, EDGE_LIFT = 0.05, EDGE_DEPTH = 1;
 const PILLAR_HALF_WIDTH = 14.2, PILLAR_TOP_DROP = 0.12, PILLAR_SINK = 8;
 
 function tubeBand(from, to, radius, thetaA, thetaB) {
@@ -87,15 +88,16 @@ function addIslands(group, islands, y, style) {
   for (const [from, to] of islands) group.add(new THREE.Mesh(pillarGeometry(from, to, y - PILLAR_SINK), material));
 }
 
-// Faixa luminosa na beirada de cada plataforma, para enxergar onde a estrada termina e recomeça.
+// Faixa pintada na beirada de cada plataforma, para enxergar onde a estrada termina e recomeça. É tinta: não tem volume.
 function addEdges(group, { gaps }, color) {
   const material = new THREE.MeshBasicMaterial({ color, fog: false });
-  const bar = new THREE.BoxGeometry(17.8, EDGE_HEIGHT, 0.8);
+  const stripe = new THREE.BoxGeometry(17.8, EDGE_THICKNESS, EDGE_DEPTH);
   for (const [from, to] of gaps) {
-    for (const distance of [from, to]) {
-      const t = trackAt(distance), mesh = new THREE.Mesh(bar, material);
-      mesh.position.set(t.x, t.y + EDGE_HEIGHT / 2, t.z);
-      mesh.rotation.y = Math.atan2(-t.tx, -t.tz);
+    for (const [distance, inward] of [[from, -1], [to, 1]]) {
+      const t = trackAt(distance + inward * EDGE_DEPTH / 2), mesh = new THREE.Mesh(stripe, material);
+      mesh.position.set(t.x, t.y + EDGE_LIFT, t.z);
+      mesh.rotation.order = 'YXZ';
+      mesh.rotation.set(Math.atan(t.slope), Math.atan2(-t.tx, -t.tz), 0);
       group.add(mesh);
     }
   }

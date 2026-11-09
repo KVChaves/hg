@@ -21,4 +21,4 @@ export const LAYOUT = {
 };
 
 // Profundidade de cada camada (quanto menor, mais perto do olho).
-export const DEPTH = { wheel: 0.5, shifter: 0.55, gauges: 0.7, charm: 0.71, mirrorFrame: 0.72, mirrorGlass: 0.74, shell: 1, windshield: 1.02 };
+export const DEPTH = { wheel: 0.5, shifter: 0.55, gauges: 0.7, charm: 0.71, mirrorFrame: 0.72, mirrorGlass: 0.74, shell: 1, cracks: 1.01, windshield: 1.02 };

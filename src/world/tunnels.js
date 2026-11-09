@@ -42,6 +42,8 @@ export function wallTexture(style) {
   return texture;
 }
 
+const SPIKE_CLEARANCE = 4.6, SPIKE_MIN_LENGTH = 0.3;   // a ponta das estalactites nunca desce até a altura dos carros
+
 function addHangingSpikes(group, tunnel, spikes) {
   const geometry = new THREE.ConeGeometry(0.5, 1, 5);
   geometry.rotateX(Math.PI);
@@ -52,8 +54,8 @@ function addHangingSpikes(group, tunnel, spikes) {
   for (let i = 0; i < spikes.count; i++) {
     const t = trackAt(tunnel.start + Math.random() * tunnel.length), side = (Math.random() * 2 - 1) * (TUNNEL_HALF_WIDTH - 1.5);
     const y = t.y + TUNNEL_HEIGHT * Math.sqrt(1 - (side / TUNNEL_HALF_WIDTH) ** 2);
-    const size = 0.7 + Math.random() * 1.5;
-    matrix.compose(position.set(t.x - t.tz * side, y, t.z + t.tx * side), quaternion, scale.set(size, size * (1.2 + Math.random() * 1.6), size));
+    const size = 0.7 + Math.random() * 1.5, length = Math.min(size * (1.2 + Math.random() * 1.6), Math.max(SPIKE_MIN_LENGTH, y - t.y - SPIKE_CLEARANCE));
+    matrix.compose(position.set(t.x - t.tz * side, y, t.z + t.tx * side), quaternion, scale.set(size, length, size));
     mesh.setMatrixAt(i, matrix);
   }
   group.add(mesh);
