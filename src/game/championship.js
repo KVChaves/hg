@@ -9,6 +9,7 @@ export function createMatch({ racerNames, raceCount }) {
     raceCount,
     racesDone: 0,
     lastOrder: null,                                 // nomes na ordem de chegada da última corrida
+    biomesPlayed: [],                                // ids dos biomas já sorteados, em ordem (pickMatchBiome)
     // Largada invertida: quem chegou por último larga na frente. Sem corrida anterior, não define.
     get nextGrid() { return match.lastOrder && [...match.lastOrder].reverse(); },
     get currentRace() { return Math.min(match.racesDone + 1, raceCount); },
@@ -40,10 +41,11 @@ export function createMatch({ racerNames, raceCount }) {
     // Para quem entra no meio da partida: o placar atual vai para ele e os nomes da lista nova assumem a tabela.
     // Quem é novo começa como se tivesse chegado em último em todas as corridas já feitas.
     snapshot() {
-      return { racesDone: match.racesDone, lastOrder: match.lastOrder, entries: [...table.values()] };
+      return { racesDone: match.racesDone, lastOrder: match.lastOrder, biomesPlayed: match.biomesPlayed, entries: [...table.values()] };
     },
     restore(data, names) {
       match.racesDone = data.racesDone;
+      match.biomesPlayed = [...(data.biomesPlayed ?? [])];
       match.lastOrder = data.lastOrder ? data.lastOrder.filter(name => names.includes(name)) : null;
       const old = new Map(data.entries.map(entry => [entry.name, entry]));
       table.clear();

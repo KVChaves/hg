@@ -29,7 +29,13 @@ export const NEON_TOKYO = {
   sky: 0x16102e, fog: [16, 220], cabinTint: 0xb4a0e8,
   shape: { wiggle: 0.26, targetLength: 2000, relief: 5, hillScale: 140, sharpCurves: 3 },
   layout: {
-    jumpHops: 3,
+    jump: { fallLabel: 'CAIU NO ABISMO', below: 9 },        // o fundo luminoso fica bem abaixo da rampa
+    hazards: [{ kind: 'kaijuCrossing', count: 3 }],           // o kaiju atravessa nos cruzamentos
+    // Túnel apagado: no breu só brilham as bordas da pista (e os faróis dos carros).
+    dark: {
+      length: [160, 220], fog: [0, 3], glowEdges: [0x20e0f0, 0xf030b0],
+      style: { wall: '#06050c', speckle: ['#0c0a16', '#040308'], rib: 0x08070e, portal: 0x20e0f0, lines: [] },
+    },
     tunnels: { count: 2, length: [90, 140] },
   },
   ground: {

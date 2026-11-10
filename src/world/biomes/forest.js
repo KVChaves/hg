@@ -9,7 +9,13 @@ export const FOREST = {
   sky: 0xd88040, fog: [14, 190], cabinTint: 0xf4c89c,
   shape: { wiggle: 0.2, targetLength: 2150, relief: 13, hillScale: 190, banks: 6, sharpCurves: 2 },
   layout: {
-    jumpHops: 2,
+    jump: { fallLabel: 'CAIU NA LAMA' },
+    hazards: [{ kind: 'rockfall', count: 3 }],                // paredões de onde caem pedras
+    // Caverna: breu total; só se veem os faróis, o fogo e as balas (e o que os faróis do jogador alcançam).
+    dark: {
+      length: [200, 260], fog: [0, 10],
+      style: { wall: '#2a2018', speckle: ['#3a2c20', '#1a120c', '#4a3828'], rib: 0x1e1610, portal: 0x3a2a1c, lines: [], spikes: { color: 0x4a3c30, count: 120 } },
+    },
     tunnels: { count: 2, length: [90, 150], open: true },
   },
   ground: {
@@ -42,7 +48,7 @@ export const FOREST = {
       cutTop(ctx, w, x => Math.abs((x % 16) - 8));
     },
   },
-  epic: { shallow: true, ramp: { stone: [0x3a302c, 0x5a4c44, 0x6a5a4e, 0x4a3e38], mortar: 0x221a16, moss: [0x7a3418, 0x9a4a1c, 0x5a5a20] }, abyss: 0x2a1c10, glow: false, edge: '#e0a030', tube: { wall: '#5a3618', speckle: ['#74481e', '#3a2210', '#8a5a2a'], rib: 0x3a2210, portal: 0xc89a4a, lines: [{ angle: Math.PI * 0.5, width: 0.04, color: 0xe0a030 }] } },
+  epic: { ramp: { stone: [0x3a302c, 0x5a4c44, 0x6a5a4e, 0x4a3e38], mortar: 0x221a16, moss: [0x7a3418, 0x9a4a1c, 0x5a5a20] }, abyss: 0x2a1c10, glow: false, edge: '#e0a030', tube: { wall: '#5a3618', speckle: ['#74481e', '#3a2210', '#8a5a2a'], rib: 0x3a2210, portal: 0xc89a4a, lines: [{ angle: Math.PI * 0.5, width: 0.04, color: 0xe0a030 }] } },
   weather: { count: 240, size: 2, fall: 3, sway: 3, swaySpeed: 1.1, colors: [0xd86a18, 0xc03a14, 0xe8a030] },
 
   paintSky(ctx, w, h) {

@@ -78,7 +78,13 @@ export function createAtmosphere(scene) {
     streakGeometry.attributes.position.needsUpdate = true;
   }
 
-  return { setBiome, update };
+  // No escuro (caverna, túnel) a chuva e a neve somem: elas ignoram a neblina e acenderiam o breu.
+  function setWeatherVisible(visible) {
+    points.visible = visible && Boolean(weather) && !weather.streak;
+    streaks.visible = visible && Boolean(weather?.streak);
+  }
+
+  return { setBiome, update, setWeatherVisible };
 }
 
 // Ajudas para pintar céu: gradiente até a cor do horizonte (`sky` do bioma) e uma serra no meio da altura.

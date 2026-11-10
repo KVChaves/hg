@@ -3,6 +3,7 @@ import { pixelTexture } from '../textures.js';
 import { createBodyGeometry, createSpoilerGeometry } from './carGeometry.js';
 import { createHoodOrnament, disposeHoodOrnament } from './carHood.js';
 import { paintLivery, paintRim, WHEEL_POSITIONS_Z } from './carLivery.js';
+import { createCarLights } from './carLights.js';
 
 const WHEEL_RADIUS = 0.34, WHEEL_WIDTH = 0.22, WHEEL_X = 0.86;
 
@@ -128,10 +129,13 @@ export function createCarModel(initialSpec, seed = 0) {
   }
 
   apply(initialSpec);
+  const lights = createCarLights();
+  lifted.add(lights.group);
 
   return {
     group,
     apply,
+    setLights: lights.setOn,                         // faróis acesos nos trechos escuros
     roll(distance) {
       const angle = distance / (WHEEL_RADIUS * radiusScale);
       for (const wheel of wheels) wheel.rotation.x -= angle;

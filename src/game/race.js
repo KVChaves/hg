@@ -1,11 +1,13 @@
 import { CAR_MAX_HP, LAPS, TRACK_WIDTH } from '../config.js';
-import { isBoosted, isEpic, nearestIndex, OPEN_WALL, surfaceAt, track, trackAt } from '../world/track.js';
+import { hazardAt, inFlightZone, inGap, isEpic, nearestIndex, onBridge, OPEN_WALL, surfaceAt, track, trackAt, valleyRise, valleySlope, wrapDistance } from '../world/track.js';
 import { damagePlayer, resetCar, trackCapsizes } from './car.js';
 import { resetRig, rigLean } from './carRoll.js';
 import { createFlip, flipLandingTime, lifeAfterDestruction, RESPAWN_PROTECTION } from './carFlip.js';
 import { createCollisions } from './collisions.js';
 import { placeOpponent, resetOpponent, updateOpponent, updateRemoteRacer } from './opponents.js';
 import { slipstreamStrength } from './slipstream.js';
+import { FALL_TIME, fallIsCertain, GRAVITY, sinkStep, stepFlight } from './flight.js';
+import { BRIDGE_HALF } from './mapLayout.js';
 
 const CRASH_MIN_IMPACT = 4, CRASH_FULL_IMPACT = 25, CRASH_MIN_STRENGTH = 0.25;
 const ROAD_HALF = TRACK_WIDTH / 2 + 1.4, SHOULDER_BLEND = 6;
@@ -13,16 +15,22 @@ const WRONG_WAY_DELAY = 0.7, WRONG_WAY_MIN_SPEED = 3, WRONG_WAY_HEADING = -0.25;
 const WALL_BOUNCE = 0.4, TUNNEL_WALL_BOUNCE = 0.05, TUNNEL_SCRAPE_SPEED = 6;   // m/s de batida que no túnel não tiram vida
 const WALL_NOSE_IN = 0.05, WALL_KEEP_BACKWARD = -0.6, WALL_TURN_RATE = 3;   // rad/s
 const INTRO_TIME = 5;                                // segundos do pop-up de ajuda antes da contagem
-const MIN_JUMP_SPEED = 22;                           // m/s: a rampa garante o impulso para cruzar o vão
+// O nitro larga vazio e enche uma vez depois do GO: o tanque normal leva 10 s; um tanque maior (melhoria) recebe
+// o mesmo tanto por segundo, então demora mais. Assim quem larga na frente não dispara enquanto as armas ainda
+// estão descarregadas e as armadilhas bloqueadas. `nitroToFill` é quanto do tanque ainda falta essa carga dar.
+const NITRO_FILL_TIME = 10;
 const SLIPSTREAM_RESPONSE = 4;                       // o vácuo entra e sai aos poucos
 const MIN_TIME_GAP = 0.05;                           // segundos entre tempos estimados consecutivos
 const IMPACT_DAMAGE = 0.4;                           // pontos de vida por m/s de batida
+const HARD_LANDING = 11, LANDING_DAMAGE = 3;         // a partir de 11 m/s de descida o pouso tira 3 pontos de vida por m/s (suspensão aguenta o resto)
+const AIR_PITCH_RATE = 3, BANK_RATE = 8;             // no ar o bico acompanha a trajetória aos poucos
+const FACE_BOUNCE = 0.2;                             // quem bate na face da outra margem volta com isso da velocidade
 
 const gridDistance = slot => track.length - 8 - (slot >> 1) * 10 - (slot & 1) * 4;
 const gridLane = slot => (slot & 1 ? 1 : -1) * TRACK_WIDTH * 0.24;   // duas filas, uma de cada lado do centro
 
 export function createRace(car, opponents, { onCrash, onDestroyed }) {
-  const playerProxy = { name: 'Player', netId: 'player', slipstream: 0, wx: 0, wy: 0, wz: 0, twist: 0, y: 0, yaw: 0, dist: 0, lane: 0, v: 0, dead: 0, protectedFor: 0, x: 0, z: 0, isPlayer: true, effects: car.effects };
+  const playerProxy = { name: 'Player', netId: 'player', sunk: 0, slipstream: 0, wx: 0, wy: 0, wz: 0, twist: 0, y: 0, yaw: 0, dist: 0, lane: 0, v: 0, dead: 0, protectedFor: 0, x: 0, z: 0, isPlayer: true, effects: car.effects };
   const field = [playerProxy, ...opponents];
   const finishTimes = new Map();                     // nome -> tempo em que cruzou a linha final
   let playerStart = 0, wrongWayTime = 0;
@@ -109,8 +117,9 @@ export function createRace(car, opponents, { onCrash, onDestroyed }) {
       turnAlongWall(nx * sign, nz * sign, tx[i], tz[i], dt);
     }
     car.enclosed = track.enclosed[i] === 1;
+    car.icy = track.bridge[i] === 1;
     car.roadTurn = track.turn[i] * (-Math.sin(car.yaw) * tx[i] - Math.cos(car.yaw) * tz[i]);   // a curva como o carro a enxerga, de frente ou de ré
-    car.offTrack = wall < OPEN_WALL ? 0 : Math.abs(offset);   // túnel e tubo não têm mato: a faixa junto da parede não freia
+    car.offTrack = wall < OPEN_WALL || track.valley ? 0 : Math.abs(offset);   // túnel, tubo e vale não têm mato: a faixa junto da parede não freia
     car.lateral = offset;
 
     let delta = s - race.lastS;
@@ -119,27 +128,105 @@ export function createRace(car, opponents, { onCrash, onDestroyed }) {
     race.playerDist += delta;
     race.lastS = s;
 
-    placePlayerOnSurface(offset);
+    placePlayerOnSurface(offset, dt);
     playerProxy.dist = race.playerDist;
     playerProxy.lane = offset;
     playerProxy.v = car.speed;
   }
 
-  // Na estrada segue a altura dela; saindo do asfalto, vai descendo até a do terreno.
-  function placePlayerOnSurface(offset) {
-    const t = trackAt(race.playerDist);
+  // Altura do chão sob o carro, ou nulo no vão sobre o rio. No vale a encosta sobe dos dois lados da estrada;
+  // nos outros biomas, saindo do asfalto o carro vai descendo até a altura do terreno.
+  function groundUnder(t, offset) {
+    if (isEpic(race.playerDist)) {
+      if (inGap(race.playerDist)) return null;
+      // Ponte sem borda: fora dela (ou já abaixo dela, caindo) não há chão.
+      if (onBridge(race.playerDist) && (Math.abs(offset) > BRIDGE_HALF || (car.airborne && car.y < t.y - 0.5))) return null;
+      return t.y;
+    }
+    if (track.valley) return t.y + valleyRise(offset);
     const k = Math.min(1, Math.max(0, (Math.abs(offset) - ROAD_HALF) / SHOULDER_BLEND));
-    car.y = isEpic(race.playerDist) ? t.y : t.y + (track.heightAt(car.x, car.z) - t.y) * k * k * (3 - 2 * k);
+    return t.y + (track.heightAt(car.x, car.z) - t.y) * k * k * (3 - 2 * k);
+  }
+
+  // Na rampa e na encosta do vale a gravidade puxa o carro morro abaixo: devagar ele não sobe.
+  function pullDownhill(t, bank, dt) {
+    const along = inFlightZone(race.playerDist) ? t.slope : 0, nx = -t.tz, nz = t.tx;
+    if (!along && !bank) return;
+    const scale = GRAVITY * dt / (1 + along * along + bank * bank);
+    car.vx -= (along * t.tx + bank * nx) * scale;
+    car.vz -= (along * t.tz + bank * nz) * scale;
+  }
+
+  // Volta ao começo do trecho (base da rampa, cabeceira da ponte) depois de cair.
+  function respawnAtRamp() {
+    const t = trackAt(car.jump.respawn);
+    Object.assign(car, { x: t.x, z: t.z, y: t.y, vy: 0, vx: 0, vz: 0, speed: 0, spin: 0, airborne: false, sunk: 0, jump: null, trackIndex: -1 });
+    car.yaw = Math.atan2(-t.tx, -t.tz);
+    car.invulnerable = RESPAWN_PROTECTION;
+  }
+
+  // Bateu na face da outra margem por baixo da borda: volta para o vão e cai.
+  function bounceOffBank(t) {
+    const edge = car.jump.gaps[0][1], overshoot = wrapDistance(race.playerDist - edge) + 0.3;
+    const along = car.vx * t.tx + car.vz * t.tz;
+    car.x -= t.tx * overshoot;
+    car.z -= t.tz * overshoot;
+    car.vx -= t.tx * along * (1 + FACE_BOUNCE);
+    car.vz -= t.tz * along * (1 + FACE_BOUNCE);
+    reportWallCrash(Math.abs(along));
+    damagePlayer(car, Math.abs(along) * IMPACT_DAMAGE / CAR_MAX_HP);
+  }
+
+  // Altura do carro: colado no chão, voando sobre o rio ou boiando nele.
+  function updateHeight(t, offset, bank, dt) {
+    const ground = groundUnder(t, offset);
+    const groundRate = (car.vx * t.tx + car.vz * t.tz) * t.grade + (car.vx * -t.tz + car.vz * t.tx) * bank;
+    if (ground === null) car.jump = hazardAt(race.playerDist) ?? car.jump;
+    if (car.sunk > 0) {
+      if (sinkStep(car, car.jump.water, dt)) onCrash('crash', car.x, car.z, 0.6);   // bateu na água
+      if (car.sunk <= 0) respawnAtRamp();
+      return;
+    }
+    if (!car.airborne && !inFlightZone(race.playerDist) && ground !== null) {
+      car.y = ground ?? car.y;
+      car.vy = groundRate;
+      return;
+    }
+    const result = stepFlight(car, ground, groundRate, dt);
+    if (result === 'blocked' && car.jump) bounceOffBank(t);
+    if (result === 'landed') {
+      reportWallCrash(car.impact);
+      damagePlayer(car, Math.max(0, car.impact - HARD_LANDING) * LANDING_DAMAGE / CAR_MAX_HP);
+    }
+    if (ground === null && fallIsCertain(car, car.jump, race.playerDist)) car.sunk = FALL_TIME;   // não alcança mais: está caindo
+  }
+
+  function placePlayerOnSurface(offset, dt) {
+    const t = trackAt(race.playerDist);
+    const bank = track.valley && !isEpic(race.playerDist) ? valleySlope(offset) : 0;
+    updateHeight(t, offset, bank, dt);
+    if (!car.airborne && car.sunk <= 0) pullDownhill(t, bank, dt);
     const forward = -Math.sin(car.yaw) * t.tx - Math.cos(car.yaw) * t.tz;
-    car.pitch = Math.atan(t.slope * forward);
+    if (car.airborne || car.sunk > 0) {
+      const flat = Math.hypot(car.vx, car.vz), target = car.sunk > 0 ? 0.08 : Math.atan2(car.vy, Math.max(flat, 1)) * Math.sign(forward || 1);
+      car.pitch += (target - car.pitch) * Math.min(1, dt * AIR_PITCH_RATE);
+    } else {
+      car.pitch = Math.atan(t.slope * forward);
+    }
     const point = surfaceAt(race.playerDist, offset);
-    car.twist = point.roll;
+    // Saindo do tubo o carro deu uma volta completa (2π): equivale a giro nenhum, e não pode "desgirar" de volta.
+    if (car.tube && point.roll === 0) car.twist = Math.atan2(Math.sin(car.twist), Math.cos(car.twist));
+    car.tube = point.roll !== 0;
+    // Na encosta do vale o carro deita junto com o chão, como dentro do tubo (o giro é em volta da pista).
+    const lean = car.tube ? point.roll : car.airborne ? car.twist * Math.exp(-dt * BANK_RATE / 4) : Math.atan(bank);
+    car.twist = car.tube ? lean : car.twist + (lean - car.twist) * Math.min(1, dt * BANK_RATE);
+    if (Math.abs(car.twist) < 1e-4 && !car.tube) car.twist = 0;
     car.twistHeading = point.heading;
-    car.twistYaw = point.twistYaw;
-    car.twistPitch = point.twistPitch;
-    car.wx = point.roll ? point.x : car.x;
-    car.wy = point.roll ? point.y : car.y;
-    car.wz = point.roll ? point.z : car.z;
+    car.twistYaw = car.tube ? point.twistYaw : 0;
+    car.twistPitch = car.tube ? point.twistPitch : 0;
+    car.wx = car.tube ? point.x : car.x;
+    car.wy = car.tube ? point.y : car.y;
+    car.wz = car.tube ? point.z : car.z;
   }
 
   // Contramão: bico virado contra o sentido da pista e andando nessa direção. Dar ré não conta.
@@ -151,17 +238,11 @@ export function createRace(car, opponents, { onCrash, onDestroyed }) {
     race.wrongWay = wrongWayTime >= WRONG_WAY_DELAY;
   }
 
-  // Ninguém fica pendurado no vão: quem chega devagar na rampa é lançado com o mínimo para passar.
-  function ensureJumpSpeed() {
-    for (const racer of field) {
-      if (racer.remote || racer.dead > 0 || !isBoosted(racer.dist)) continue;
-      if (!racer.isPlayer) { racer.v = Math.max(racer.v, MIN_JUMP_SPEED); continue; }
-      if (car.speed < 0 || car.speed >= MIN_JUMP_SPEED) continue;
-      const fx = -Math.sin(car.yaw), fz = -Math.cos(car.yaw);
-      car.vx = fx * MIN_JUMP_SPEED;
-      car.vz = fz * MIN_JUMP_SPEED;
-      car.speed = MIN_JUMP_SPEED;
-    }
+  function fillNitro(racer, dt) {
+    if (racer.nitroToFill <= 0) return;
+    const amount = Math.min(racer.nitroToFill, dt / NITRO_FILL_TIME / racer.nitroCapacity, 1 - racer.nitro);
+    racer.nitro += amount;
+    racer.nitroToFill = racer.nitro >= 1 ? 0 : racer.nitroToFill - amount;
   }
 
   function updateSlipstreams(dt) {
@@ -192,6 +273,7 @@ export function createRace(car, opponents, { onCrash, onDestroyed }) {
     car.health = lifeAfterDestruction(car.destroyed);
     car.invulnerable = RESPAWN_PROTECTION;
     car.flip = null;
+    car.destroyedBy = null;
     for (const name in car.effects) car.effects[name] = 0;
   }
 
@@ -214,6 +296,7 @@ export function createRace(car, opponents, { onCrash, onDestroyed }) {
     }
     trackCapsizes(car, dt);
     playerProxy.dead = Math.max(0, car.wrecked);
+    playerProxy.sunk = car.sunk;
     playerProxy.protectedFor = car.invulnerable;
   }
 
@@ -306,7 +389,10 @@ export function createRace(car, opponents, { onCrash, onDestroyed }) {
     updatePlayerOnTrack(dt);
     updateWrongWay(dt);
     updateSlipstreams(dt);
-    if (race.started) ensureJumpSpeed();
+    if (race.started) {
+      fillNitro(car, dt);
+      for (const op of opponents) if (!op.remote) fillNitro(op, dt);
+    }
     for (const op of opponents) {
       if (op.remote) updateRemoteRacer(op, dt);
       else updateOpponent(op, dt, field, race.started, activeTraps);
@@ -314,6 +400,7 @@ export function createRace(car, opponents, { onCrash, onDestroyed }) {
     collisions.update(dt);
     playerProxy.x = car.x;
     playerProxy.y = car.y;
+    playerProxy.airborne = car.airborne;
     playerProxy.z = car.z;
     playerProxy.yaw = car.yaw;
     Object.assign(playerProxy, { wx: car.wx, wy: car.wy, wz: car.wz, twist: car.twist });

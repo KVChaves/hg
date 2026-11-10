@@ -8,15 +8,18 @@ const PUNCTURE_SPEED_FACTOR = 0.75, PUNCTURE_PULL = 0.16, OIL_WOBBLE = 0.5, OIL_
 const ENCLOSED_GRIP = 1.5, ENCLOSED_SIDE_GRIP = 13, ENCLOSED_CURVE_ASSIST = 0.8;   // em túnel e tubo o carro cola na pista e acompanha a curva
 const GRIP_ACCEL = 18, GRIP_MIN_SPEED = 8;           // aceleração lateral máxima sem derrapar: curva fechada em alta não dá
 const DRIFT_YAW_RATE = 2.3, DRIFT_FOLLOW = 0.55;     // no drift o bico gira mais rápido e a trajetória acompanha só parte do giro
+const ICE_SIDE_GRIP = 1.8;                           // na ponte de gelo o carro escorrega de lado
 const OIL_SPIN = 1.4, OIL_SWING_RATE = 5.5, OIL_SPIN_FULL_SPEED = 15;      // rabeada: giro em rad/s e ritmo do vaivém
 
 export function createCar() {
   return {
     x: 0, y: 0, z: 0, pitch: 0, yaw: 0, vx: 0, vz: 0,
-    steer: 0, speed: 0, nitro: 1, health: 1, roll: 0, bob: 0,
+    // O tanque de nitro larga vazio e enche depois da largada (race.js).
+    steer: 0, speed: 0, nitro: 0, nitroToFill: 1, health: 1, roll: 0, bob: 0,
     trackIndex: -1, offTrack: 0, lateral: 0, nitroActive: false,
     visualSteer: 0, effects: createEffects(), wrecked: 0, flip: null, invulnerable: 0, destroyed: 0, slipping: false,
     capsizes: 0, uprightFor: Infinity, rig: createRig(), overturned: false, spin: 0, drifting: false, slipstream: 0, armor: 1, wx: 0, wy: 0, wz: 0, twist: 0, twistHeading: 0, twistYaw: 0, twistPitch: 0, enclosed: false, roadTurn: 0, nitroCapacity: 1,
+    vy: 0, airborne: false, sunk: 0, jump: null, tube: false, impact: 0, icy: false, destroyedBy: null,   // voo nas rampas e queda no rio (flight.js)
   };
 }
 
@@ -50,6 +53,21 @@ export function damagePlayer(car, amount) {
   if (car.invulnerable <= 0) car.health = Math.max(0, car.health - amount / car.armor);
 }
 
+const AIR_DRAG = 0.02, WATER_DRAG = 3;             // por segundo
+
+// No ar (ou dentro do rio) as rodas não tocam nada: acelerar, frear e virar não mudam a trajetória.
+function coastWithoutGrip(car, dt, forward) {
+  const drag = Math.exp(-(car.sunk > 0 ? WATER_DRAG : AIR_DRAG) * dt);
+  car.vx *= drag;
+  car.vz *= drag;
+  car.x += car.vx * dt;
+  car.z += car.vz * dt;
+  car.speed = forward * drag;
+  car.nitroActive = car.drifting = car.slipping = false;
+  car.visualSteer = car.steer;
+  car.bob += Math.abs(car.speed) * dt * 1.1;
+}
+
 // `nitroHandReady`: a mão do piloto está no registro; sem isso o nitro não abre.
 export function updateCar(car, dt, keys, canAccelerate, nitroHandReady) {
   tickEffects(car.effects, dt);
@@ -57,6 +75,7 @@ export function updateCar(car, dt, keys, canAccelerate, nitroHandReady) {
 
   const fx = -Math.sin(car.yaw), fz = -Math.cos(car.yaw);
   const rx = Math.cos(car.yaw), rz = -Math.sin(car.yaw);
+  if (car.airborne || car.sunk > 0) { coastWithoutGrip(car, dt, fx * car.vx + fz * car.vz); return; }
   let forward = car.vx * fx + car.vz * fz;
   let side = car.vx * rx + car.vz * rz;
 
@@ -83,7 +102,7 @@ export function updateCar(car, dt, keys, canAccelerate, nitroHandReady) {
   if (car.offTrack > OFFROAD_LIMIT) forward -= forward * 1.4 * dt;
   if (car.wrecked > 0) forward *= Math.exp(-WRECK_BRAKING * dt);
 
-  side *= Math.exp(-(oil > 0 ? OIL_GRIP : handbrake ? 1.2 : car.enclosed ? ENCLOSED_SIDE_GRIP : 7) * dt);
+  side *= Math.exp(-(oil > 0 ? OIL_GRIP : handbrake ? 1.2 : car.icy ? ICE_SIDE_GRIP : car.enclosed ? ENCLOSED_SIDE_GRIP : 7) * dt);
 
   // Pneu furado puxa para um lado; óleo faz o volante escapar sozinho.
   const disturbance = (puncture > 0 ? PUNCTURE_PULL : 0) + (oil > 0 ? Math.sin(car.bob * 3) * OIL_WOBBLE : 0);

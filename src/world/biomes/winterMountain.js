@@ -9,7 +9,10 @@ export const WINTER_MOUNTAIN = {
   sky: 0xa4b8cc, fog: [16, 200], cabinTint: 0xc4d8f0,
   shape: { wiggle: 0.24, targetLength: 2200, relief: 30, hillScale: 210, banks: 11, sharpCurves: 2 },
   layout: {
-    jumpHops: 2,
+    jump: { fallLabel: 'CAIU NO LAGO GELADO' },
+    hazards: [{ kind: 'snowslope', count: 2 }, { kind: 'icicles', count: 2 }],   // encostas de neve e pingentes na boca dos túneis
+    // Ponte de gelo sem borda sobre um cânion: escorrega, e quem sai pela beirada cai no lago lá embaixo.
+    bridge: { length: 150, below: 16, fallLabel: 'CAIU DA PONTE' },
     tunnels: { count: 2, length: [110, 170] },
   },
   ground: {
@@ -43,7 +46,7 @@ export const WINTER_MOUNTAIN = {
       cutTop(ctx, w, x => Math.round(1.5 + Math.sin(x * 0.17) * 1.5));
     },
   },
-  epic: { shallow: true, ramp: { stone: [0x3e4652, 0x5a6470, 0x6e7884, 0x4e5662], mortar: 0x2a3038, moss: [0xe8f0f6, 0xd0dce6, 0xffffff] }, abyss: 0x3a6a9a, glow: false, edge: '#c8f4ff', tube: { wall: '#7cc4e4', speckle: ['#a8def2', '#5aa4cc', '#d4f0fa'], rib: 0xb8e6f6, portal: 0xeaf6fc, lines: [{ angle: Math.PI * 0.5, width: 0.04, color: 0xc8f4ff }] } },
+  epic: { ramp: { stone: [0x3e4652, 0x5a6470, 0x6e7884, 0x4e5662], mortar: 0x2a3038, moss: [0xe8f0f6, 0xd0dce6, 0xffffff] }, abyss: 0x3a6a9a, glow: false, edge: '#c8f4ff', tube: { wall: '#7cc4e4', speckle: ['#a8def2', '#5aa4cc', '#d4f0fa'], rib: 0xb8e6f6, portal: 0xeaf6fc, lines: [{ angle: Math.PI * 0.5, width: 0.04, color: 0xc8f4ff }] } },
   weather: { count: 700, size: 2, fall: 11, sway: 3.2, swaySpeed: 1.8, colors: [0xffffff, 0xe8f0fa] },
 
   paintSky(ctx, w, h) {

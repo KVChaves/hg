@@ -89,17 +89,24 @@ function barkMaterial() {
   return new THREE.MeshBasicMaterial({ map: texture });
 }
 
+// Vale em U: leito plano da largura da estrada, encostas que sobem 12 m até 26 m do centro e borda de 10 m.
+// O carro pode subir as encostas; as árvores e as pedras ficam além da borda, para ninguém atravessá-las.
+const VALLEY = { floor: 6, top: 26, height: 12, lip: 10 };
+const RIM = VALLEY.top + VALLEY.lip;
+
 const LEAF_HIGHLIGHT = '#7ab84a';
 const LEAF_GREENS = ['#2e6a2a', '#3e8a34', '#1e4a22', '#5a9a3a'];
 const DARK_GREENS = ['#16381c', '#1e4a22', '#2a5a26', '#234e20'];
 
 export const JUNGLE = {
-  id: 'jungle', name: 'SELVA', music: 'forestField',
+  id: 'jungle', name: 'SELVA', music: 'jungle',
   sky: 0x3e5c3e, fog: [6, 120], cabinTint: 0x96c48c,
-  // Estrada de terra no fundo de um vale: barrancos começam colados na pista e o leito sobe e desce.
-  shape: { wiggle: 0.26, targetLength: 2050, relief: 11, hillScale: 150, banks: 15, bankRange: [10, 30], sharpCurves: 2 },
+  // Estrada de terra no fundo de um vale côncavo, sem acostamento: as encostas começam na beira da estrada.
+  // O rio sob a rampa corta o vale de lado a lado (chasmRange: até onde o leito dele vai, a partir da pista).
+  shape: { wiggle: 0.26, targetLength: 2050, relief: 11, hillScale: 150, valley: VALLEY, chasmRange: [140, 190], sharpCurves: 2 },
   layout: {
-    jumpHops: 2,
+    jump: { fallLabel: 'CAIU NO RIO' },
+    hazards: [{ kind: 'leaningTree', count: 2 }, { kind: 'animalCrossing', count: 2 }],
     tunnels: { count: 3, length: [80, 140], open: true },
     bumps: { height: 1.2, length: 60 },
   },
@@ -122,7 +129,7 @@ export const JUNGLE = {
   tunnel: { rib: 0x2a1c10, leaves: 0x24561f },
   // Sem muro: os barrancos do vale fecham a pista (o limite de colisão continua no mesmo lugar).
   wall: null,
-  epic: { shallow: true, ramp: { stone: [0x2e3624, 0x4a5236, 0x5a6040, 0x3e4630], mortar: 0x1c2016, moss: [0x4a7a26, 0x6a9a34, 0x3a5a1e] }, abyss: 0x1f6a5c, glow: false, edge: '#7ab84a', tube: { wall: '#4a3a24', speckle: ['#3a7a30', '#5a4a2c', '#2e5a26'], rib: 0x2a1c10, portal: 0x3e6a2e, lines: [{ angle: Math.PI * 0.5, width: 0.05, color: 0x7ab84a }, { angle: Math.PI * 1.5, width: 0.05, color: 0x7ab84a }] } },
+  epic: { ramp: { stone: [0x2e3624, 0x4a5236, 0x5a6040, 0x3e4630], mortar: 0x1c2016, moss: [0x4a7a26, 0x6a9a34, 0x3a5a1e] }, abyss: 0x1f6a5c, glow: false, edge: '#7ab84a', tube: { wall: '#4a3a24', speckle: ['#3a7a30', '#5a4a2c', '#2e5a26'], rib: 0x2a1c10, portal: 0x3e6a2e, lines: [{ angle: Math.PI * 0.5, width: 0.05, color: 0x7ab84a }, { angle: Math.PI * 1.5, width: 0.05, color: 0x7ab84a }] } },
   weather: { count: 620, streak: 2.8, fall: 46, sway: 0.15, swaySpeed: 1, colors: [0xa8c4b0] },
 
   paintSky(ctx, w, h) {
@@ -139,8 +146,8 @@ export const JUNGLE = {
     root.translate(0, 2.5, 0);
     const crown = billboard(paintCanopy(DARK_GREENS), 30, 18, 26);
     const trees = [{ geometry: trunk, material: bark }, { geometry: root, material: bark }, crown];
-    scatter(ctx, { count: 520, clearance: 16, sizeOf: random => 0.8 + random() * 0.8, parts: trees });
-    nearRoad(ctx, { count: 240, from: EDGE, to: EDGE + 16, sizeOf: random => 0.7 + random() * 0.6, parts: trees });
+    scatter(ctx, { count: 520, clearance: RIM + 6, sizeOf: random => 0.8 + random() * 0.8, parts: trees });
+    nearRoad(ctx, { count: 240, from: RIM + 2, to: RIM + 18, sizeOf: random => 0.7 + random() * 0.6, parts: trees });
 
     const bigLeaves = billboard(paintBroadLeaves(LEAF_GREENS, 7), 9, 8);
     nearRoad(ctx, { count: 420, from: EDGE - 1.5, to: EDGE + 14, sizeOf: random => 0.6 + random() * 1.1, parts: [bigLeaves] });
@@ -155,7 +162,7 @@ export const JUNGLE = {
 
     const rock = new THREE.DodecahedronGeometry(2, 0);
     nearRoad(ctx, {
-      count: 90, from: EDGE - 2, to: EDGE + 8, sizeOf: random => [0.5 + random(), 0.4 + random() * 0.6, 0.5 + random()],
+      count: 90, from: RIM, to: RIM + 10, sizeOf: random => [0.5 + random(), 0.4 + random() * 0.6, 0.5 + random()],
       parts: [{ geometry: rock, material: solid(0xffffff), colorOf: pickFrom([0x4e6a3a, 0x5e7248, 0x3e5230]) }],
     });
   },

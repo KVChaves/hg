@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { track } from './track.js';
 import { pixelTexture } from './textures.js';
+import { wallOpenAt } from './hazardSites.js';
 
 // Muros dos dois lados da pista, com o visual do bioma. Acompanham `track.wall`, que é o limite da colisão;
 // o centro do carro para nesse limite, então o muro fica meia largura de carro além dele.
@@ -28,7 +29,7 @@ function wallGeometry(side, style, isCovered) {
     const base = track.drop[k] > 0 ? py[k] : Math.min(py[k], ground);     // nas plataformas o muro assenta nelas, não no fundo do abismo
     pos.set([x, base - BURIED, z, x, Math.max(py[k], ground) + style.height, z], a * 3);
     uv.set([u, 0, u, 1], a * 2);
-    if (i < count && !isCovered(k)) index.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+    if (i < count && !isCovered(k, side)) index.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
   }
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
@@ -41,7 +42,7 @@ function wallGeometry(side, style, isCovered) {
 export function buildWalls(group, layout, style) {
   if (!style) return;                                // bioma sem muro: o próprio barranco fecha a pista (o limite continua)
   const solid = layout.tunnels.filter(tunnel => !tunnel.open);
-  const isCovered = k => track.gap[k] === 1 || track.drop[k] > 0 || track.roll[k] !== 0 || solid.some(({ start, length }) => {
+  const isCovered = (k, side) => wallOpenAt(layout, k, side) || track.gap[k] === 1 || track.drop[k] > 0 || track.bed[k] > 0 || track.lift[k] > 0 || track.roll[k] !== 0 || solid.some(({ start, length }) => {
     const offset = ((k * track.step - start) % track.length + track.length) % track.length;
     return offset < length;
   });

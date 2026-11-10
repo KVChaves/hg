@@ -9,7 +9,9 @@ export const STADIUM = {
   sky: 0xbcdcf0, fog: [40, 340], cabinTint: 0xfff4e4,
   shape: { wiggle: 0.14, targetLength: 2100, relief: 3.5, hillScale: 220, sharpCurves: 2 },
   layout: {
-    jumpHops: 2,
+    jump: { fallLabel: 'CAIU NA PISCINA' },
+    hazards: [{ kind: 'roadworks', count: 2 }, { kind: 'pitTires', count: 2 }],   // obras sinalizadas e pneus soltos do box
+    twist: true,                                     // só a pista de corrida tem o tubo giratório
     tunnels: { count: 1, length: [90, 130] },
   },
   ground: {
@@ -40,7 +42,7 @@ export const STADIUM = {
       ctx.fillRect(0, h - 6, w, 6);
     },
   },
-  epic: { shallow: true, ramp: { stone: [0x6e6c68, 0x8a8884, 0x9a9890, 0x7a7874], mortar: 0x4a4844, moss: [0xd82020, 0xe8e4dc] }, abyss: 0x2060c0, glow: false, edge: '#f0ece4', tube: { wall: '#d8d4cc', speckle: ['#d82020', '#2060c0', '#c8c4bc'], rib: 0xd82020, portal: 0x2060c0, lines: [{ angle: Math.PI * 0.5, width: 0.05, color: 0xfff4c8 }, { angle: Math.PI * 1.5, width: 0.05, color: 0xfff4c8 }] } },
+  epic: { ramp: { stone: [0x6e6c68, 0x8a8884, 0x9a9890, 0x7a7874], mortar: 0x4a4844, moss: [0xd82020, 0xe8e4dc] }, abyss: 0x2060c0, glow: false, edge: '#f0ece4', tube: { wall: '#d8d4cc', speckle: ['#d82020', '#2060c0', '#c8c4bc'], rib: 0xd82020, portal: 0x2060c0, lines: [{ angle: Math.PI * 0.5, width: 0.05, color: 0xfff4c8 }, { angle: Math.PI * 1.5, width: 0.05, color: 0xfff4c8 }] } },
   weather: { count: 260, size: 2, fall: 3.5, sway: 2.4, swaySpeed: 2.2, colors: [0xff3040, 0x3070f0, 0xf0d020, 0x30c060, 0xffffff] },
 
   paintSky(ctx, w, h) {

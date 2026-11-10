@@ -3,7 +3,7 @@ import { bearingFrom, damagePlayer } from '../game/car.js';
 import { createMatch } from '../game/championship.js';
 import { damageOpponent } from '../game/opponents.js';
 import { hazardType } from '../game/trapTypes.js';
-import { BIOMES, pickBiome } from '../world/biomes/index.js';
+import { BIOMES, pickMatchBiome } from '../world/biomes/index.js';
 import { createHarpoonVisual } from '../world/harpoonVisual.js';
 
 // Partida online. Cada navegador simula o próprio carro e o admin simula os bots; todos enviam a posição
@@ -94,7 +94,7 @@ export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = 
     const names = race.field.map(racer => racer.name);
     const inverted = getMatch().nextGrid?.filter(name => names.includes(name));
     const grid = inverted ?? [...names].sort(() => Math.random() - 0.5);
-    broadcast({ k: 'go', b: pickBiome(getBiome()).id, s: Math.floor(Math.random() * 1e9), g: grid });
+    broadcast({ k: 'go', b: pickMatchBiome(getMatch().biomesPlayed).id, s: Math.floor(Math.random() * 1e9), g: grid });
   }
 
   function stepHost(dt) {
@@ -360,7 +360,7 @@ export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = 
     if (online.active) net.relay({ k: 'boom', n: id });
   }
   function sendObstacle(ob) {
-    if (online.active) net.relay({ k: 'ob', n: ob.id, i: ob.type.id, d: round(ob.dist), l: round(ob.lane), s: ob.side });
+    if (online.active) net.relay({ k: 'ob', n: ob.id, i: ob.type.id, d: round(ob.dist), l: round(ob.lane), s: ob.side, w: ob.site ? ob.site.index : -1, p: ob.phase });
   }
   function sendObstacleBreak(ob) {
     if (online.active) net.relay({ k: 'obx', n: ob.id });

@@ -29,6 +29,7 @@ export function createExternalView({ scene, car, look, initialSpec, seed }) {
       cameraYaw = car.yaw;
     },
     applySpec: spec => model.apply(spec),
+    setLights: on => model.setLights(on),
     update(dt) {
       model.roll(car.speed * dt);
       if (!view.active) return;
@@ -42,11 +43,11 @@ export function createExternalView({ scene, car, look, initialSpec, seed }) {
       model.setNitro(car.nitroActive);
 
       cameraYaw += (car.yaw - cameraYaw) * Math.min(1, dt * FOLLOW_SPEED);
-      const angle = (car.twist ? car.twistHeading : cameraYaw) + look.yaw;   // no tubo a câmera segue a pista, não o giro do carro
+      const angle = (car.tube ? car.twistHeading : cameraYaw) + look.yaw;   // no tubo a câmera segue a pista, não o giro do carro
       let fx = -Math.sin(angle), fy = 0, fz = -Math.cos(angle);
       // No tubo o "para cima" do carro gira junto com a estrada.
       const sideUp = -Math.sin(car.twist), rightX = Math.cos(car.yaw), rightZ = -Math.sin(car.yaw), upY = Math.cos(car.twist);
-      if (car.twist) {                                // e a câmera segue o rumo da hélice, não o eixo do tubo
+      if (car.tube) {                                 // e a câmera segue o rumo da hélice, não o eixo do tubo
         const skew = Math.tan(car.twistYaw);
         fx += rightX * upY * skew;
         fy = Math.sin(car.twist) * skew;

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { TRACK_WIDTH } from '../config.js';
 import { TUNNEL_HALF_WIDTH, TUNNEL_HEIGHT } from '../game/mapLayout.js';
 import { track, trackAt } from './track.js';
 import { pixelTexture } from './textures.js';
@@ -97,6 +98,30 @@ function addOpenTunnel(group, tunnel, style) {
   }
 }
 
+// Faixas que brilham na beira da estrada dentro do túnel escuro: no breu é só o que se vê da pista.
+const EDGE_GLOW_WIDTH = 0.35, EDGE_GLOW_LIFT = 0.03;
+function addGlowingEdges(group, { start, length }, colors) {
+  const { step } = track, rows = Math.max(1, Math.round(length / step)), half = TRACK_WIDTH / 2;
+  colors.forEach((color, n) => {
+    const side = n % 2 ? 1 : -1, inner = side * (half - EDGE_GLOW_WIDTH), outer = side * half;
+    const pos = new Float32Array((rows + 1) * 6), index = [];
+    for (let i = 0; i <= rows; i++) {
+      const t = trackAt(start + length * i / rows);
+      pos.set([t.x - t.tz * inner, t.y + EDGE_GLOW_LIFT, t.z + t.tx * inner, t.x - t.tz * outer, t.y + EDGE_GLOW_LIFT, t.z + t.tx * outer], i * 6);
+      if (i < rows) index.push(i * 2, i * 2 + 1, i * 2 + 2, i * 2 + 1, i * 2 + 3, i * 2 + 2);
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geometry.setIndex(index);
+    group.add(new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color, fog: false, side: THREE.DoubleSide })));
+  });
+}
+
+// Um túnel escuro (`tunnel.dark`) usa o próprio visual (`dark.style`, por cima do estilo do bioma).
 export function buildTunnels(group, layout, style) {
-  for (const tunnel of layout.tunnels) (tunnel.open ? addOpenTunnel : addSolidTunnel)(group, tunnel, style);
+  for (const tunnel of layout.tunnels) {
+    if (tunnel.open) { addOpenTunnel(group, tunnel, style); continue; }
+    addSolidTunnel(group, tunnel, tunnel.dark ? { ...style, ...tunnel.dark.style } : style);
+    if (tunnel.dark?.glowEdges) addGlowingEdges(group, tunnel, tunnel.dark.glowEdges);
+  }
 }

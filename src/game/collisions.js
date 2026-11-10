@@ -23,7 +23,8 @@ const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
 
 export function createCollisions({ car, field, onCrash, onDestroyed }) {
   const stateOf = racer => (racer.isPlayer ? car : racer);
-  const isOut = racer => racer.dead > 0;
+  const isOut = racer => racer.dead > 0 || racer.sunk > 0;
+  const heightOfBody = racer => (racer.isPlayer ? car.y : racer.y);
 
   function readBody(racer) {
     const yaw = racer.isPlayer ? car.yaw : racer.group.rotation.y;
@@ -31,7 +32,7 @@ export function createCollisions({ car, field, onCrash, onDestroyed }) {
     const x = racer.isPlayer ? car.x : racer.x, z = racer.isPlayer ? car.z : racer.z;
     const vx = racer.isPlayer ? car.vx : racer.remote ? racer.vx : fx * racer.v + rx * racer.laneRate;
     const vz = racer.isPlayer ? car.vz : racer.remote ? racer.vz : fz * racer.v + rz * racer.laneRate;
-    return { racer, x, z, fx, fz, rx, rz, vx, vz };
+    return { racer, x, y: heightOfBody(racer), z, fx, fz, rx, rz, vx, vz };
   }
 
   const halfExtent = (body, ax, az) =>
@@ -152,7 +153,7 @@ export function createCollisions({ car, field, onCrash, onDestroyed }) {
     hurt(b.racer, damage, a.racer);
   }
 
-  const heightOf = racer => (isOut(racer) ? flipElevation(stateOf(racer).flip, racer.dead) : rigElevation(stateOf(racer).rig));
+  const heightOf = racer => (racer.dead > 0 ? flipElevation(stateOf(racer).flip, racer.dead) : rigElevation(stateOf(racer).rig));
 
   function collideAll() {
     const bodies = field.map(readBody);
@@ -160,7 +161,7 @@ export function createCollisions({ car, field, onCrash, onDestroyed }) {
       for (let k = i + 1; k < bodies.length; k++) {
         const a = bodies[i], b = bodies[k];
         if (Math.abs(wrapDistance(a.racer.dist - b.racer.dist)) > NEARBY_DISTANCE || Math.hypot(a.x - b.x, a.z - b.z) > NEARBY_DISTANCE) continue;
-        if (Math.abs(heightOf(a.racer) - heightOf(b.racer)) > CAR_HEIGHT) continue;
+        if (Math.abs(a.y + heightOf(a.racer) - b.y - heightOf(b.racer)) > CAR_HEIGHT) continue;   // um voando por cima do outro não bate
         const overlap = findOverlap(a, b);
         if (overlap) resolve(a, b, overlap);
       }

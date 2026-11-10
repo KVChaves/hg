@@ -52,6 +52,14 @@ const BUILDERS = {
     add(body, tire(), 0x161618, 0.55, 0.22, 0.1);
     add(body, tire(), 0x232326, 0, 0.66, 0.05);
   },
+  bigTire(body) {                                    // dois pneus de pé, girando em volta do eixo (z): o corpo fica no centro
+    body.position.y = 1.4;
+    for (const z of [-0.5, 0.5]) {
+      add(body, new THREE.TorusGeometry(1.0, 0.42, 8, 14), 0x161618, 0, 0, z);
+      add(body, cylinder(0.62, 0.62, 0.3, 10).rotateX(Math.PI / 2), 0xb8b8c0, 0, 0, z);
+      add(body, box(0.5, 0.18, 0.32), 0xf0d020, 0.8, 0.8, z * 1.5);   // faixa amarela: dá para ver que está rolando
+    }
+  },
   cones(body) {
     for (const x of [-1.1, 0, 1.1]) {
       add(body, cone(0.4, 1.1, 8), 0xf06a10, x, 0.55, 0);
@@ -98,17 +106,18 @@ export function createObstacleVisual(id) {
 }
 
 // Cacos que voam e caem quando o obstáculo quebra.
-const GRAVITY = 22, DEBRIS_LIFE = 0.9;
+const GRAVITY = 22, DEBRIS_LIFE = 0.9, DUST_LIFE = 1.4;
 const shard = box(0.3, 0.3, 0.3);
 
-export function createDebris(scene, position, colors, count = 12) {
+// `dust`: em vez de estourar, os pedaços miúdos só caem do ponto (o aviso antes de algo despencar).
+export function createDebris(scene, position, colors, count = 12, { dust = false } = {}) {
   const group = new THREE.Group();
   group.position.copy(position);
   const pieces = [];
   for (let i = 0; i < count; i++) {
-    const mesh = add(group, shard, colors[i % colors.length], 0, 0.8, 0);
-    mesh.scale.setScalar(0.6 + Math.random() * 1.2);
-    pieces.push({ mesh, vx: (Math.random() - 0.5) * 9, vy: 4 + Math.random() * 7, vz: (Math.random() - 0.5) * 9 });
+    const mesh = add(group, shard, colors[i % colors.length], (Math.random() - 0.5) * 2, dust ? Math.random() : 0.8, (Math.random() - 0.5) * 2);
+    mesh.scale.setScalar(dust ? 0.25 + Math.random() * 0.4 : 0.6 + Math.random() * 1.2);
+    pieces.push(dust ? { mesh, vx: (Math.random() - 0.5), vy: -Math.random() * 3, vz: (Math.random() - 0.5) } : { mesh, vx: (Math.random() - 0.5) * 9, vy: 4 + Math.random() * 7, vz: (Math.random() - 0.5) * 9 });
   }
   scene.add(group);
   let age = 0;
@@ -123,11 +132,21 @@ export function createDebris(scene, position, colors, count = 12) {
         p.mesh.rotation.x += p.vx * dt;
         p.mesh.rotation.z += p.vz * dt;
       }
-      return age < DEBRIS_LIFE;
+      return age < (dust ? DUST_LIFE : DEBRIS_LIFE);
     },
     dispose() {
       scene.remove(group);
       for (const p of pieces) p.mesh.material.dispose();
     },
   };
+}
+
+// Sombra no chão de onde algo vai cair: cresce enquanto o objeto se aproxima, para dar tempo de desviar.
+const shadowGeometry = new THREE.CircleGeometry(1, 16);
+shadowGeometry.rotateX(-Math.PI / 2);
+export function createShadow(radius) {
+  const mesh = new THREE.Mesh(shadowGeometry, new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.5, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -6 }));
+  mesh.position.y = 0.05;
+  mesh.userData.radius = radius;
+  return mesh;
 }

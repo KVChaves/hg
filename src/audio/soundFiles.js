@@ -44,6 +44,7 @@ export const MENU_MUSIC = ['01', '02', '03', '04', '05'].map(name => `assets/aud
 export const PHASE_MUSIC = {
   fireFactory: 'assets/audio/music/fire-factory.mp3',
   forestField: 'assets/audio/music/forest-field.mp3',
+  jungle: 'assets/audio/music/jungle.mp3',
   neonTokyo: 'assets/audio/music/neon-tokyo.mp3',
   stadium: 'assets/audio/music/stadium.mp3',
   winterMountain: 'assets/audio/music/winter-mountain.mp3',

@@ -65,7 +65,7 @@ function paintDamageBand(width, height, edgeAt) {
   return band;
 }
 
-export function createHud(canvas, { pause, scope, featFeed, mainMenu, multiplayer, podium, matchSetup, results, matchLabel, biomeName, race, weapon, hands, garage, workshop, externalView, spectator, canSkipSpectate, isLocked, combat, car, activeCamera, opponents, isBehindCabin, isInSmoke, roadsideHelp, traps }) {
+export function createHud(canvas, { killFeed, pause, scope, featFeed, mainMenu, multiplayer, podium, matchSetup, results, matchLabel, biomeName, race, weapon, hands, garage, workshop, externalView, spectator, canSkipSpectate, isLocked, combat, car, activeCamera, opponents, isBehindCabin, isInSmoke, roadsideHelp, traps }) {
   canvas.width = VIEW.width;
   canvas.height = VIEW.height;
   const ctx = canvas.getContext('2d');
@@ -174,9 +174,15 @@ export function createHud(canvas, { pause, scope, featFeed, mainMenu, multiplaye
     if (!race.started && race.intro <= 0) centered(ctx, String(Math.min(3, Math.ceil(race.countdown))), 118, '#ffe9a0', 4);
     if (!race.started && race.intro > 0) drawIntroPopup(ctx, race.intro);
     else if (race.goTimer > 0) centered(ctx, 'GO!', 118, '#6fe070', 4);
+    if (race.started) killFeed.draw(ctx);
     if (car.wrecked > 0) {
       centered(ctx, 'CARRO DESTRUIDO', 118, '#f06050', 2);
-      centered(ctx, `VOLTA EM ${Math.ceil(car.wrecked)}`, 142, '#e8d8c0');
+      const by = car.destroyedBy ? 12 : 0;
+      if (by) centered(ctx, `POR ${String(car.destroyedBy).toUpperCase()}`, 140, '#ffe9a0');
+      centered(ctx, `VOLTA EM ${Math.ceil(car.wrecked)}`, 142 + by, '#e8d8c0');
+    } else if (car.sunk > 0) {
+      centered(ctx, car.jump?.fallLabel ?? 'CAIU', 118, '#5ac8f0', 2);
+      centered(ctx, `VOLTA EM ${Math.ceil(car.sunk)}`, 142, '#e8d8c0');
     } else if (car.overturned) {
       centered(ctx, 'CAPOTOU', 118, '#f06050', 2);
     }

@@ -5,7 +5,8 @@ import { createAtmosphere } from './atmosphere.js';
 import { buildTunnels } from './tunnels.js';
 import { buildWalls } from './walls.js';
 import { buildEpicSections } from './epicVisuals.js';
-import { createRandom, generateTrack, isOverChasm, surfaceAt, track, trackAt } from './track.js';
+import { buildHazardSites } from './hazardSites.js';
+import { createRandom, generateTrack, isOverChasm, surfaceAt, track, trackAt, valleyReach } from './track.js';
 import { noiseTexture, pixelTexture } from './textures.js';
 
 // Cenário de cada corrida: terreno, estrada, largada e objetos do bioma, refeitos a cada mapa novo.
@@ -56,7 +57,7 @@ function addGround(group, biome, bounds, groundMaterial) {
   for (let j = 0; j <= nz; j++) {
     for (let i = 0; i <= nx; i++) {
       const x = minX + width * i / nx, z = minZ + depth * j / nz, v = j * (nx + 1) + i;
-      pos.set([x, track.heightAt(x, z), z], v * 3);
+      pos.set([x, track.meshHeightAt(x, z), z], v * 3);
       uv.set([x / GROUND_TILE, z / GROUND_TILE], v * 2);
       if (i < nx && j < nz) index.push(v, v + nx + 1, v + 1, v + 1, v + nx + 1, v + nx + 2);
     }
@@ -89,6 +90,33 @@ function kerbTexture([first, second]) {
   return texture;
 }
 
+// Encostas do vale, de cada lado da estrada até além da borda, numa malha fina que segue a curva do perfil.
+// Sem acostamento: a primeira coluna começa colada na beira da estrada, na altura do chão dela.
+const VALLEY_COLUMN = 2, VALLEY_OVERLAP = 12;
+function valleyGeometry(side) {
+  const { count, step, px, py, pz, tx, tz, lift, drop, bed } = track, floor = track.valley.floor;
+  const columns = Math.ceil((valleyReach() + VALLEY_OVERLAP - floor) / VALLEY_COLUMN), rowSize = columns + 1;
+  const pos = new Float32Array((count + 1) * rowSize * 3), uv = new Float32Array((count + 1) * rowSize * 2), index = [];
+  for (let i = 0; i <= count; i++) {
+    const k = i % count;
+    for (let c = 0; c <= columns; c++) {
+      const lateral = side * (floor + c * VALLEY_COLUMN), x = px[k] - tz[k] * lateral, z = pz[k] + tx[k] * lateral, v = i * rowSize + c;
+      pos.set([x, c === 0 ? py[k] - lift[k] : track.heightAt(x, z), z], v * 3);
+      uv.set([lateral / 8, i * step / 8], v * 2);
+      const next = (k + 1) % count;
+      if (i < count && c < columns && !drop[k] && !drop[next] && !bed[k] && !bed[next]) {
+        if (side > 0) index.push(v, v + rowSize, v + 1, v + 1, v + rowSize, v + rowSize + 1);
+        else index.push(v, v + 1, v + rowSize, v + 1, v + rowSize + 1, v + rowSize);
+      }
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geometry.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  geometry.setIndex(index);
+  return geometry;
+}
+
 function addRoad(group, biome, groundMaterial) {
   const { py } = track, half = TRACK_WIDTH / 2, outer = half + KERB_WIDTH;
   const offset = n => ({ polygonOffset: true, polygonOffsetFactor: n, polygonOffsetUnits: n });
@@ -96,8 +124,12 @@ function addRoad(group, biome, groundMaterial) {
   const kerbMaterial = new THREE.MeshBasicMaterial({ map: kerbTexture(biome.kerb), side: THREE.DoubleSide, ...offset(-3) });
 
   const roadY = k => py[k], kerbY = k => py[k] + 0.005, groundY = (k, x, z) => track.heightAt(x, z);
-  const isGap = k => track.gap[k] === 1, overChasm = k => track.drop[k] > 0;
+  const isGap = k => track.gap[k] === 1 || track.bridge[k] === 1, overChasm = k => track.drop[k] > 0 || track.bed[k] > 0 || track.lift[k] > 0;   // a rampa é de pedra e a ponte, de gelo (desenhadas em epicVisuals): sem estrada comum nem barranco
   group.add(new THREE.Mesh(stripGeometry(-half, half, 10, roadY, roadY, isGap), roadMaterial));
+  if (track.valley) {                                // vale: sem zebra nem acostamento, a terra sobe direto da estrada
+    for (const side of [-1, 1]) group.add(new THREE.Mesh(valleyGeometry(side), groundMaterial));
+    return;
+  }
   group.add(new THREE.Mesh(stripGeometry(-outer, -half, 4, kerbY, kerbY, isGap), kerbMaterial));
   group.add(new THREE.Mesh(stripGeometry(half, outer, 4, kerbY, kerbY, isGap), kerbMaterial));
   // Faixa de terra que desce da beira da estrada até o terreno, para não sobrar degrau.
@@ -171,7 +203,8 @@ export function createWorldScene() {
   const scene = new THREE.Scene();
   scene.fog = new THREE.Fog(0x000000, 15, 230);
   const atmosphere = createAtmosphere(scene);
-  let content = null, time = 0, biomeAnimations = [];
+  let content = null, time = 0, biomeAnimations = [], currentBiome = null;
+  const daySky = new THREE.Color(), black = new THREE.Color(0x000000);
 
   // Gera pista e cenário novos com o bioma pedido.
   scene.buildMap = (biome, seed) => {
@@ -184,6 +217,7 @@ export function createWorldScene() {
     content = new THREE.Group();
     scene.add(content);
 
+    currentBiome = biome;
     scene.background = new THREE.Color(biome.sky);
     scene.fog.color.setHex(biome.sky);
     [scene.fog.near, scene.fog.far] = biome.fog;
@@ -198,13 +232,27 @@ export function createWorldScene() {
     addStartLine(content, biome);
 
     buildTunnels(content, layout, biome.tunnel);
-    buildEpicSections(content, layout, biome);
-    buildWalls(content, layout, biome.wall);
     biomeAnimations = [];
+    buildEpicSections(content, layout, biome, animation => biomeAnimations.push(animation));
+    buildWalls(content, layout, biome.wall);
+    buildHazardSites(content, layout, animation => biomeAnimations.push(animation));
     biome.addProps({
       onUpdate: animation => biomeAnimations.push(animation), group: content, random: createRandom(seed + 2), bounds, heightAt: track.heightAt, spotIsClear: (() => { const isClear = spotChecker(); return (x, z, distance) => isClear(x, z, distance) && !isOverChasm(x, z); })(), isOpen: openCheck(layout),
     });
     return layout;
+  };
+
+  // Escuridão de 0 (dia do bioma) a 1 (breu do trecho escuro). `fog` é a neblina [perto, longe] lá dentro: tudo
+  // que não brilha some no preto a essa distância do olho, como se só os faróis iluminassem.
+  scene.setDarkness = (level, fog) => {
+    if (!currentBiome) return;
+    const [near, far] = currentBiome.fog;
+    daySky.setHex(currentBiome.sky);
+    scene.fog.color.copy(daySky).lerp(black, level);
+    scene.background.copy(scene.fog.color);
+    scene.fog.near = level > 0 ? near + (fog[0] - near) * level : near;
+    scene.fog.far = level > 0 ? far + (fog[1] - far) * level : far;
+    atmosphere.setWeatherVisible(level < 0.3);
   };
 
   // Anima céu, clima e bioma em volta da posição (x, y, z) do carro.

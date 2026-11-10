@@ -9,7 +9,8 @@ export const FIRE_FACTORY = {
   sky: 0x4a1608, fog: [8, 170], cabinTint: 0xf0a878,
   shape: { wiggle: 0.24, targetLength: 2050, relief: 7, hillScale: 150, sharpCurves: 2 },
   layout: {
-    jumpHops: 3,
+    jump: { fallLabel: 'CAIU NO VULCAO', volcano: true },   // a rampa passa por cima da cratera
+    hazards: [{ kind: 'crane', count: 3 }],                   // guindastes que derrubam a carga
     tunnels: { count: 2, length: [80, 130] },
   },
   ground: {

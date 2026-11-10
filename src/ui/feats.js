@@ -1,5 +1,3 @@
-import { inGap } from '../world/track.js';
-
 // O que o jogador faz de bonito vira mensagem na pilha (featFeed): drift e tempo no ar ao vivo, ultrapassagens
 // e abates, que ganham uma segunda linha quando acontecem numa situação especial (às cegas, no ar, por um fio...).
 
@@ -17,7 +15,8 @@ export function createFeats({ featFeed, race, car, driftTracker }) {
   const recentKills = [];
 
   const isBlinded = () => car.effects.paint > 0 || car.effects.smoke > 0;
-  const isAirborne = () => race.started && car.wrecked <= 0 && inGap(race.playerDist);
+  // No ar de verdade (rampa, lombada, beirada): o tempo todo sem tocar o chão, não só o trecho sobre o vão.
+  const isAirborne = () => race.started && car.wrecked <= 0 && car.airborne && car.sunk <= 0;
   const special = text => featFeed.announce(text, { color: COLOR.special, big: true });
 
   function land(seconds) {
@@ -38,7 +37,7 @@ export function createFeats({ featFeed, race, car, driftTracker }) {
       airTime += dt;
       if (airTime >= AIR_SHOWN_FROM) featFeed.live('air', `NO AR ${airTime.toFixed(1)}s`, COLOR.air);
     } else if (airTime > 0) {
-      if (airTime >= AIR_COUNTS_FROM && car.wrecked <= 0) land(airTime);
+      if (airTime >= AIR_COUNTS_FROM && car.wrecked <= 0 && car.sunk <= 0) land(airTime);   // quem caiu não pousou
       airTime = 0;
     }
 

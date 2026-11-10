@@ -1,7 +1,9 @@
 import { ACCEL, CAR_MAX_HP, MAX_SPEED, NITRO_ACCEL, NITRO_DRAIN, NITRO_MAX_SPEED, SLIPSTREAM_KMH } from '../config.js';
 import { LIVERIES } from '../world/car/carLivery.js';
 import { createCarModel } from '../world/car/carModel.js';
-import { alignToTwist, SHARP_RADIUS, surfaceAt, track, trackAt, turnAt, wrapDistance } from '../world/track.js';
+import { alignToTwist, hazardAt, inFlightZone, inGap, onBridge, SHARP_RADIUS, surfaceAt, track, trackAt, turnAt, wrapDistance } from '../world/track.js';
+import { FALL_TIME, fallIsCertain, GRAVITY, sinkStep, stepFlight } from './flight.js';
+import { BRIDGE_HALF } from './mapLayout.js';
 import { createFlip, lifeAfterDestruction, poseFlippingCar, RESPAWN_PROTECTION } from './carFlip.js';
 import { createRig, poseRig, resetRig, rigLean } from './carRoll.js';
 import { createEffects, tickEffects } from './effects.js';
@@ -41,10 +43,11 @@ export function resetOpponent(op) {
   Object.assign(op, {
     hp: op.maxHp, destroyed: 0, protectedFor: 0, grudge: 0, grudgeTarget: null, exploded: false,
     flip: null, overturned: false, spin: 0, nose: 0, knock: 0, laneRate: 0, dead: 0, flash: 0, v: 0, laneHold: 0, dodgeTime: 0, snapshot: null, slipstream: 0,
+    vy: 0, airborne: false, flying: false, sunk: 0, jump: null, impact: 0,
   });
   resetRig(op.rig);
   for (const name in op.effects) op.effects[name] = 0;
-  Object.assign(op, { nitro: 1, nitroActive: false, nitroBurst: 0, nitroWait: between(NITRO_FIRST_WAIT), driftAngle: 0 });
+  Object.assign(op, { nitro: 0, nitroToFill: 1, nitroActive: false, nitroBurst: 0, nitroWait: between(NITRO_FIRST_WAIT), driftAngle: 0 });
   op.model.setNitro(false);
   op.model.setFlash(false);
   op.group.visible = true;
@@ -66,7 +69,8 @@ function createOpponent(scene, index) {
     vmax: MAX_SPEED, grip: 25 * skill, acc: ACCEL, brake: 22,
     hp: maxHp, maxHp, nitroCapacity: upgradeFactor('nitro', profile.upgrades.nitro), destroyed: 0, protectedFor: 0, grudge: 0, grudgeTarget: null,
     flip: null, rig: createRig(), overturned: false, spin: 0, nose: 0, knock: 0, laneRate: 0, exploded: false, dead: 0, flash: 0, effects: createEffects(), dodgeTime: 0,
-    nitro: 1, nitroActive: false, nitroBurst: 0, nitroWait: between(NITRO_FIRST_WAIT), driftAngle: 0,
+    nitro: 0, nitroToFill: 1, nitroActive: false, nitroBurst: 0, nitroWait: between(NITRO_FIRST_WAIT), driftAngle: 0,
+    vy: 0, airborne: false, flying: false, sunk: 0, jump: null, impact: 0,   // voo nas rampas e queda no rio (flight.js)
   };
   group.traverse(o => { o.userData.opponent = opponent; });
   return opponent;
@@ -177,11 +181,44 @@ export function placeOpponent(op) {
   const t = trackAt(op.dist);
   op.x = t.x - t.tz * op.lane;
   op.z = t.z + t.tx * op.lane;
-  op.y = t.y;
-  const pitch = Math.atan(t.slope), yaw = Math.atan2(-t.tx, -t.tz);
+  if (!op.flying) op.y = t.y;                        // voando, a altura vem de flyOpponent
+  const pitch = op.sunk > 0 ? SUNK_PITCH : op.flying ? Math.atan2(op.vy, Math.max(op.v, 1)) : Math.atan(t.slope), yaw = Math.atan2(-t.tx, -t.tz);
   placeOnSurface(op);
   op.group.rotation.set(pitch, yaw, op.twist);
   op.yaw = op.group.rotation.y;
+}
+
+const SUNK_PITCH = 0.08, FACE_BOUNCE = 0.2;
+
+// Na rampa do rio a IA também voa de verdade: a gravidade a freia na subida e, se sair devagar do bico, cai.
+function flyOpponent(op, dt) {
+  const t = trackAt(op.dist), offBridge = onBridge(op.dist) && (Math.abs(op.lane) > BRIDGE_HALF || (op.airborne && op.y < t.y - 0.5));
+  if (!op.airborne && !inFlightZone(op.dist) && !offBridge) { op.flying = false; return; }
+  const ground = inGap(op.dist) || offBridge ? null : t.y;
+  if (ground === null) op.jump = hazardAt(op.dist) ?? op.jump;
+  if (!op.airborne) op.v -= GRAVITY * t.slope / Math.sqrt(1 + t.slope * t.slope) * dt;
+  const result = stepFlight(op, ground, t.grade * op.v, dt);
+  if (result === 'blocked' && op.jump) {             // bateu na face da outra margem: volta para o vão
+    op.dist -= wrapDistance(op.dist - op.jump.gaps[0][1]) + 0.3;
+    op.v *= -FACE_BOUNCE;
+  }
+  if (ground === null && fallIsCertain(op, op.jump, op.dist)) op.sunk = FALL_TIME;
+  op.flying = op.airborne || op.sunk > 0;
+}
+
+// Caindo e dentro d'água: desce, boia parado e depois volta ao começo do trecho.
+const FALL_DRAG = 3;
+function sinkOpponent(op, dt) {
+  op.v *= Math.exp(-FALL_DRAG * dt);
+  op.dist += op.v * dt;
+  sinkStep(op, op.jump.water, dt);
+  if (op.sunk <= 0) {
+    const target = op.jump.respawn;
+    op.dist -= ((op.dist - target) % track.length + track.length) % track.length;
+    Object.assign(op, { v: 0, lane: 0, laneTarget: 0, vy: 0, airborne: false, flying: false, jump: null, protectedFor: RESPAWN_PROTECTION });
+  }
+  op.model.setNitro(false);
+  poseOpponent(op);
 }
 
 // Coloca o carro na pista com o balanço do óleo, o giro de uma batida e a inclinação.
@@ -236,6 +273,7 @@ function updateDrift(op, dt) {
 }
 
 function tumble(op, dt) {
+  op.airborne = op.flying = false;
   op.v *= Math.exp(-WRECK_SLOWDOWN * dt);
   op.dist += op.v * dt;
   driftFromKnock(op, dt);
@@ -298,6 +336,7 @@ export function updateRemoteRacer(op, dt) {
 
 export function updateOpponent(op, dt, field, racing, activeTraps) {
   op.nitroActive = false;
+  if (op.sunk > 0) { sinkOpponent(op, dt); return; }
   if (op.dead > 0) {
     op.model.setNitro(false);
     op.dead -= dt;
@@ -315,9 +354,9 @@ export function updateOpponent(op, dt, field, racing, activeTraps) {
     dodgeTraps(op, activeTraps);
     op.dodgeTime -= dt;
     const accel = op.acc + (op.nitroActive ? NITRO_ACCEL : 0);
-    op.v = op.v < target ? Math.min(target, op.v + accel * dt) : Math.max(target, op.v - 30 * dt);
+    if (!op.airborne) op.v = op.v < target ? Math.min(target, op.v + accel * dt) : Math.max(target, op.v - 30 * dt);   // no ar o pé no acelerador não muda nada
     const laneStep = (op.dodgeTime > 0 ? DODGE_LANE_SPEED : LANE_SPEED) * dt;
-    if (!op.rig.active) op.lane += Math.max(-laneStep, Math.min(laneStep, op.laneTarget - op.lane));
+    if (!op.rig.active && !op.airborne) op.lane += Math.max(-laneStep, Math.min(laneStep, op.laneTarget - op.lane));
     if (op.effects.paint > 0) op.lane += Math.sin(op.dist * 0.7) * 3 * dt;
     if (op.effects.oil > 0) op.lane += Math.sin(op.effects.oil * OIL_SWING_RATE) * OIL_LANE_SWING * dt;
     op.lane += op.knock * dt;
@@ -328,6 +367,7 @@ export function updateOpponent(op, dt, field, racing, activeTraps) {
     op.spin *= Math.exp(-SPIN_DECAY * dt);
     op.nose *= Math.exp(-NOSE_RETURN * dt);
     op.dist += op.v * dt;
+    flyOpponent(op, dt);
     op.model.roll(op.v * dt);
   }
   poseOpponent(op);

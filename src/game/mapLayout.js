@@ -1,18 +1,27 @@
 import { TRACK_WIDTH } from '../config.js';
-import { OPEN_WALL, SHARP_RADIUS, createRandom, track } from '../world/track.js';
+import { SHARP_RADIUS, createRandom, track, trackAt } from '../world/track.js';
+import { HAZARD_KINDS } from './hazardKinds.js';
 
 // Decide onde vão os túneis e os trechos épicos. Só depende da pista e da semente: todos veem o mesmo mapa.
 // Nada fica no grid nem junto das curvas fechadas.
 
 const START_CLEAR = 120, GRID_CLEAR = 95;
 const EPIC_MARGIN = 26, EPIC_MAX_CURVE = 1 / 50;
-const RAMP_RUN = 34, GAP_LENGTH = 24, PLATFORM_LENGTH = 26, DESCENT_RUN = 30, JUMP_HEIGHT = 7, CHASM_DEPTH = 24;
 const TWIST_LENGTHS = [240, 200, 170], TWIST_GROUND_DROP = 7;
 const SHARP_MARGIN = 45, TUNNEL_MARGIN = 35, TUNNEL_MAX_CURVE = 1 / 55, FUNNEL_LENGTH = 30;
 export const TUNNEL_WALL = TRACK_WIDTH / 2 + 2.1, TUNNEL_HALF_WIDTH = TRACK_WIDTH / 2 + 4, TUNNEL_HEIGHT = 7.5;
-// No salto a estrada é uma estrutura construída (rampa e plataformas) com mureta baixa: o carro anda até o meio-fio.
+// No salto a estrada é uma estrutura construída (rampa e plataforma) com mureta baixa: o carro anda até o meio-fio.
 export const JUMP_WALL = TRACK_WIDTH / 2 + 0.65;
-const RAMP_FOOT = 3, DESCENT_FOOT = 3;               // metros da rampa ainda em terra firme, na subida e na descida
+// Cada pista tem uma rampa sobre um rio (ou lava, ou abismo): o carro voa de verdade, sob gravidade. A rampa
+// termina num bico inclinado (`lip`, metros de subida por metro); quem sai devagar não alcança a outra margem e cai.
+// Com o bico a 0,3 o alcance em terreno plano é ~0,055 × v² (v em m/s): 120 km/h vão ~60 m, o vão pede ~76 km/h.
+const RIVER = { ramp: 40, lip: 0.3, gap: 26, flat: 6, descent: 80, depth: 12, bank: 3 };
+const RESPAWN_BACK = 4;                              // quem cai volta este tanto antes do começo do trecho
+const VOLCANO_BANK = 18, VOLCANO_DEPTH = 22;         // com vulcão o buraco sob o vão é maior e mais fundo, para caber o cone
+// Ponte de gelo (`bridge`): sem mureta e escorregadia; quem sai pela beirada cai no lago gelado lá embaixo.
+export const BRIDGE_HALF = TRACK_WIDTH / 2, BRIDGE_REACH = BRIDGE_HALF + 8;   // até onde o centro do carro pode ir antes de bater no limite
+const BRIDGE_DEPTH = 24;
+const WATER_BELOW = 1.6;                             // por padrão a água fica um pouco abaixo do pé da rampa (`jump.below` muda)
 
 function createPlacer(random) {
   const { count, step, curvature } = track;
@@ -38,19 +47,21 @@ function createPlacer(random) {
     return spots.length ? spots[Math.floor(random() * spots.length)] : null;
   }
 
-  return { seek, reserve: (from, to) => mark(used, from, to), toIndex };
+  return { seek, reserve: (from, to) => mark(used, from, to), toIndex, random };
 }
 
 function narrowWalls(placer, start, length, limit = TUNNEL_WALL) {
-  const { step, wall } = track;
+  const { step, wall, openWall } = track;
   const setWall = (distance, value) => {
     const i = placer.toIndex(distance);
     wall[i] = Math.min(wall[i], value);
   };
   for (let d = start; d <= start + length; d += step) setWall(d, limit);
   // As paredes afunilam para o carro não bater de frente na boca do túnel (ou da rampa).
-  for (let d = 0; d <= FUNNEL_LENGTH; d += step) {
-    const value = limit + (OPEN_WALL - limit) * (d / FUNNEL_LENGTH);
+  // No vale (limite largo) o funil é mais longo, para o carro descer da encosta aos poucos.
+  const funnel = Math.max(FUNNEL_LENGTH, (openWall - limit) * 3);
+  for (let d = 0; d <= funnel; d += step) {
+    const value = limit + (openWall - limit) * (d / funnel);
     setWall(start - d, value);
     setWall(start + length + d, value);
   }
@@ -75,55 +86,123 @@ function placeTunnels(plan, placer, random, layout) {
 
 const easing = t => t * t * (3 - 2 * t);
 
-// Altura a mais em cada ponto do salto. Rampa, arcos e plataformas emendam sem quina: a inclinação que
-// sai de um trecho é a que entra no seguinte, então o carro decola e pousa suave.
-function jumpProfile(hops) {
-  const launch = 2 * JUMP_HEIGHT / RAMP_RUN, arc = launch * GAP_LENGTH / 4, bowl = launch * PLATFORM_LENGTH / 4;
-  const period = GAP_LENGTH + PLATFORM_LENGTH, tail = PLATFORM_LENGTH + DESCENT_RUN;
-  return d => {
-    if (d < RAMP_RUN) return JUMP_HEIGHT * (d / RAMP_RUN) ** 2;
-    const n = Math.floor((d - RAMP_RUN) / period), offset = d - RAMP_RUN - n * period;
-    if (n < hops && offset < GAP_LENGTH) {
-      const u = offset / GAP_LENGTH;
-      return JUMP_HEIGHT + arc * 4 * u * (1 - u);
-    }
-    if (n < hops - 1) {
-      const u = (offset - GAP_LENGTH) / PLATFORM_LENGTH;
-      return JUMP_HEIGHT - bowl * 4 * u * (1 - u);
-    }
-    const u = (d - (RAMP_RUN + hops * period - PLATFORM_LENGTH)) / tail;     // último pouso e descida
-    return JUMP_HEIGHT * (2 * u ** 3 - 3 * u ** 2 + 1) - launch * tail * (u ** 3 - 2 * u ** 2 + u);
-  };
-}
-
 // Percorre uma vez cada ponto da pista dentro do trecho.
 function forEachSample(start, length, visit) {
   const { step, count } = track;
   for (let k = Math.ceil(start / step); k * step <= start + length; k++) visit(k % count, k * step - start);
 }
 
-// Salto: rampa construída que sai da água (ou do abismo), vãos separados por plataformas e descida.
-// A altura no vão é um arco, igual para todos. Do pé da rampa ao fim da descida o terreno afunda: a rampa
-// e as plataformas ficam como blocos de pedra, com mureta, e o carro não sai pelo lado.
-function placeJump(hops, placer, layout) {
-  const period = GAP_LENGTH + PLATFORM_LENGTH, length = RAMP_RUN + hops * period + DESCENT_RUN;
+// Altura a mais na rampa do rio e a inclinação dela: sobe em parábola até o bico, a outra margem tem um trecho
+// plano e depois desce suave até a terra. No vão não há chão; ali a altura continua a linha do bico, para a
+// estrada entre a última amostra da rampa e o vão sair na inclinação certa (o chão é interpolado entre amostras).
+function riverProfile({ ramp, lip, gap, flat, descent }) {
+  const height = lip * ramp / 2, landing = ramp + gap + flat;
+  const heightAt = d => {
+    if (d < ramp) return height * (d / ramp) ** 2;
+    if (d < ramp + gap) return height + lip * (d - ramp);
+    if (d < landing) return height;
+    const u = Math.min(1, (d - landing) / descent);
+    return height * (1 - u * u * (3 - 2 * u));
+  };
+  const slopeAt = d => {
+    if (d < ramp) return 2 * height * d / (ramp * ramp);
+    if (d < ramp + gap) return lip;
+    if (d < landing) return 0;
+    const u = Math.min(1, (d - landing) / descent);
+    return -height * 6 * u * (1 - u) / descent;
+  };
+  return { heightAt, slopeAt };
+}
+
+// A inclinação calculada por diferença entre amostras arredonda o bico e a beira do vão: aqui ela é a exata.
+function fixRiverSlopes({ start, length }) {
+  const { count, step, py, lift, slope } = track, { slopeAt } = riverProfile(RIVER);
+  const base = i => py[i] - lift[i];
+  forEachSample(start, length, (i, d) => {
+    slope[i] = (base((i + 1) % count) - base((i - 1 + count) % count)) / (2 * step) + slopeAt(d);
+  });
+}
+
+// Rampa única sobre um rio que cruza a pista. O leito (`track.bed`) afunda só sob o vão: como o terreno segue o
+// ponto mais próximo da pista, vira uma faixa de rio atravessando a estrada, sem invadir outros trechos.
+function placeRiverJump(plan, placer, layout) {
+  const { ramp, gap, flat, descent, depth } = RIVER, length = ramp + gap + flat + descent;
+  const bank = plan.volcano ? VOLCANO_BANK : RIVER.bank, bedDepth = Math.max(plan.volcano ? VOLCANO_DEPTH : depth, (plan.below ?? WATER_BELOW) + 6);
   const start = placer.seek(EPIC_MARGIN, length + EPIC_MARGIN, EPIC_MAX_CURVE);
   if (start === null) return;
   placer.reserve(start - EPIC_MARGIN, start + length + EPIC_MARGIN);
-  const { py, gap, epic, drop, boost } = track, heightAt = jumpProfile(hops), lastLanding = RAMP_RUN + hops * period - PLATFORM_LENGTH;
-  const inGapAt = d => d >= RAMP_RUN && d < lastLanding && (d - RAMP_RUN) % period < GAP_LENGTH;
+  const { py, gap: gaps, epic, bed, lift, flight } = track, { heightAt } = riverProfile(RIVER);
+  // O chão existe até a primeira amostra do vão e volta na primeira amostra depois dele: o vão desenhado é esse.
+  const span = [Infinity, Infinity];
   forEachSample(start, length, (i, d) => {
-    py[i] += heightAt(d);
-    epic[i] = 1;
-    boost[i] = d < lastLanding ? 1 : 0;
-    if (d >= RAMP_FOOT && d <= length - DESCENT_FOOT) drop[i] = CHASM_DEPTH;
-    if (inGapAt(d)) gap[i] = 1;
+    lift[i] = heightAt(d);
+    py[i] += lift[i];
+    epic[i] = flight[i] = 1;
+    if (d >= ramp - bank && d < ramp + gap + bank) bed[i] = bedDepth;   // o leito fica sempre abaixo da água
+    if (d >= ramp && d < ramp + gap) {
+      gaps[i] = 1;
+      span[0] = Math.min(span[0], start + d);
+    } else if (d >= ramp + gap) {
+      span[1] = Math.min(span[1], start + d);
+    }
   });
   narrowWalls(placer, start, length, JUMP_WALL);
-  const gaps = Array.from({ length: hops }, (_, n) => [start + RAMP_RUN + n * period, start + RAMP_RUN + n * period + GAP_LENGTH]);
-  // Blocos de pedra sob a estrada: a rampa, as plataformas entre os vãos e a última, que desce até a terra.
-  const blocks = [[start, gaps[0][0]], ...gaps.slice(1).map(([from], n) => [gaps[n][1], from]), [gaps[hops - 1][1], start + length]];
-  layout.epics.push({ type: 'jump', start, length, gaps, blocks });
+  const section = {
+    type: 'jump', start, length, gaps: [span], blocks: [[start, span[0]], [span[1], start + length]], respawn: start - RESPAWN_BACK,
+    water: 0, floor: 0, depth: bedDepth, below: plan.below ?? WATER_BELOW, fallLabel: plan.fallLabel ?? 'CAIU', volcano: Boolean(plan.volcano),
+  };
+  layout.epics.push(section);
+  track.jumps.push(section);
+}
+
+function placeBridge(plan, placer, layout) {
+  const { length } = plan, start = placer.seek(EPIC_MARGIN, length + EPIC_MARGIN, EPIC_MAX_CURVE);
+  if (start === null) return;
+  placer.reserve(start - EPIC_MARGIN, start + length + EPIC_MARGIN);
+  const below = plan.below ?? 16;
+  forEachSample(start, length, i => {
+    track.bridge[i] = track.epic[i] = 1;            // sem voo livre: na ponte o carro só sai do chão pela beirada
+    track.bed[i] = Math.max(BRIDGE_DEPTH, below + 6);
+    track.wall[i] = BRIDGE_REACH;
+  });
+  const section = { type: 'bridge', start, length, gaps: [[start, start + length]], respawn: start - RESPAWN_BACK, water: 0, below, fallLabel: plan.fallLabel ?? 'CAIU' };
+  layout.epics.push(section);
+  track.bridges.push(section);
+}
+
+// Trecho escuro: um túnel fechado em que só se enxerga o que brilha (`dark.fog`: neblina [perto, longe] lá dentro).
+function placeDarkTunnel(plan, placer, layout) {
+  const length = plan.length[0] + placer.random() * (plan.length[1] - plan.length[0]);
+  const start = placer.seek(TUNNEL_MARGIN, length + TUNNEL_MARGIN, TUNNEL_MAX_CURVE);
+  if (start === null) return;
+  placer.reserve(start - TUNNEL_MARGIN, start + length + TUNNEL_MARGIN);
+  layout.tunnels.push({ start, length, open: false, dark: plan });
+  narrowWalls(placer, start, length);
+  markEnclosed(start, length);
+  track.darkZones.push({ start, length, fog: plan.fog });
+}
+
+// Pontos de perigo (hazardKinds.js): retas livres, longe uns dos outros e dos trechos especiais. O de túnel fica
+// logo depois da entrada de um túnel fechado (sem ser o escuro). `side`: de que lado da pista vem o perigo.
+const HAZARD_MARGIN = 45, HAZARD_MAX_CURVE = 1 / 70, TUNNEL_HAZARD_IN = 10;
+function placeHazards(plans, placer, layout) {
+  const random = placer.random;
+  for (const { kind, count } of plans) {
+    const tunnels = layout.tunnels.filter(tunnel => !tunnel.open && !tunnel.dark);
+    for (let n = 0; n < count; n++) {
+      let dist = null;
+      if (HAZARD_KINDS[kind].atTunnel) {
+        if (n < tunnels.length) dist = tunnels[n].start + TUNNEL_HAZARD_IN;
+      } else {
+        dist = placer.seek(HAZARD_MARGIN, HAZARD_MARGIN, HAZARD_MAX_CURVE);
+        if (dist !== null) placer.reserve(dist - HAZARD_MARGIN, dist + HAZARD_MARGIN);
+      }
+      if (dist === null) continue;
+      const site = { kind, dist, side: random() < 0.5 ? -1 : 1 };
+      layout.hazards.push(site);
+      track.hazards.push(site);
+    }
+  }
 }
 
 // Tubo: a estrada dá uma volta completa, passando pela parede e pelo teto.
@@ -153,12 +232,18 @@ function addBumps({ height, length }) {
   const { count, step, py, epic, enclosed } = track, total = count * step;
   const cycles = wavelength => Math.max(1, Math.round(total / wavelength)) * Math.PI * 2 / total;
   const k1 = cycles(length), k2 = cycles(length * 0.6);
-  const free = new Float32Array(count);
+  const blocked = new Uint8Array(count), free = new Float32Array(count);
   for (let i = 0; i < count; i++) {
     const d = i * step;
-    free[i] = epic[i] || enclosed[i] || d < START_CLEAR || d > total - GRID_CLEAR ? 0 : 1;
+    blocked[i] = epic[i] || enclosed[i] || d < START_CLEAR || d > total - GRID_CLEAR ? 1 : 0;
   }
   const reach = Math.round(BUMP_FADE / step);
+  // A transição acontece toda antes do trecho: dentro dele (na rampa, por exemplo) não sobra ondulação nenhuma.
+  for (let i = 0; i < count; i++) {
+    let near = 0;
+    for (let k = -reach; k <= reach && !near; k++) near = blocked[(i + k + count) % count];
+    free[i] = near ? 0 : 1;
+  }
   for (let i = 0; i < count; i++) {
     let sum = 0;
     for (let k = -reach; k <= reach; k++) sum += free[(i + k + count) % count];
@@ -174,11 +259,25 @@ function recomputeSlope() {
 
 export function createMapLayout(plan, seed) {
   const random = createRandom(seed + 5), placer = createPlacer(random);
-  const layout = { tunnels: [], epics: [] };
-  placeTwist(placer, layout);                        // os trechos épicos pedem retas longas: escolhem primeiro
-  placeJump(plan.jumpHops, placer, layout);
+  const layout = { tunnels: [], epics: [], hazards: [] };
+  if (plan.twist) placeTwist(placer, layout);        // os trechos épicos pedem retas longas: escolhem primeiro
+  placeRiverJump(plan.jump ?? {}, placer, layout);
+  if (plan.bridge) placeBridge(plan.bridge, placer, layout);
+  if (plan.dark) placeDarkTunnel(plan.dark, placer, layout);
   placeTunnels(plan.tunnels, placer, random, layout);
+  placeHazards(plan.hazards ?? [], placer, layout);
   if (plan.bumps) addBumps(plan.bumps);
   recomputeSlope();
+  for (const jump of track.jumps) fixRiverSlopes(jump);
+  // A água fica abaixo do ponto mais baixo do chão no trecho (sem contar o que a rampa ergueu); o leito, abaixo dela.
+  for (const section of [...track.jumps, ...track.bridges]) {
+    let lowest = Infinity, deepest = Infinity;
+    forEachSample(section.start, section.length, i => {
+      lowest = Math.min(lowest, track.py[i] - track.lift[i]);
+      if (track.bed[i] > 0) deepest = Math.min(deepest, track.py[i] - track.lift[i] - track.bed[i]);
+    });
+    section.water = lowest - section.below;
+    section.floor = deepest;
+  }
   return layout;
 }
