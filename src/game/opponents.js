@@ -9,8 +9,10 @@ import { OPPONENT_PROFILES } from './opponentProfiles.js';
 import { TRAP_TYPES } from './trapTypes.js';
 import { upgradeFactor } from './shop.js';
 import { WEAPON_TYPES } from './weaponTypes.js';
+import { TRACK_WIDTH } from '../config.js';
 
-const LANE_LIMIT = 5.2, LANE_SPEED = 3.5, DODGE_LANE_SPEED = 7;
+const LANE_LIMIT = TRACK_WIDTH / 2 - 1.2, LANE_SPEED = 3.5, DODGE_LANE_SPEED = 7;
+const BLOCK_LANE = 2.4, PASS_STEP = 2.6;            // quem está nesta distância lateral atrapalha; quanto sai para ultrapassar
 const WRECK_SLOWDOWN = 1.2, DODGE_CHANCE = 0.75, DODGE_LOOKAHEAD = 40;
 const OIL_LANE_SWING = 11, OIL_SWING_RATE = 5.5, OIL_NOSE_SWING = 0.3, LANE_DRIFT_LIMIT = LANE_LIMIT + 1.5;
 const KNOCK_DECAY = 3, SPIN_DECAY = 3.5, NOSE_RETURN = 3;
@@ -59,7 +61,7 @@ function createOpponent(scene, index) {
   const profile = OPPONENT_PROFILES[index];
   const maxHp = CAR_MAX_HP * upgradeFactor('life', profile.upgrades.life);
   const opponent = {
-    livery, slipstream: 0, wx: 0, wy: 0, wz: 0, twist: 0, twistHeading: 0, twistYaw: 0, twistPitch: 0, y: 0, yaw: 0, vx: 0, vz: 0, remote: false, netId: `local${index}`, snapshot: null, onRemoteDamage: null, group, model, name: profile.name, profile, arsenal: createArsenal(profile),
+    livery, slipstream: 0, wx: 0, wy: 0, wz: 0, twist: 0, twistHeading: 0, twistYaw: 0, twistPitch: 0, y: 0, yaw: 0, vx: 0, vz: 0, remote: false, netId: `local${index}`, snapshot: null, onRemoteDamage: null, onRemoteIgnite: null, burnBy: null, group, model, name: profile.name, profile, arsenal: createArsenal(profile),
     dist: 0, v: 0, lane: 0, laneTarget: 0, preferredLane: 0, laneHold: 0, x: 0, z: 0,
     vmax: MAX_SPEED, grip: 25 * skill, acc: ACCEL, brake: 22,
     hp: maxHp, maxHp, nitroCapacity: upgradeFactor('nitro', profile.upgrades.nitro), destroyed: 0, protectedFor: 0, grudge: 0, grudgeTarget: null,
@@ -92,14 +94,14 @@ function avoidTraffic(op, target, field, dt) {
   for (const other of field) {
     if (other === op || other.dead > 0) continue;
     const ahead = wrapDistance(other.dist - op.dist);
-    if (ahead > 0 && ahead < 24 && Math.abs(other.lane - op.lane) < 3.2) {
+    if (ahead > 0 && ahead < 24 && Math.abs(other.lane - op.lane) < BLOCK_LANE) {
       const limit = ahead < 9 ? other.v * 0.85 : other.v + (ahead - 9) * 0.7;
       if (limit < target) target = limit;
       blocker = other;
     }
   }
   if (blocker) {
-    const dodge = blocker.lane <= op.lane ? 3.6 : -3.6;
+    const dodge = blocker.lane <= op.lane ? PASS_STEP : -PASS_STEP;
     op.laneTarget = Math.max(-LANE_LIMIT, Math.min(LANE_LIMIT, op.lane + dodge));
     op.laneHold = 1.2;
   } else if ((op.laneHold -= dt) <= 0) {

@@ -2,12 +2,15 @@ import * as THREE from 'three';
 import { damageOpponent } from './opponents.js';
 import { damageAtDistance, WEAPON_TYPES } from './weaponTypes.js';
 import { partHit } from './carParts.js';
+import { groundHit } from '../world/track.js';
 
 const DEFAULT_TRACER = 0xffe9a0;
 const HIT_PART_TIME = 0.7;
 const ROUND_PICKUP_AT = 0.5, OUT_OF_AMMO_NOTICE = 1, TRACER_LENGTH = 120, DRY_FIRE_INTERVAL = 0.35;
 
-export function createWeapon({ scene, camera, targets, extraTargets = () => [], shooter, canReload, onFired, onHit, onKill, onObstacleHit, onSplash = () => {} }) {
+// `onIgnite(alvo, segundos)`: a flecha incendiária acertou um carro. `onGroundFire(ponto)`: caiu no asfalto
+// (ponto de world/track.js groundHit). A granada que erra explode onde bate no chão.
+export function createWeapon({ scene, camera, targets, extraTargets = () => [], shooter, canReload, onFired, onHit, onKill, onObstacleHit, onSplash = () => {}, onIgnite = () => {}, onGroundFire = () => {} }) {
   const raycaster = new THREE.Raycaster();
   const aimOffset = new THREE.Vector2();
   const right = new THREE.Vector3();
@@ -56,7 +59,7 @@ export function createWeapon({ scene, camera, targets, extraTargets = () => [], 
     onFired(weapon.type.id, start, end);
   }
 
-  // Besta explosiva: a flecha explode onde acertou e machuca quem estiver em volta, menos quanto mais longe.
+  // Lança-granadas: explode onde acertou e machuca quem estiver em volta, menos quanto mais longe.
   function explodeAt(point, direct) {
     const { radius, min } = weapon.type.splash;
     onSplash(point);
@@ -66,7 +69,7 @@ export function createWeapon({ scene, camera, targets, extraTargets = () => [], 
       if (distance > radius) continue;
       const amount = weapon.type.damage * (1 - (1 - min) * distance / radius);
       if (target.isObstacle) onObstacleHit(target, amount);
-      else if (damageOpponent(target, amount, shooter)) { onKill(target); weapon.hitMarker = 0.4; }
+      else if (damageOpponent(target, amount, shooter)) { onKill(target, 'splash'); weapon.hitMarker = 0.4; }
     }
   }
 
@@ -107,11 +110,19 @@ export function createWeapon({ scene, camera, targets, extraTargets = () => [], 
         const part = partHit(hits[0].object, target.group.worldToLocal(hits[0].point.clone()));
         if (part.label) { weapon.hitPart = part.label; weapon.hitPartTime = HIT_PART_TIME; }
         if (damageOpponent(target, damageAtDistance(type, hits[0].distance) * part.multiplier, shooter)) {
-          onKill(target);
+          onKill(target, 'shot');
           weapon.hitMarker = 0.4;
         }
       }
+      if (type.burn && !target.isObstacle) onIgnite(target, type.burn);
       if (type.splash) explodeAt(end, target);
+    } else if (type.splash || type.burn) {
+      const ground = groundHit(origin, direction, type.range);
+      if (ground) {
+        end = new THREE.Vector3(ground.x, ground.y, ground.z);
+        if (type.splash) explodeAt(end, null);
+        if (type.burn) onGroundFire(ground);
+      }
     }
     showTracer(origin, direction, end);
   };

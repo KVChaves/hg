@@ -1,3 +1,4 @@
+import { TRACK_WIDTH } from '../config.js';
 import { lifeAfterDestruction } from './carFlip.js';
 import { EXTINGUISHER_LIFE, TRAP_TYPES } from './trapTypes.js';
 import { isEpic } from '../world/track.js';
@@ -6,7 +7,7 @@ import { isEpic } from '../world/track.js';
 // uma oferta só dele: dois NPCs, um em cada lado da pista, com itens diferentes escolhidos pelo que falta
 // àquele piloto. Quem está em primeiro nunca recebe. A oferta é por piloto, então cada um só vê a sua.
 
-export const NPC_LANE = 6.8;                         // distância do centro da pista até cada NPC (na borda do asfalto)
+export const NPC_LANE = TRACK_WIDTH / 2 - 0.7;       // distância do centro da pista até cada NPC (na borda do asfalto)
 
 const GAP_FOR_HELP = 60;                             // metros até o carro da frente
 export const PICKUP_WINDOW = 3, PICKUP_REACH = 5;   // metros ao longo da pista e de lado até o NPC

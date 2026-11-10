@@ -57,9 +57,9 @@ export function paintLeftFist() {
   return canvas;
 }
 
-// Punho segurando munição acima dos dedos, para a recarga: 'round', 'shell' ou 'magazine'.
+// Punho segurando munição acima dos dedos, para a recarga: 'round', 'shell', 'magazine', 'bolt' (flecha) ou 'grenade'.
 export function paintFistHolding(kind) {
-  const top = kind === 'magazine' || kind === 'canister' ? 18 : kind === 'bolt' ? 14 : 10;
+  const top = kind === 'magazine' ? 18 : kind === 'bolt' ? 14 : kind === 'grenade' ? 13 : 10;
   const r = new Raster(31, 36 + top);
   if (kind === 'round') {
     r.rect(13, 0, 5, 7, 0xc08438);
@@ -67,16 +67,19 @@ export function paintFistHolding(kind) {
     r.rect(13, 7, 5, 6, 0x9a9088);
     r.rect(17, 7, 1, 6, 0x6a625c);
   } else if (kind === 'bolt') {
+    // flecha incendiária ainda apagada: o trapo só pega fogo quando ela está armada
     r.rect(14, 4, 3, 14, 0x9a8a6a);
     r.poly([[13, 4], [18, 4], [15.5, 0]], 0xd8d8dc);
-    r.rect(13, 6, 5, 4, 0xc02818);
+    r.rect(13, 5, 5, 5, 0x6a4a2a);
+    r.rect(13, 7, 5, 1, 0x3a2614);
     r.poly([[14, 17], [10, 20], [14, 20]], 0xc84a30);
     r.poly([[17, 17], [21, 20], [17, 20]], 0xc84a30);
-  } else if (kind === 'canister') {
-    r.rect(10, 2, 11, 18, 0xb83c18);
-    r.rect(10, 2, 1, 18, 0xe05828);
-    r.rect(10, 8, 11, 2, 0x18181c);
-    r.rect(13, 0, 5, 2, 0x7c7e82);
+  } else if (kind === 'grenade') {
+    r.ellipse(15.5, 5, 5, 5, 0x6a7638);
+    r.ellipse(14.5, 4, 2, 2, 0x8a9a4a);
+    r.rect(11, 6, 10, 2, 0xd8b040);
+    r.rect(11, 8, 10, 5, 0xc8a040);
+    r.rect(11, 8, 1, 5, 0xe8c060);
   } else if (kind === 'shell') {
     r.rect(12, 0, 7, 9, 0xa02418);
     r.rect(12, 0, 1, 9, 0xd04830);

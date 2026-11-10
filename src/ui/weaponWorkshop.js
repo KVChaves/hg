@@ -16,7 +16,7 @@ const RIGHT = { x: 528, y: 40, width: 106, height: 156, columns: 2 };
 const BACK_BUTTON = { x: 240, y: 6, width: 160, height: 26 };
 const PREVIEW = { x: 320, y: 150, maxWidth: 400, maxScale: 3 };
 const DEMO = { pause: 0.9, shotsPerRound: 3, minInterval: 0.55, burstInterval: 0.09, burstShots: 8 };
-const WEAPON_SHORT = { revolver: 'REVOLV', shotgun: 'ESCOP', smg: 'SUBM', rifle: 'RIFLE', magnum: 'MAGNUM', sniper: 'SNIPER', autoshotgun: 'ESC AUT', crossbow: 'BESTA', flamethrower: 'CHAMAS' };
+const WEAPON_SHORT = { revolver: 'REVOLV', shotgun: 'ESCOP', smg: 'SUBM', rifle: 'RIFLE', magnum: 'MAGNUM', sniper: 'SNIPER', autoshotgun: 'ESC AUT', crossbow: 'BESTA', grenade: 'GRANADA' };
 
 const SLOT_DEFS = [
   { key: 'metal', short: 'METAL', label: 'Cor do metal', hasColor: true },
@@ -162,7 +162,8 @@ export function createWeaponWorkshop({ stage, customs, onChange, onClose }) {
   function updateDemo(dt) {
     stepDemo(dt);
     demo.flash -= dt;
-    demo.velocity += (-260 * demo.recoil - 18 * demo.velocity) * dt;
+    const { stiffness, damping } = rig.art.recoil;
+    demo.velocity += (-stiffness * demo.recoil - damping * demo.velocity) * dt;
     demo.recoil += demo.velocity * dt;
 
     const events = animator.update(dt, { reloading: demo.reloading, ammo: demo.ammo, capacity: demo.type.magazine, roundProgress: demo.progress, carrying: demo.carrying });
@@ -178,8 +179,9 @@ export function createWeaponWorkshop({ stage, customs, onChange, onClose }) {
     ctx.translate(PREVIEW.x + (pivotX - width / 2) * scale, PREVIEW.y + (pivotY - height / 2) * scale);
     ctx.scale(scale, scale);
     ctx.save();
-    ctx.translate(demo.recoil * 4, -demo.recoil * 6);
-    ctx.rotate(demo.recoil * 0.2);
+    const { back, up, tilt } = rig.art.recoil;
+    ctx.translate(demo.recoil * back * 0.8, -demo.recoil * up * 0.65);
+    ctx.rotate(demo.recoil * tilt * 0.75);
     rig.draw(ctx, animator.pose);
     if (demo.flash > 0) rig.drawFlash(ctx, demo.seed);
     ctx.restore();

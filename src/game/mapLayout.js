@@ -9,7 +9,10 @@ const EPIC_MARGIN = 26, EPIC_MAX_CURVE = 1 / 50;
 const RAMP_RUN = 34, GAP_LENGTH = 24, PLATFORM_LENGTH = 26, DESCENT_RUN = 30, JUMP_HEIGHT = 7, CHASM_DEPTH = 24;
 const TWIST_LENGTHS = [240, 200, 170], TWIST_GROUND_DROP = 7;
 const SHARP_MARGIN = 45, TUNNEL_MARGIN = 35, TUNNEL_MAX_CURVE = 1 / 55, FUNNEL_LENGTH = 30;
-export const TUNNEL_WALL = TRACK_WIDTH / 2 + 2.1, TUNNEL_HALF_WIDTH = 10.6, TUNNEL_HEIGHT = 8;
+export const TUNNEL_WALL = TRACK_WIDTH / 2 + 2.1, TUNNEL_HALF_WIDTH = TRACK_WIDTH / 2 + 4, TUNNEL_HEIGHT = 7.5;
+// No salto a estrada é uma estrutura construída (rampa e plataformas) com mureta baixa: o carro anda até o meio-fio.
+export const JUMP_WALL = TRACK_WIDTH / 2 + 0.65;
+const RAMP_FOOT = 3, DESCENT_FOOT = 3;               // metros da rampa ainda em terra firme, na subida e na descida
 
 function createPlacer(random) {
   const { count, step, curvature } = track;
@@ -38,16 +41,16 @@ function createPlacer(random) {
   return { seek, reserve: (from, to) => mark(used, from, to), toIndex };
 }
 
-function narrowWalls(placer, start, length) {
+function narrowWalls(placer, start, length, limit = TUNNEL_WALL) {
   const { step, wall } = track;
   const setWall = (distance, value) => {
     const i = placer.toIndex(distance);
     wall[i] = Math.min(wall[i], value);
   };
-  for (let d = start; d <= start + length; d += step) setWall(d, TUNNEL_WALL);
-  // As paredes afunilam para o carro não bater de frente na boca do túnel.
+  for (let d = start; d <= start + length; d += step) setWall(d, limit);
+  // As paredes afunilam para o carro não bater de frente na boca do túnel (ou da rampa).
   for (let d = 0; d <= FUNNEL_LENGTH; d += step) {
-    const value = TUNNEL_WALL + (OPEN_WALL - TUNNEL_WALL) * (d / FUNNEL_LENGTH);
+    const value = limit + (OPEN_WALL - limit) * (d / FUNNEL_LENGTH);
     setWall(start - d, value);
     setWall(start + length + d, value);
   }
@@ -99,7 +102,9 @@ function forEachSample(start, length, visit) {
   for (let k = Math.ceil(start / step); k * step <= start + length; k++) visit(k % count, k * step - start);
 }
 
-// Salto: rampa, abismos separados por plataformas e descida. A altura no vão é um arco, igual para todos.
+// Salto: rampa construída que sai da água (ou do abismo), vãos separados por plataformas e descida.
+// A altura no vão é um arco, igual para todos. Do pé da rampa ao fim da descida o terreno afunda: a rampa
+// e as plataformas ficam como blocos de pedra, com mureta, e o carro não sai pelo lado.
 function placeJump(hops, placer, layout) {
   const period = GAP_LENGTH + PLATFORM_LENGTH, length = RAMP_RUN + hops * period + DESCENT_RUN;
   const start = placer.seek(EPIC_MARGIN, length + EPIC_MARGIN, EPIC_MAX_CURVE);
@@ -111,12 +116,14 @@ function placeJump(hops, placer, layout) {
     py[i] += heightAt(d);
     epic[i] = 1;
     boost[i] = d < lastLanding ? 1 : 0;
-    if (d >= RAMP_RUN && d < lastLanding) drop[i] = CHASM_DEPTH;
+    if (d >= RAMP_FOOT && d <= length - DESCENT_FOOT) drop[i] = CHASM_DEPTH;
     if (inGapAt(d)) gap[i] = 1;
   });
+  narrowWalls(placer, start, length, JUMP_WALL);
   const gaps = Array.from({ length: hops }, (_, n) => [start + RAMP_RUN + n * period, start + RAMP_RUN + n * period + GAP_LENGTH]);
-  const islands = gaps.slice(1).map(([from], n) => [gaps[n][1], from]);
-  layout.epics.push({ type: 'jump', start, length, gaps, islands });
+  // Blocos de pedra sob a estrada: a rampa, as plataformas entre os vãos e a última, que desce até a terra.
+  const blocks = [[start, gaps[0][0]], ...gaps.slice(1).map(([from], n) => [gaps[n][1], from]), [gaps[hops - 1][1], start + length]];
+  layout.epics.push({ type: 'jump', start, length, gaps, blocks });
 }
 
 // Tubo: a estrada dá uma volta completa, passando pela parede e pelo teto.
@@ -138,6 +145,28 @@ function placeTwist(placer, layout) {
   layout.epics.push({ type: 'twist', start, length });
 }
 
+// Ondulações no leito da pista (`bumps`: altura em metros e comprimento de onda), como estrada de terra que
+// sobe e desce. Duas ondas com número inteiro de ciclos por volta, para emendar na largada. Somem perto da
+// largada, dos saltos, do tubo e dos túneis, com transição suave de BUMP_FADE metros.
+const BUMP_FADE = 40;
+function addBumps({ height, length }) {
+  const { count, step, py, epic, enclosed } = track, total = count * step;
+  const cycles = wavelength => Math.max(1, Math.round(total / wavelength)) * Math.PI * 2 / total;
+  const k1 = cycles(length), k2 = cycles(length * 0.6);
+  const free = new Float32Array(count);
+  for (let i = 0; i < count; i++) {
+    const d = i * step;
+    free[i] = epic[i] || enclosed[i] || d < START_CLEAR || d > total - GRID_CLEAR ? 0 : 1;
+  }
+  const reach = Math.round(BUMP_FADE / step);
+  for (let i = 0; i < count; i++) {
+    let sum = 0;
+    for (let k = -reach; k <= reach; k++) sum += free[(i + k + count) % count];
+    const weight = sum / (reach * 2 + 1), d = i * step;
+    py[i] += weight * height * (0.65 * Math.sin(k1 * d) + 0.35 * Math.sin(k2 * d + 1.7));
+  }
+}
+
 function recomputeSlope() {
   const { count, step, py, slope } = track;
   for (let i = 0; i < count; i++) slope[i] = (py[(i + 1) % count] - py[(i - 1 + count) % count]) / (2 * step);
@@ -149,6 +178,7 @@ export function createMapLayout(plan, seed) {
   placeTwist(placer, layout);                        // os trechos épicos pedem retas longas: escolhem primeiro
   placeJump(plan.jumpHops, placer, layout);
   placeTunnels(plan.tunnels, placer, random, layout);
+  if (plan.bumps) addBumps(plan.bumps);
   recomputeSlope();
   return layout;
 }

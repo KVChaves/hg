@@ -11,6 +11,7 @@ import { createOpponentCombat } from './game/opponentCombat.js';
 import { createOpponents } from './game/opponents.js';
 import { createRace } from './game/race.js';
 import { createTraps } from './game/traps.js';
+import { createBurning } from './game/burning.js';
 import { flipElevation } from './game/carFlip.js';
 import { rigElevation } from './game/carRoll.js';
 import { createMatch } from './game/championship.js';
@@ -29,7 +30,10 @@ import { createRoomClient, LEFT_REASONS } from './net/roomClient.js';
 import { createDriftTracker } from './game/driftTracker.js';
 import { createGarageScreen } from './ui/garage/garageScreen.js';
 import { createFeatFeed } from './ui/featFeed.js';
+import { createFeats } from './ui/feats.js';
 import { createHands } from './ui/hands.js';
+import { createScope } from './ui/scope.js';
+import { createPauseMenu } from './ui/pauseMenu.js';
 import { createHud } from './ui/hud.js';
 import { createMainMenu } from './ui/mainMenu.js';
 import { createMultiplayerScreen } from './ui/multiplayerScreen.js';
@@ -79,10 +83,11 @@ const featFeed = createFeatFeed();
 
 let matchKills = 0;
 
-function creditKill(victim) {
+// `cause`: como o jogador destruiu (ver ui/feats.js); muda a mensagem.
+function creditKill(victim, cause) {
   weapon.kills++;
   matchKills++;
-  featFeed.announce('DESTRUIDO');
+  feats.kill(victim, cause);
   rewardKillFor(race.field.find(racer => racer.isPlayer));
   if (victim) featFeed.setCount(victim, 'Abate', weapon.kills);
 }
@@ -101,7 +106,7 @@ function rewardKillFor(racer) {
 }
 
 function announceTrapCatch(racer, type) {
-  featFeed.announce(`CAIU ${type.caughtText}`);
+  feats.trapCaught(`CAIU ${type.caughtText}`);
   featFeed.addCount(racer, 'Armadilha');
 }
 
@@ -111,43 +116,55 @@ function onTrapCaught(racer, type, owner) {
   else if (!owner && !racer.isPlayer) announceTrapCatch(racer, type);
 }
 
-function onRacerDestroyed(victim, killer) {
-  if (killer?.isPlayer) creditKill(victim);
+function onRacerDestroyed(victim, killer, cause) {
+  if (victim.isPlayer) feats.playerDestroyed(killer);
+  if (killer?.isPlayer) creditKill(victim, cause);
   else if (killer?.remote) online.sendKill(victim, killer);
   else rewardKillFor(killer);                        // bot simulado aqui
 }
 
-const DRIFT_GRADES = [[3, 'DRIFT INSANO'], [1.6, 'GRANDE DRIFT'], [0, 'DRIFT']];
-const driftTracker = createDriftTracker(car, duration => {
-  const [, title] = DRIFT_GRADES.find(([minimum]) => duration >= minimum);
-  featFeed.announce(`${title} ${duration.toFixed(1)}s`);
-});
+const driftTracker = createDriftTracker(car, duration => feats.drift(duration));
 
 const race = createRace(car, opponents, { onCrash: playAt, onDestroyed: onRacerDestroyed });
+const feats = createFeats({ featFeed, race, car, driftTracker });
 const net = createRoomClient();
 let online = null;                                   // criado mais abaixo; os sistemas só avisam quando há partida online
 const pulls = createPullReceiver(car);
-const weapon = createWeapon({ scene: world, camera, targets: opponents, shooter: race.field[0], canReload: () => race.started, onFired: (id, from, end) => online.sendShot(id, from, end), onHit: target => featFeed.addCount(target, 'Acerto'), onKill: creditKill, extraTargets: () => obstacles.active, onObstacleHit: (ob, damage) => obstacles.shoot(ob, damage), onSplash: point => { combat.explodeAt(point.x, point.y, point.z); playAt('dynamite', point.x, point.z); } });   // só recarrega depois do GO
+const burning = createBurning({
+  race, car, onDestroyed: onRacerDestroyed,
+  onIgnite: (racer, attacker) => {
+    playAt('fire', racer.x, racer.z);
+    if (attacker?.isPlayer) featFeed.addCount(racer, 'Fogo');
+  },
+  onRemoteIgnite: (racer, seconds, attacker) => racer.onRemoteIgnite?.(seconds, attacker),
+});
+const weapon = createWeapon({ scene: world, camera, targets: opponents, shooter: race.field[0], canReload: () => race.started, onFired: (id, from, end) => online.sendShot(id, from, end), onHit: target => { featFeed.addCount(target, 'Acerto'); feats.hit(); }, onKill: creditKill, extraTargets: () => obstacles.active, onObstacleHit: (ob, damage) => obstacles.shoot(ob, damage), onSplash: point => { combat.explodeAt(point.x, point.y, point.z); playAt('dynamite', point.x, point.z); },
+  onIgnite: (target, seconds) => burning.ignite(target, race.field[0], seconds),
+  onGroundFire: ground => traps.burnGround(ground.dist, ground.lane, null, race.field[0]) });   // só recarrega depois do GO
 const harpoon = createHarpoon({ owner: race.field[0], car, race, holdToExtend: true, visual: createHarpoonVisual(world), onSound: playAt, onRemotePull: (target, shooter) => online.sendPull(target, shooter), onHooked: target => {
-  featFeed.announce('ARPOADO');
+  featFeed.announce('ARPOADO', { color: '#8ad0ff' });
   featFeed.addCount(target, 'Arpao');
 } });
 const foam = createFoamEffect(world);
-const traps = createTraps({ scene: world, car, race, harpoon, onCaught: onTrapCaught, onSound: playAt, onExtinguisher: racer => { foam.spray(racer); online.sendExtinguisher(racer); }, onPlaced: (type, dist, lane, owner, id) => online.sendTrap(type, dist, lane, owner, id), onDetonated: id => online.sendTrapBoom(id) });
+const traps = createTraps({ scene: world, car, race, harpoon, burning, onCaught: onTrapCaught, onSound: playAt, onExtinguisher: racer => { foam.spray(racer); online.sendExtinguisher(racer); }, onPlaced: (type, dist, lane, owner, id) => online.sendTrap(type, dist, lane, owner, id), onDetonated: id => online.sendTrapBoom(id) });
 const obstacles = createObstacles({
   scene: world, race, car, getBiome: () => biome, onSound: playAt,
   isAuthority: () => !online.active || net.isAdmin,
-  onPlayerHit: type => featFeed.announce(`BATEU ${type.hitText}`),
+  onPlayerHit: type => featFeed.announce(`BATEU ${type.hitText}`, { color: '#f06050' }),
   onSpawned: ob => online.sendObstacle(ob),
   onBroken: ob => online.sendObstacleBreak(ob),
 });
 const combat = createOpponentCombat({
-  scene: world, car, race, opponents, traps, look, onSound: playAt,
+  scene: world, car, race, opponents, traps, burning, look, onSound: playAt,
   onShot: (weaponId, distance, pan) => audio.playEnemyShot(weaponId, distance, pan),
   onDestroyed: (x, z) => playAt('crash', x, z),
   onBotShot: (id, from, to) => online.sendShot(id, from, to),
   onRemotePull: (target, shooter) => online.sendPull(target, shooter),
-  onKill: (victim, killer) => rewardKillFor(killer),
+  onPlayerShot: () => audio.playBulletHit(),
+  onKill: (victim, killer) => {
+    if (victim.isPlayer) feats.playerDestroyed(killer);
+    rewardKillFor(killer);
+  },
 });
 const roadsideNpcs = createRoadsideNpcs(world);
 const roadsideHelp = createRoadsideHelp({
@@ -167,7 +184,7 @@ const lapSupplies = createLapSupplies({
   onStationTaken: reached => supplyCrates.taken(reached),
   onPlayerSupplied: ({ nitro, ammo, items }) => {
     const percent = value => `${Math.round(value * 100)}%`;
-    featFeed.announce('SUPRIMENTOS');
+    featFeed.announce('SUPRIMENTOS', { color: '#6fe070' });
     roadsideHelp.showMessage([`+NITRO ${percent(nitro)}`, `+MUNICAO ${percent(ammo)}`, ...items.map(label => `+${label}`)].join(' '));
     audio.playWorldSound('itemCollected', 0, 0);
   },
@@ -188,6 +205,11 @@ const hands = createHands({
   isAiming: () => Boolean(keys.AimButton),
   wantsFire: () => Boolean(keys.FireButton) && !externalView.active && !outOfAction(),
   wantsNitro: () => Boolean(keys.Space) && car.nitro > 0 && race.started && !inMenus() && !outOfAction(),
+});
+const scope = createScope({
+  camera, weapon, hands, car,
+  isAiming: () => Boolean(keys.AimButton),
+  canAim: () => !externalView.active && !spectator.active && !inMenus() && !outOfAction(),
 });
 
 function applyEquipment({ weaponId, trapIds, trapCounts, upgrades }) {
@@ -235,7 +257,12 @@ const multiplayer = createMultiplayerScreen({
 });
 const matchSetup = createMatchSetupScreen({
   stage,
-  onContinue: () => garage.open(),
+  // Corrida rápida pula a garagem: corre com o carro e as compras salvos.
+  onContinue: () => {
+    if (matchSetup.config.mode !== 'quick') { garage.open(); return; }
+    externalView.applySpec(garage.carSpec());
+    startMatch(matchSetup.matchConfig());
+  },
   onBack: () => mainMenu.open(),
 });
 const results = createResultsScreen({
@@ -284,7 +311,7 @@ const garage = createGarageScreen({
   onOpenWorkshop: id => workshop.open(id),
   onProceed: () => {
     externalView.applySpec(garage.carSpec());
-    startMatch(matchSetup.config);
+    startMatch(matchSetup.matchConfig());
   },
   onBetweenRacesEnd: () => {
     workshop.isOpen = false;                         // o tempo vale também para quem está na oficina
@@ -301,8 +328,25 @@ const garage = createGarageScreen({
 const spectator = createSpectator({ opponents, race, camera: new THREE.PerspectiveCamera(VIEW.fov, VIEW.width / VIEW.height, 0.1, 400) });
 const externalView = createExternalView({ scene: world, car, look, initialSpec: garage.carSpec(), seed: PLAYER_CAR_SEED });
 applyEquipment(equipment);
-const drawHud = createHud(hudCanvas, { featFeed, mainMenu, multiplayer, podium, matchSetup, results, matchLabel: () => `CORRIDA ${match ? match.currentRace : 1} DE ${match ? match.raceCount : 1}`, biomeName: () => biome.name, race, weapon, hands, garage, workshop, externalView, spectator, canSkipSpectate: () => !online.active, isLocked, combat, car, roadsideHelp, traps, opponents, activeCamera: () => (spectator.active ? spectator.camera : externalView.active ? externalView.camera : camera), isBehindCabin: (x, y, z) => !spectator.active && cabin.isBehindCabin(x, y, z), isInSmoke: (x, z) => car.effects.smoke > 0 || traps.smokeBlocks(car.x, car.z, x, z) });
-const inMenus = () => mainMenu.isOpen || multiplayer.isOpen || podium.isOpen || matchSetup.isOpen || results.isOpen || garage.isOpen || workshop.isOpen;
+// Pausa da corrida (ver os eventos de ESC mais abaixo).
+const pause = createPauseMenu({
+  stage,
+  isOnline: () => online.active,
+  onResume: () => stage.requestPointerLock()?.catch?.(() => {}),   // logo depois do ESC o navegador pode recusar: aí basta clicar
+  onMainMenu: () => location.reload(),               // recarregar volta ao menu com tudo zerado (online, sai da sala)
+  onQuit: () => window.close(),                      // o navegador só permite em abas abertas por script
+});
+const drawHud = createHud(hudCanvas, { pause, scope, featFeed, mainMenu, multiplayer, podium, matchSetup, results, matchLabel: () => `CORRIDA ${match ? match.currentRace : 1} DE ${match ? match.raceCount : 1}`, biomeName: () => biome.name, race, weapon, hands, garage, workshop, externalView, spectator, canSkipSpectate: () => !online.active, isLocked, combat, car, roadsideHelp, traps, opponents, activeCamera: () => (spectator.active ? spectator.camera : externalView.active ? externalView.camera : camera), isBehindCabin: (x, y, z) => !spectator.active && cabin.isBehindCabin(x, y, z), isInSmoke: (x, z) => car.effects.smoke > 0 || traps.smokeBlocks(car.x, car.z, x, z) });
+const inMenus = () => pause.isOpen || mainMenu.isOpen || multiplayer.isOpen || podium.isOpen || matchSetup.isOpen || results.isOpen || garage.isOpen || workshop.isOpen;
+
+// ESC (o navegador solta o mouse) ou perder o foco no meio da corrida abre a pausa; ESC de novo continua.
+const inRaceView = () => !inMenus() && !garageReopening;
+document.addEventListener('pointerlockchange', () => { if (!isLocked() && inRaceView()) pause.open(); });
+addEventListener('keydown', event => {
+  if (event.code !== 'Escape' || event.repeat || isLocked()) return;
+  if (pause.isOpen) pause.resume();
+  else if (inRaceView()) pause.open();
+});
 
 setupInput(stage, {
   onFire: () => { if (!externalView.active && !outOfAction()) hands.requestFire(); },
@@ -313,7 +357,7 @@ setupInput(stage, {
   },
   onCycleTrap: traps.cycle,
   canLockPointer: () => !inMenus() && !garageReopening,
-  sensitivity: () => settings.sensitivity,
+  sensitivity: () => settings.sensitivity * scope.sensitivity(),
   isTyping: () => garage.isTyping() || multiplayer.isTyping(),
 });
 stage.addEventListener('click', event => {
@@ -327,11 +371,11 @@ race.reset();
 const elevationOf = (state, timer) => (timer > 0 ? flipElevation(state.flip, timer) : rigElevation(state.rig));
 
 function readRacerConditions() {
-  Object.assign(racerConditions[0], { x: car.wx, z: car.wz, yaw: car.yaw, vx: car.vx, vz: car.vz, health: car.health, elevation: car.wy + elevationOf(car, car.wrecked), visible: externalView.active });
+  Object.assign(racerConditions[0], { x: car.wx, z: car.wz, yaw: car.yaw, vx: car.vx, vz: car.vz, health: car.health, burning: car.effects.burning > 0, elevation: car.wy + elevationOf(car, car.wrecked), visible: externalView.active });
   opponents.forEach((op, i) => {
     const yaw = op.group.rotation.y;
     Object.assign(racerConditions[i + 1], {
-      x: op.wx, z: op.wz, yaw, vx: -Math.sin(yaw) * op.v, vz: -Math.cos(yaw) * op.v, health: op.hp / op.maxHp, elevation: op.wy + elevationOf(op, op.dead),
+      x: op.wx, z: op.wz, yaw, vx: -Math.sin(yaw) * op.v, vz: -Math.cos(yaw) * op.v, health: op.hp / op.maxHp, burning: op.effects.burning > 0 && op.dead <= 0, elevation: op.wy + elevationOf(op, op.dead),
       visible: Math.hypot(op.x - car.x, op.z - car.z) < DAMAGE_EFFECT_RANGE,
     });
   });
@@ -349,7 +393,9 @@ function setRacerCount(cars) {
 }
 
 online = createOnlineMatch({
-  net, scene: world, race, car, opponents, combat, traps, foam, harpoon, pulls, weapon, look, garage, results, podium, playAt, setRacerCount, creditKill, rewardKillFor, announceTrapCatch, obstacles,
+  onPlayerKilledBy: killer => feats.playerDestroyed(killer),
+  onPlayerShot: () => audio.playBulletHit(),
+  net, scene: world, race, car, opponents, combat, traps, burning, foam, harpoon, pulls, weapon, look, garage, results, podium, playAt, setRacerCount, creditKill, rewardKillFor, announceTrapCatch, obstacles,
   onLateJoin: () => multiplayer.close(),
   getSpec: () => garage.carSpec(),
   setMatch: created => {
@@ -397,7 +443,11 @@ function renameSoloDriver(name) {
   rename(race.field[0], name);
 }
 
-function startMatch({ cars, races }) {
+// Bioma escolhido na corrida rápida; nulo sorteia um a cada corrida.
+let matchBiome = null;
+
+function startMatch({ cars, races, biome: biomeId = 'random' }) {
+  matchBiome = BIOMES.find(candidate => candidate.id === biomeId) ?? null;
   setRacerCount(cars);
   race.setPlayerName(playerName);
   for (const op of opponents) op.name = op.profile.name === playerName ? `${playerName} Bot` : op.profile.name;   // nomes únicos na tabela
@@ -407,7 +457,7 @@ function startMatch({ cars, races }) {
 
 // A largada de cada corrida é a ordem de chegada da anterior, invertida.
 function startNextRace() {
-  beginRace(pickBiome(biome), Math.floor(Math.random() * 1e9), match.nextGrid);
+  beginRace(matchBiome ?? pickBiome(biome), Math.floor(Math.random() * 1e9), match.nextGrid);
 }
 
 // `grid` são os nomes na ordem de largada; sem ele usa a largada padrão.
@@ -420,6 +470,7 @@ function beginRace(chosenBiome, seed, grid) {
   pulls.reset();
   foam.reset();
   featFeed.reset();
+  feats.reset();
   driftTracker.reset();
   lapSupplies.reset();
   race.reset(grid);
@@ -471,14 +522,17 @@ function step(frameTime) {
   spectator.update(frameTime, wantsSpectate());
   if (inMenus() && isLocked()) document.exitPointerLock();   // numa tela de menu o mouse nunca fica preso
   externalView.setActive(Boolean(keys.KeyQ) && !inMenus() && !spectator.active);
-  const dt = inMenus() ? 0 : frameTime;              // a corrida fica parada nas telas de menu
-  const driving = outOfAction() || spectator.active ? NO_KEYS : keys;
+  // A corrida fica parada nas telas de menu; online a pausa não pode parar os outros, só tira o controle do carro.
+  const dt = inMenus() && !(pause.isOpen && online.active) ? 0 : frameTime;
+  const driving = outOfAction() || spectator.active || pause.isOpen ? NO_KEYS : keys;
   updateCar(car, dt, driving, race.started, hands.isNitroReady());
   race.update(dt, traps.active);
   driftTracker.update(dt);
   lapSupplies.update();
   featFeed.update(dt);
+  feats.update(dt);
   traps.update(dt);
+  burning.update(dt);
   obstacles.update(dt);
   harpoon.setHeld(Boolean(keys.KeyE) && !outOfAction());   // o arpão estica enquanto o E estiver apertado
   harpoon.update(dt);
@@ -495,8 +549,9 @@ function step(frameTime) {
   const gear = readGearbox(car, driving.KeyW);
   cabin.update({ look, weapon, gear, race, traps, dt, frameTime });
   hands.update(dt, gear);
+  scope.update(frameTime);
   externalView.update(dt);
-  audio.update({ gear, race, keys: driving, nitroOpen: car.nitroActive, drifting: car.slipping });
+  audio.update({ gear, race, keys: driving, nitroOpen: car.nitroActive, drifting: car.slipping, burning: car.effects.burning > 0 && car.wrecked <= 0 });
   audio.setMenuMusic(inMenus());
 
   if (garage.isOpen || mainMenu.isOpen || multiplayer.isOpen || matchSetup.isOpen) garage.update(frameTime);
@@ -511,6 +566,9 @@ function step(frameTime) {
   } else if (externalView.active) {
     renderer.clear();
     renderer.render(world, externalView.camera);
+  } else if (scope.active) {
+    renderer.clear();                                // pela luneta só se vê a pista: a cabine fica fora do círculo
+    renderer.render(world, camera);
   } else {
     cabin.renderMirror(renderer, world);
     renderer.clear();
@@ -531,4 +589,4 @@ function frame(now) {
 }
 requestAnimationFrame(frame);
 
-export const game = { obstacles, supplyCrates, lapSupplies, roadsideNpcs, featFeed, podium, multiplayer, net, online: () => online, pulls, world, getBiome: () => biome, harpoon, matchSetup, results, getMatch: () => match, roadsideHelp, mainMenu, settings, step, keys, look, car, race, opponents, combat, weapon, traps, cabin, hands, audio, garage, workshop, externalView, renderer, glCanvas, hudCanvas };
+export const game = { getPause: () => pause.isOpen, beginRace, obstacles, supplyCrates, lapSupplies, roadsideNpcs, featFeed, podium, multiplayer, net, online: () => online, pulls, world, getBiome: () => biome, harpoon, matchSetup, results, getMatch: () => match, roadsideHelp, mainMenu, settings, step, keys, look, car, race, opponents, combat, weapon, traps, burning, scope, cabin, hands, audio, garage, workshop, externalView, renderer, glCanvas, hudCanvas };

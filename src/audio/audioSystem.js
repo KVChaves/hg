@@ -5,7 +5,7 @@ import { familyOf } from '../game/weaponTypes.js';
 
 // Som do jogo: efeitos e motor pelo Web Audio; música por streaming, sem carregar tudo na memória.
 
-const VOLUME = { master: 0.9, engineCoasting: 0.3, engineThrottle: 0.5, accelerate: 0.45, gearShift: 0.3, horn: 0.7, start: 0.8, finish: 0.9, drift: 0.45, uiClick: 0.8, menuMusic: 0.7 };
+const VOLUME = { bulletHit: 0.75, burning: 0.55, master: 0.9, engineCoasting: 0.3, engineThrottle: 0.5, accelerate: 0.45, gearShift: 0.3, horn: 0.7, start: 0.8, finish: 0.9, drift: 0.45, uiClick: 0.8, menuMusic: 0.7 };
 const ENGINE_DELAY_AFTER_START = 0.9, SMOOTHING = 0.05, FADE_OUT = 0.08, NITRO_PITCH = 1.06;
 const LAUNCH_MAX_KMH = 15, GEAR_SOUND_MIN_KMH = 2;
 const FIRE_PITCH_VARIATION = 0.07;                         // evita que tiros seguidos soem idênticos
@@ -28,12 +28,12 @@ const WORLD_SOUNDS = {
   oil: { volume: 0.9, minGap: 0.3 },
   paint: { volume: 0.9, minGap: 0.3 },
   smoke: { volume: 2, minGap: 0.6 },                      // o arquivo é bem mais baixo que os outros
+  fire: { volume: 0.9, minGap: 0.25 },                    // flecha incendiária pegando no carro ou no chão
 };
 
 // Vários momentos usam o mesmo arquivo; cada um é carregado uma vez só.
-const weaponSoundFiles = () => [...new Set(Object.values(WEAPON_SOUNDS).flatMap(moments => Object.values(moments).flatMap(sound => [sound.url, sound.fallback ?? sound.url, ...(sound.remote ? [sound.remote.url] : [])])))]
+const weaponSoundFiles = () => [...new Set(Object.values(WEAPON_SOUNDS).flatMap(moments => Object.values(moments).flatMap(sound => [sound.url, sound.fallback ?? sound.url])))]
   .map(url => [url, url]);
-const FIRE_LOOP_HOLD = 0.15, REMOTE_BURST_GAP = 0.3;   // segundos
 const firePitch = () => 1 + (Math.random() - 0.5) * FIRE_PITCH_VARIATION;
 
 // `settings` traz os volumes escolhidos pelo jogador.
@@ -132,23 +132,31 @@ export function createAudioSystem(settings) {
   const resolveSound = sound => (sound.fallback && !buffers[sound.url] ? { url: sound.fallback, volume: sound.fallbackVolume } : sound);
   const soundsOf = weaponId => WEAPON_SOUNDS[weaponId] ?? WEAPON_SOUNDS[familyOf(weaponId)];
 
-  // Lança-chamas: cada tiro renova o laço; quando os tiros param, `updateFireLoop` o apaga.
-  let fireLoop = null, fireLoopUntil = 0, nextRemoteBurst = 0;
-  function holdFireLoop(sound) {
-    fireLoop ??= play(sound.url, sound.volume, { loop: true });
-    fireLoopUntil = performance.now() / 1000 + FIRE_LOOP_HOLD;
+  // Bala acertando o próprio carro: sorteia uma das quatro (nunca a mesma duas vezes seguidas) e varia o tom,
+  // para a rajada de uma submetralhadora não soar como um som só repetido.
+  const BULLET_HITS = ['bulletHit1', 'bulletHit2', 'bulletHit3', 'bulletHit4'], BULLET_HIT_GAP = 0.05;
+  let lastBulletHit = -1, nextBulletHit = 0;
+  function playBulletHit() {
+    const now = performance.now() / 1000;
+    if (now < nextBulletHit) return;
+    nextBulletHit = now + BULLET_HIT_GAP;
+    let pick = Math.floor(Math.random() * (BULLET_HITS.length - 1));
+    if (pick >= lastBulletHit) pick++;
+    lastBulletHit = pick;
+    play(BULLET_HITS[pick], VOLUME.bulletHit * (0.85 + Math.random() * 0.3), { rate: 0.92 + Math.random() * 0.16, pan: (Math.random() - 0.5) * 0.4 });
   }
-  function updateFireLoop() {
-    if (!fireLoop || performance.now() / 1000 < fireLoopUntil) return;
-    stop(fireLoop);
-    fireLoop = null;
+
+  // O próprio carro em chamas: um laço que dura enquanto ele queima.
+  let burningSound = null;
+  function updateBurning(burning) {
+    if (burning && !burningSound) burningSound = play('burning', VOLUME.burning, { loop: true });
+    if (!burning && burningSound) { stop(burningSound); burningSound = null; }
   }
 
   function playWeaponSound(weaponId, moment) {
     // O som de abrir a arma pode ser mais longo que uma recarga curta.
     if (moment === 'reloadEnd') { stop(reloadSound); reloadSound = null; }
     const original = soundsOf(weaponId)[moment];
-    if (original?.loop && buffers[original.url]) { holdFireLoop(original); return; }
     const sound = original && resolveSound(original);
     if (!sound) return;
     const voice = play(sound.url, sound.volume, { rate: moment === 'fire' ? firePitch() : 1 });
@@ -158,13 +166,7 @@ export function createAudioSystem(settings) {
   // Tiro de um adversário: mais baixo de longe e vindo do lado em que ele está (`pan` de -1 a 1).
   function playEnemyShot(weaponId, distance, pan) {
     if (distance > WORLD_SOUND_RANGE) return;
-    const fire = soundsOf(weaponId).fire;
-    if (fire.remote) {                                // rajada contínua de outro jogador: não empilha uma voz por tiro
-      const now = performance.now() / 1000;
-      if (now < nextRemoteBurst) return;
-      nextRemoteBurst = now + REMOTE_BURST_GAP;
-    }
-    const { url, volume } = resolveSound(fire.remote ?? fire);
+    const { url, volume } = resolveSound(soundsOf(weaponId).fire);
     play(url, volume * ENEMY_SHOT_VOLUME / (1 + distance / DISTANCE_FALLOFF), { rate: firePitch(), pan });
   }
 
@@ -225,8 +227,8 @@ export function createAudioSystem(settings) {
     clearTimeout(engineTimer);
     if (engine) engine.forEach(stop);
     engine = null;
-    for (const sound of [launch, hornSound, driftSound]) stop(sound);
-    launch = hornSound = driftSound = null;
+    for (const sound of [launch, hornSound, driftSound, burningSound]) stop(sound);
+    launch = hornSound = driftSound = burningSound = null;
     wasThrottle = finished = false;
     lastGear = null;
   }
@@ -259,6 +261,7 @@ export function createAudioSystem(settings) {
     playWeaponSound,
     playEnemyShot,
     playWorldSound,
+    playBulletHit,
     startRace() {
       if (raceOn) return;
       raceOn = raceTheme = true;
@@ -268,9 +271,9 @@ export function createAudioSystem(settings) {
       music.play().catch(() => { /* bloqueado pelo navegador: toca sem música */ });
       engineTimer = setTimeout(startEngine, ENGINE_DELAY_AFTER_START * 1000);
     },
-    update({ gear, race, keys, nitroOpen, drifting }) {
-      updateFireLoop();
+    update({ gear, race, keys, nitroOpen, drifting, burning }) {
       if (!raceOn) return;
+      updateBurning(Boolean(burning));
       const throttle = Boolean(race.started && (keys.KeyW || keys.ArrowUp));
       updateEngine(gear, throttle, nitroOpen);
       updateLaunch(throttle, gear.kmh, race.started);

@@ -26,7 +26,7 @@ export function setupInput(stage, { onFire, onReload, onDropTrap, onCycleTrap, c
   addEventListener('keyup', e => { keys[e.code] = false; });
   addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 
-  stage.addEventListener('click', () => { if (!isLocked() && canLockPointer()) stage.requestPointerLock(); });
+  stage.addEventListener('click', () => { if (!isLocked() && canLockPointer()) stage.requestPointerLock()?.catch?.(() => {}); });
   document.addEventListener('pointerlockchange', () => {
     if (!isLocked()) { keys.AimButton = false; keys.FireButton = false; }
   });

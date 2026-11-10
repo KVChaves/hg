@@ -3,7 +3,7 @@ import { paintGradient, paintSilhouette, paintStars } from '../atmosphere.js';
 import { speckle } from './wallPaint.js';
 import { pixelTexture } from '../textures.js';
 import { glyphTexture } from './neonGlyphs.js';
-import { acrossRoad, archFrame, alongRoad, nearRoad, pickFrom, scatter, solid } from './propKit.js';
+import { acrossRoad, alongRoad, archFrame, EDGE, nearRoad, pickFrom, scatter, solid } from './propKit.js';
 
 function windowTexture() {
   const canvas = document.createElement('canvas');
@@ -58,7 +58,7 @@ export const NEON_TOKYO = {
       for (let x = 6; x < w; x += 32) { ctx.fillRect(x, 11, 6, 2); ctx.fillRect(x + 2, 9, 2, 8); ctx.fillRect(x + 14, 11, 2, 6); }
     },
   },
-  epic: { abyss: 0x2a1458, glow: true, edge: '#20e0f0', tube: { wall: '#14102a', speckle: ['#241c44', '#100c20', '#2e2458'], rib: 0xf030b0, portal: 0x20e0f0, lines: [{ angle: 0.8, width: 0.05, color: 0x20e0f0 }, { angle: 2.4, width: 0.05, color: 0xf030b0 }, { angle: 4, width: 0.05, color: 0xf0e020 }, { angle: 5.5, width: 0.05, color: 0x60f070 }] } },
+  epic: { ramp: { stone: [0x1a1628, 0x26203a, 0x302848, 0x1e1a30], mortar: 0x0c0a14, moss: [0x20e0f0, 0xf030b0] }, abyss: 0x2a1458, glow: true, edge: '#20e0f0', tube: { wall: '#14102a', speckle: ['#241c44', '#100c20', '#2e2458'], rib: 0xf030b0, portal: 0x20e0f0, lines: [{ angle: 0.8, width: 0.05, color: 0x20e0f0 }, { angle: 2.4, width: 0.05, color: 0xf030b0 }, { angle: 4, width: 0.05, color: 0xf0e020 }, { angle: 5.5, width: 0.05, color: 0x60f070 }] } },
   weather: { count: 700, streak: 2.2, fall: 48, sway: 0.1, swaySpeed: 1, colors: [0x8098e0] },
 
   paintSky(ctx, w, h) {
@@ -85,7 +85,7 @@ export const NEON_TOKYO = {
     sign.translate(0, 3.5, 0);
     const signMaterial = new THREE.MeshBasicMaterial({ map: glyphTexture(), fog: false });
     alongRoad(ctx, {
-      every: 14, offset: 13, facesRoad: true, sizeOf: random => [4 + random() * 8, 2 + random() * 6, 1],
+      every: 14, offset: EDGE + 1, facesRoad: true, sizeOf: random => [4 + random() * 8, 2 + random() * 6, 1],
       parts: [{ geometry: sign, material: signMaterial, colorOf: pickFrom([0xff30b0, 0x20e8f0, 0xf0e020, 0x60f070, 0xa040ff]) }],
     });
     ctx.onUpdate(time => signMaterial.color.setScalar(Math.sin(time * 37) > 0.93 ? 0.55 : 1));   // letreiros piscam
@@ -96,7 +96,7 @@ export const NEON_TOKYO = {
     const awning = new THREE.BoxGeometry(9.6, 0.4, 2.4);
     awning.translate(0, 3.6, -4);
     nearRoad(ctx, {
-      count: 150, from: 15, to: 24,
+      count: 150, from: EDGE + 3, to: EDGE + 12,
       parts: [
         { geometry: shop, material: solid(0xffffff), colorOf: pickFrom([0x302258, 0x3c2460, 0x24304e]) },
         { geometry: awning, material: solid(0xffffff, { fog: false }), colorOf: pickFrom([0xf030b0, 0x20e0f0, 0xf0d020, 0xff5030]) },

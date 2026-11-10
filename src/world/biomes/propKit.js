@@ -8,6 +8,8 @@ import { pixelTexture } from '../textures.js';
 const matrix = new THREE.Matrix4(), quaternion = new THREE.Quaternion(), euler = new THREE.Euler();
 const position = new THREE.Vector3(), scale = new THREE.Vector3(), tint = new THREE.Color();
 const MAX_TRIES = 40;
+// Distâncias laterais do cenário contam a partir daqui (o muro). Assim elas acompanham a largura da pista.
+export const EDGE = OPEN_WALL;
 const BEHIND_WALL = OPEN_WALL + 2.6;                 // árvores e enfeites ficam atrás do muro
 const ROAD_KEEP = TRACK_WIDTH / 2 + 2;               // nada na altura dos carros chega mais perto do centro de qualquer trecho da pista
 const CAR_ZONE = 8, FOOTPRINT_STEP = 6;              // metros: altura que atrapalha a vista e espaçamento dos pontos testados

@@ -7,7 +7,7 @@ import { bearingFrom, damagePlayer } from './car.js';
 import { lifeAfterDestruction } from './carFlip.js';
 import { createHarpoon } from './harpoon.js';
 import { damageOpponent } from './opponents.js';
-import { damageAtDistance } from './weaponTypes.js';
+import { damageAtDistance, WEAPON_TYPES } from './weaponTypes.js';
 import { rollPart } from './carParts.js';
 
 // Combate dos adversários: cada piloto escolhe um alvo entre todos que estão à sua frente, atira,
@@ -30,7 +30,7 @@ const FIRING_ARC_COS = Math.cos(LOOK.maxYaw);         // o piloto só atira até
 
 const random = ([low, high]) => low + Math.random() * (high - low);
 
-export function createOpponentCombat({ scene, car, race, opponents, traps, look, onShot, onSound, onDestroyed, onBotShot, onRemotePull, onKill }) {
+export function createOpponentCombat({ scene, car, race, opponents, traps, burning, look, onShot, onSound, onDestroyed, onBotShot, onRemotePull, onKill, onPlayerShot = () => {} }) {
   const visuals = createCombatVisuals(scene);
   const from = new THREE.Vector3(), to = new THREE.Vector3();
   const combat = { hitFlash: 0, hitAngle: 0, update, reset, showRemoteShot, explodeAt: (x, y, z) => visuals.explode(x, y, z), harpoonTip: op => harpoons.get(op).tip };
@@ -95,11 +95,15 @@ export function createOpponentCombat({ scene, car, race, opponents, traps, look,
     combat.hitAngle = bearing;
   }
 
-  // Tiro de quem é simulado em outro navegador: só o traço e o som.
+  // Tiro de quem é simulado em outro navegador: só o traço, o som e a explosão da granada (o dano vem de lá).
   function showRemoteShot(weaponId, start, end) {
     from.fromArray(start);
     to.fromArray(end);
     visuals.showShot(from, to);
+    if (WEAPON_TYPES[weaponId]?.splash) {
+      visuals.explode(end[0], end[1] - 1.2, end[2]);
+      onSound('dynamite', end[0], end[2]);
+    }
     onShot(weaponId, Math.hypot(car.x - start[0], car.z - start[2]), -Math.sin(bearingFrom(car, look, start[0], start[2])));
   }
 
@@ -123,6 +127,25 @@ export function createOpponentCombat({ scene, car, race, opponents, traps, look,
     onShot(type.id, Math.hypot(car.x - op.x, car.z - op.z), -Math.sin(bearing));
 
     if (hit) hurt(target, op, damageAtDistance(type, distance) * rollPart().multiplier, bearing);
+    if (hit && target.isPlayer) onPlayerShot();       // bala batendo na lataria
+    if (type.splash) splash(op, type, to, hit ? target : null);
+    if (type.burn) {
+      if (hit) burning.ignite(target, op, type.burn);
+      else traps.burnGround(target.dist, target.lane + Math.sign(-uz * (to.x - target.wx) + ux * (to.z - target.wz)) * 2, op, op);
+    }
+  }
+
+  // Granada de um bot: explode no ponto do tiro e machuca todos em volta, menos quem atirou e o alvo direto.
+  function splash(op, type, point, direct) {
+    const { radius, min } = type.splash;
+    visuals.explode(point.x, point.y - TARGET_HEIGHT, point.z);
+    onSound('dynamite', point.x, point.z);
+    for (const racer of field) {
+      if (racer === op || racer === direct || racer.dead > 0 || racer.protectedFor > 0) continue;
+      const distance = Math.hypot(racer.wx - point.x, racer.wy + TARGET_HEIGHT - point.y, racer.wz - point.z);
+      if (distance > radius) continue;
+      hurt(racer, op, type.damage * (1 - (1 - min) * distance / radius), bearingFrom(car, look, point.x, point.z));
+    }
   }
 
   // Pausa média entre ataques para a munição da arma durar a corrida.

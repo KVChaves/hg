@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { paintGradient, paintSilhouette } from '../atmosphere.js';
-import { cutTop, paintBlocks, speckle } from './wallPaint.js';
+import { speckle } from './wallPaint.js';
 import { pixelTexture } from '../textures.js';
-import { billboard, nearRoad, overRoad, pickFrom, scatter, solid } from './propKit.js';
+import { billboard, EDGE, nearRoad, overRoad, pickFrom, scatter, solid } from './propKit.js';
 
 // Selva fechada sob chuva: árvores gigantes, copas que escondem o céu e lama na estrada.
 
@@ -96,10 +96,12 @@ const DARK_GREENS = ['#16381c', '#1e4a22', '#2a5a26', '#234e20'];
 export const JUNGLE = {
   id: 'jungle', name: 'SELVA', music: 'forestField',
   sky: 0x3e5c3e, fog: [6, 120], cabinTint: 0x96c48c,
-  shape: { wiggle: 0.26, targetLength: 2050, relief: 11, hillScale: 150, banks: 10, sharpCurves: 2 },
+  // Estrada de terra no fundo de um vale: barrancos começam colados na pista e o leito sobe e desce.
+  shape: { wiggle: 0.26, targetLength: 2050, relief: 11, hillScale: 150, banks: 15, bankRange: [10, 30], sharpCurves: 2 },
   layout: {
     jumpHops: 2,
     tunnels: { count: 3, length: [80, 140], open: true },
+    bumps: { height: 1.2, length: 60 },
   },
   ground: {
     base: [46, 66, 34], variation: 22,
@@ -118,21 +120,9 @@ export const JUNGLE = {
   kerb: ['#4a5a30', '#3a3020'],
   gantry: [0x2a1c10, 0x3a6a2a, 0xc8b070],
   tunnel: { rib: 0x2a1c10, leaves: 0x24561f },
-  // Ruína de pedra tomada pelo musgo e pelos cipós.
-  wall: {
-    height: 3.2, tile: 8,
-    paint(ctx, w, h) {
-      paintBlocks(w, h, 24, 8, (x, y, bw, bh) => {
-        ctx.fillStyle = ['#5a6a50', '#4e5e48', '#66745a'][Math.floor(Math.random() * 3)];
-        ctx.fillRect(x, y, bw - 1, bh - 1);
-      });
-      speckle(ctx, w, h, ['#3e8a34', '#5a9a3a', '#2e6a2a'], 340);
-      ctx.fillStyle = '#2e5a26';
-      for (let vine = 0; vine < 10; vine++) ctx.fillRect(Math.floor(Math.random() * w), 0, 1, 10 + Math.floor(Math.random() * 18));
-      cutTop(ctx, w, x => (Math.sin(x * 0.4) > 0.5 ? 3 : 0) + (x % 37 < 8 ? 2 : 0));
-    },
-  },
-  epic: { abyss: 0x1f6a5c, glow: false, edge: '#7ab84a', tube: { wall: '#4a3a24', speckle: ['#3a7a30', '#5a4a2c', '#2e5a26'], rib: 0x2a1c10, portal: 0x3e6a2e, lines: [{ angle: Math.PI * 0.5, width: 0.05, color: 0x7ab84a }, { angle: Math.PI * 1.5, width: 0.05, color: 0x7ab84a }] } },
+  // Sem muro: os barrancos do vale fecham a pista (o limite de colisão continua no mesmo lugar).
+  wall: null,
+  epic: { shallow: true, ramp: { stone: [0x2e3624, 0x4a5236, 0x5a6040, 0x3e4630], mortar: 0x1c2016, moss: [0x4a7a26, 0x6a9a34, 0x3a5a1e] }, abyss: 0x1f6a5c, glow: false, edge: '#7ab84a', tube: { wall: '#4a3a24', speckle: ['#3a7a30', '#5a4a2c', '#2e5a26'], rib: 0x2a1c10, portal: 0x3e6a2e, lines: [{ angle: Math.PI * 0.5, width: 0.05, color: 0x7ab84a }, { angle: Math.PI * 1.5, width: 0.05, color: 0x7ab84a }] } },
   weather: { count: 620, streak: 2.8, fall: 46, sway: 0.15, swaySpeed: 1, colors: [0xa8c4b0] },
 
   paintSky(ctx, w, h) {
@@ -150,22 +140,22 @@ export const JUNGLE = {
     const crown = billboard(paintCanopy(DARK_GREENS), 30, 18, 26);
     const trees = [{ geometry: trunk, material: bark }, { geometry: root, material: bark }, crown];
     scatter(ctx, { count: 520, clearance: 16, sizeOf: random => 0.8 + random() * 0.8, parts: trees });
-    nearRoad(ctx, { count: 240, from: 12, to: 28, sizeOf: random => 0.7 + random() * 0.6, parts: trees });
+    nearRoad(ctx, { count: 240, from: EDGE, to: EDGE + 16, sizeOf: random => 0.7 + random() * 0.6, parts: trees });
 
     const bigLeaves = billboard(paintBroadLeaves(LEAF_GREENS, 7), 9, 8);
-    nearRoad(ctx, { count: 420, from: 10.5, to: 26, sizeOf: random => 0.6 + random() * 1.1, parts: [bigLeaves] });
+    nearRoad(ctx, { count: 420, from: EDGE - 1.5, to: EDGE + 14, sizeOf: random => 0.6 + random() * 1.1, parts: [bigLeaves] });
     const ferns = billboard(paintFern(LEAF_GREENS), 5, 3.6);
-    nearRoad(ctx, { count: 620, from: 9.5, to: 22, sizeOf: random => 0.6 + random() * 0.9, parts: [ferns] });
+    nearRoad(ctx, { count: 620, from: EDGE - 2.5, to: EDGE + 10, sizeOf: random => 0.6 + random() * 0.9, parts: [ferns] });
 
     // Copas e cipós fecham o alto da estrada.
     const roofLeaves = billboard(paintCanopy(['#1e4a22', '#2e6a2a', '#16381c', '#3e8a34']), 24, 12);
-    overRoad(ctx, { count: 240, height: [15, 22], lateral: 15, sizeOf: random => 0.7 + random() * 0.8, parts: [roofLeaves] });
+    overRoad(ctx, { count: 240, height: [15, 22], lateral: EDGE + 3, sizeOf: random => 0.7 + random() * 0.8, parts: [roofLeaves] });
     const vines = billboard(paintVine(), 2.4, 13, -13);
-    overRoad(ctx, { count: 150, height: [17, 21], lateral: 11, sizeOf: random => 0.5 + random() * 0.25, parts: [vines] });   // a ponta do cipó fica acima dos carros
+    overRoad(ctx, { count: 150, height: [17, 21], lateral: EDGE - 1, sizeOf: random => 0.5 + random() * 0.25, parts: [vines] });   // a ponta do cipó fica acima dos carros
 
     const rock = new THREE.DodecahedronGeometry(2, 0);
     nearRoad(ctx, {
-      count: 90, from: 10, to: 20, sizeOf: random => [0.5 + random(), 0.4 + random() * 0.6, 0.5 + random()],
+      count: 90, from: EDGE - 2, to: EDGE + 8, sizeOf: random => [0.5 + random(), 0.4 + random() * 0.6, 0.5 + random()],
       parts: [{ geometry: rock, material: solid(0xffffff), colorOf: pickFrom([0x4e6a3a, 0x5e7248, 0x3e5230]) }],
     });
   },

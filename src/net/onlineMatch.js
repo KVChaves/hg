@@ -2,7 +2,7 @@ import { CAR_MAX_HP } from '../config.js';
 import { bearingFrom, damagePlayer } from '../game/car.js';
 import { createMatch } from '../game/championship.js';
 import { damageOpponent } from '../game/opponents.js';
-import { TRAP_TYPES } from '../game/trapTypes.js';
+import { hazardType } from '../game/trapTypes.js';
 import { BIOMES, pickBiome } from '../world/biomes/index.js';
 import { createHarpoonVisual } from '../world/harpoonVisual.js';
 
@@ -18,7 +18,7 @@ const BOT_PREFIX = 'bot';
 const round = value => Math.round(value * 100) / 100;
 const isBotId = id => id.startsWith(BOT_PREFIX);
 
-export function createOnlineMatch({ net, scene, race, car, opponents, combat, traps, foam, harpoon, pulls, weapon, look, garage, results, podium, getSpec, setRacerCount, setMatch, getMatch, getMatchKills, beginRace, getBiome, playAt, creditKill, rewardKillFor, announceTrapCatch, obstacles, onLateJoin }) {
+export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = () => {}, net, scene, race, car, opponents, combat, traps, burning, foam, harpoon, pulls, weapon, look, garage, results, podium, getSpec, setRacerCount, setMatch, getMatch, getMatchKills, beginRace, getBiome, playAt, creditKill, rewardKillFor, announceTrapCatch, obstacles, onLateJoin }) {
   const byId = new Map(), harpoonVisuals = new Map(), ready = new Set(), pool = [...opponents], killsOf = new Map();
   let isHost = false, phase = 'idle', phaseTimer = 0, snapshotTimer = 0, finishGrace = 0;
 
@@ -54,6 +54,7 @@ export function createOnlineMatch({ net, scene, race, car, opponents, combat, tr
       op.remote = bot ? !isHost : true;
       op.name = bot ? (taken.has(op.profile.name) ? `${op.profile.name} Bot` : op.profile.name) : others[i - botCount].name;
       op.onRemoteDamage = (amount, attacker) => sendHit(op, amount, attacker);
+      op.onRemoteIgnite = (seconds, attacker) => net.relay({ k: 'burn', t: op.netId, s: seconds, by: attacker?.netId ?? null }, ownerOf(op));
       byId.set(op.netId, op);
     });
   }
@@ -135,6 +136,7 @@ export function createOnlineMatch({ net, scene, race, car, opponents, combat, tr
       round(speed), round(vx), round(vz), round(health), round(dead), round(isMe ? car.invulnerable : racer.protectedFor),
       state.overturned ? 1 : 0, (isMe ? car.nitroActive : racer.nitroActive) ? 1 : 0,
       state.rig.active ? 1 : 0, round(state.rig.angle), round(state.rig.y), tip ? tip.map(round) : 0,
+      (isMe ? car.effects : racer.effects).burning > 0 ? 1 : 0,
     ];
   }
 
@@ -148,11 +150,12 @@ export function createOnlineMatch({ net, scene, race, car, opponents, combat, tr
   function receiveSnapshot(values) {
     const racer = byId.get(values[0]);
     if (!racer || !racer.remote) return;
-    const [, dist, lane, x, y, z, yaw, pitch, v, vx, vz, health, dead, protectedFor, overturned, nitro, rigActive, rigAngle, rigY, tip] = values;
+    const [, dist, lane, x, y, z, yaw, pitch, v, vx, vz, health, dead, protectedFor, overturned, nitro, rigActive, rigAngle, rigY, tip, burningNow] = values;
     racer.snapshot = {
       dist, lane, x, y, z, yaw, pitch, v, vx, vz, health, dead, protectedFor, age: 0,
       overturned: Boolean(overturned), nitro: Boolean(nitro), rigActive: Boolean(rigActive), rigAngle, rigY, tip: tip || null,
     };
+    racer.effects.burning = burningNow ? 1 : 0;      // só para mostrar as chamas; quem queima é o navegador dele
   }
 
   function drawRemoteHarpoons() {
@@ -184,7 +187,9 @@ export function createOnlineMatch({ net, scene, race, car, opponents, combat, tr
       const before = car.wrecked;
       damagePlayer(car, a / CAR_MAX_HP);
       destroyed = car.health <= 0 && before <= 0;
+      if (destroyed) onPlayerKilledBy(attacker);
       if (attacker) {
+        onPlayerShot();
         combat.hitFlash = HIT_FLASH_TIME;
         combat.hitAngle = bearingFrom(car, look, attacker.x, attacker.z);
       }
@@ -204,7 +209,11 @@ export function createOnlineMatch({ net, scene, race, car, opponents, combat, tr
     },
     caught: data => {
       const racer = byId.get(data.t);
-      if (data.by === net.id && racer) announceTrapCatch(racer, TRAP_TYPES[data.i]);
+      if (data.by === net.id && racer) announceTrapCatch(racer, hazardType(data.i));
+    },
+    burn: data => {
+      const target = byId.get(data.t);
+      if (target && !target.remote) burning.ignite(target, byId.get(data.by) ?? null, data.s);
     },
     shot: data => combat.showRemoteShot(data.w, data.f, data.e),
     ob: data => obstacles.spawnFromNetwork(data),

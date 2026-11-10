@@ -77,15 +77,34 @@ function buildSmoke(group) {
   return puffs;
 }
 
+// Chão queimando: mancha preta e chamas que tremulam, crescem ao cair e somem no fim da vida.
+const FIRE_COLORS = [0xff5a10, 0xff9a20, 0xffd050];
+function buildGroundFire(group, { halfWidth, halfLength }) {
+  groundDisc(group, halfWidth, halfLength, 0x140a06);
+  groundDisc(group, halfWidth * 0.7, halfLength * 0.7, 0x3a1206, 0.06);
+  const cone = new THREE.ConeGeometry(0.5, 1, 5);
+  cone.translate(0, 0.5, 0);
+  const flames = [];
+  for (let i = 0; i < 11; i++) {
+    const a = i * 2.4, r = Math.sqrt((i + 0.5) / 11);
+    const mesh = new THREE.Mesh(cone, basic(FIRE_COLORS[i % FIRE_COLORS.length], { fog: false }));
+    mesh.position.set(Math.cos(a) * r * halfWidth * 0.85, 0, Math.sin(a) * r * halfLength * 0.85);
+    group.add(mesh);
+    flames.push({ mesh, height: 1.2 + Math.random() * 1.6, width: 0.7 + Math.random() * 0.6, phase: Math.random() * 6 });
+  }
+  return flames;
+}
+
 export function createTrapVisual(type) {
   const group = new THREE.Group();
-  let age = 0, dynamite = null, puffs = null;
+  let age = 0, dynamite = null, puffs = null, flames = null;
 
   if (type.id === 'spikes') buildSpikes(group, type);
   if (type.id === 'oil') buildOil(group, type);
   if (type.id === 'paint') buildPaint(group, type);
   if (type.id === 'dynamite') dynamite = buildDynamite(group);
   if (type.id === 'smoke') puffs = buildSmoke(group);
+  if (type.id === 'fire') flames = buildGroundFire(group, type);
 
   return {
     group,
@@ -95,6 +114,13 @@ export function createTrapVisual(type) {
       if (puffs) {
         const grow = Math.min(1, age * 2.5);
         for (const { mesh, size } of puffs) mesh.scale.setScalar(size * grow);
+      }
+      if (flames) {
+        const strength = Math.min(1, age * 4) * Math.max(0, Math.min(1, type.life - age));
+        for (const flame of flames) {
+          const flicker = 0.75 + 0.25 * Math.sin(age * 17 + flame.phase) + Math.random() * 0.15;
+          flame.mesh.scale.set(flame.width * strength, flame.height * flicker * strength + 0.01, flame.width * strength);
+        }
       }
     },
     showExplosion(progress) {

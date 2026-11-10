@@ -19,7 +19,7 @@ const MIN_TIME_GAP = 0.05;                           // segundos entre tempos es
 const IMPACT_DAMAGE = 0.4;                           // pontos de vida por m/s de batida
 
 const gridDistance = slot => track.length - 8 - (slot >> 1) * 10 - (slot & 1) * 4;
-const gridLane = slot => (slot & 1) ? 3.6 : -3.6;
+const gridLane = slot => (slot & 1 ? 1 : -1) * TRACK_WIDTH * 0.24;   // duas filas, uma de cada lado do centro
 
 export function createRace(car, opponents, { onCrash, onDestroyed }) {
   const playerProxy = { name: 'Player', netId: 'player', slipstream: 0, wx: 0, wy: 0, wz: 0, twist: 0, y: 0, yaw: 0, dist: 0, lane: 0, v: 0, dead: 0, protectedFor: 0, x: 0, z: 0, isPlayer: true, effects: car.effects };

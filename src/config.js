@@ -12,7 +12,7 @@ export const NITRO_ACCEL = 16;              // m/s² somados à aceleração
 export const NITRO_DRAIN = 0.25;            // fração do tanque por segundo
 export const WHEELBASE = 2.6;
 
-export const TRACK_WIDTH = 15;
+export const TRACK_WIDTH = 12;                      // uns 3,2 carros lado a lado
 export const LAPS = 3;
 export const MAX_RACERS = 8;                         // a partida pode ter de 2 até este número de carros
 

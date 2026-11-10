@@ -120,7 +120,7 @@ export function createCollisions({ car, field, onCrash, onDestroyed }) {
     } else {
       destroyed = damageOpponent(racer, amount, other);
     }
-    if (destroyed) onDestroyed(racer, other);
+    if (destroyed) onDestroyed(racer, other, 'ram');
   }
 
   function reportSound(a, b, nx, nz, impact, cx, cz) {

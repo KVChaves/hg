@@ -17,9 +17,9 @@ const PATTERN_TEST = {
 };
 const PATTERN_DEFAULT = { none: 0x000000, camo: 0x4a5a30, tiger: 0xb08020, engraved: 0xd8b860, worn: 0xc0c0c0 };
 
-export function materials(base, custom) {
+export function materials(base, custom, baseGrip = WOOD) {
   const metal = custom.colors.metal === null ? base : colorRamp(custom.colors.metal);
-  const grip = custom.colors.grip === null ? WOOD : colorRamp(custom.colors.grip);
+  const grip = custom.colors.grip === null ? baseGrip : colorRamp(custom.colors.grip);
   const patternRamp = colorRamp(custom.colors.pattern ?? PATTERN_DEFAULT[custom.options.pattern]);
   const isPattern = PATTERN_TEST[custom.options.pattern];
   return {
@@ -36,3 +36,37 @@ export const layerOf = (width, height, paint) => {
   return r.commit();
 };
 
+
+// Desenho direto no contexto, em pixels inteiros, para as partes que mudam a cada quadro.
+const hex = c => `#${c.toString(16).padStart(6, '0')}`;
+
+export function ctxBox(ctx, color, x, y, w = 1, h = 1) {
+  ctx.fillStyle = hex(color);
+  ctx.fillRect(Math.round(x), Math.round(y), Math.max(1, Math.round(w)), Math.max(1, Math.round(h)));
+}
+
+export function ctxDisc(ctx, cx, cy, r, color) {
+  ctx.fillStyle = hex(color);
+  const ir = Math.ceil(r);
+  for (let dy = -ir; dy <= ir; dy++) {
+    if (Math.abs(dy) > r) continue;
+    const half = Math.floor(Math.sqrt(r * r - dy * dy));
+    ctx.fillRect(Math.round(cx) - half, Math.round(cy + dy), half * 2 + 1, 1);
+  }
+}
+
+// Linha de Bresenham com espessura, como Raster.line.
+export function ctxLine(ctx, color, x0, y0, x1, y1, thick = 1) {
+  ctx.fillStyle = hex(color);
+  x0 = Math.round(x0); y0 = Math.round(y0); x1 = Math.round(x1); y1 = Math.round(y1);
+  const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+  const lo = -Math.floor((thick - 1) / 2);
+  let err = dx + dy;
+  for (;;) {
+    ctx.fillRect(x0 + lo, y0 + lo, thick, thick);
+    if (x0 === x1 && y0 === y1) break;
+    const e2 = 2 * err;
+    if (e2 >= dy) { err += dy; x0 += sx; }
+    if (e2 <= dx) { err += dx; y0 += sy; }
+  }
+}

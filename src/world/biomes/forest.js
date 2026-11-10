@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { paintGradient, paintSilhouette } from '../atmosphere.js';
 import { cutTop, speckle } from './wallPaint.js';
-import { alongRoad, nearRoad, pickFrom, scatter, solid } from './propKit.js';
+import { alongRoad, EDGE, nearRoad, pickFrom, scatter, solid } from './propKit.js';
 
 // Pôr do sol de outono, estrada de terra batida, árvores vermelhas e cogumelos gigantes.
 export const FOREST = {
@@ -42,7 +42,7 @@ export const FOREST = {
       cutTop(ctx, w, x => Math.abs((x % 16) - 8));
     },
   },
-  epic: { abyss: 0x2a1c10, glow: false, edge: '#e0a030', tube: { wall: '#5a3618', speckle: ['#74481e', '#3a2210', '#8a5a2a'], rib: 0x3a2210, portal: 0xc89a4a, lines: [{ angle: Math.PI * 0.5, width: 0.04, color: 0xe0a030 }] } },
+  epic: { shallow: true, ramp: { stone: [0x3a302c, 0x5a4c44, 0x6a5a4e, 0x4a3e38], mortar: 0x221a16, moss: [0x7a3418, 0x9a4a1c, 0x5a5a20] }, abyss: 0x2a1c10, glow: false, edge: '#e0a030', tube: { wall: '#5a3618', speckle: ['#74481e', '#3a2210', '#8a5a2a'], rib: 0x3a2210, portal: 0xc89a4a, lines: [{ angle: Math.PI * 0.5, width: 0.04, color: 0xe0a030 }] } },
   weather: { count: 240, size: 2, fall: 3, sway: 3, swaySpeed: 1.1, colors: [0xd86a18, 0xc03a14, 0xe8a030] },
 
   paintSky(ctx, w, h) {
@@ -68,7 +68,7 @@ export const FOREST = {
     });
 
     nearRoad(ctx, {
-      count: 260, from: 12, to: 26, sizeOf: random => 0.7 + random() * 0.7,
+      count: 260, from: EDGE, to: EDGE + 14, sizeOf: random => 0.7 + random() * 0.7,
       parts: [
         { geometry: trunk, material: solid(0x2a1608) },
         { geometry: leaves, material: solid(0xffffff), colorOf: pickFrom([0xb8301a, 0xd04a14, 0xe07820, 0xc8a024]) },
@@ -89,6 +89,6 @@ export const FOREST = {
 
     const bush = new THREE.IcosahedronGeometry(1.6, 0);
     bush.translate(0, 0.9, 0);
-    alongRoad(ctx, { every: 16, offset: 12.5, sizeOf: random => 0.6 + random() * 0.8, parts: [{ geometry: bush, material: solid(0xffffff), colorOf: pickFrom([0x6a3414, 0x8a4418, 0x5a6a1c]) }] });
+    alongRoad(ctx, { every: 16, offset: EDGE + 0.5, sizeOf: random => 0.6 + random() * 0.8, parts: [{ geometry: bush, material: solid(0xffffff), colorOf: pickFrom([0x6a3414, 0x8a4418, 0x5a6a1c]) }] });
   },
 };

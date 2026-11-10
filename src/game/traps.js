@@ -1,7 +1,7 @@
 import { inGap, surfaceAt, trackAt, wrapDistance } from '../world/track.js';
 import { createTrapVisual } from '../world/trapVisuals.js';
 import { lifeAfterDestruction } from './carFlip.js';
-import { EXTINGUISHER_LIFE, TRAP_TYPES, TRAPS_UNLOCK_TIME } from './trapTypes.js';
+import { EXTINGUISHER_LIFE, GROUND_FIRE, hazardType, TRAP_TYPES, TRAPS_UNLOCK_TIME } from './trapTypes.js';
 
 const NOTICE_TIME = 1.4;
 const GAP_BACKOFF = 3;
@@ -11,7 +11,7 @@ const THROW_BACK = 9, THROW_SIDE = 5, THROW_TIME = 0.5, THROW_SPEED_LOSS = 0.25,
 const BLAST_PUSH = 8, BOT_BLAST_KNOCK = 12, BLAST_FALLOFF = 0.6;   // m/s; o bot volta para a faixa sozinho, então o empurrão lateral nele é maior
 
 // O bagageiro: armadilhas e power-ups, usados com a tecla E.
-export function createTraps({ scene, car, race, harpoon, onSound, onExtinguisher, onPlaced, onCaught, onDetonated = () => {} }) {
+export function createTraps({ scene, car, race, harpoon, burning, onSound, onExtinguisher, onPlaced, onCaught, onDetonated = () => {} }) {
   const traps = { slots: [], selected: 0, active: [], notice: { text: '', time: 0, good: false } };
   const throws = [];                                  // carros sendo jogados por uma explosão
 
@@ -59,6 +59,7 @@ export function createTraps({ scene, car, race, harpoon, onSound, onExtinguisher
   traps.extinguish = racer => {
     if (racer.isPlayer) car.health = Math.min(lifeCap(), car.health + EXTINGUISHER_LIFE);
     else racer.hp = Math.min(racer.maxHp * lifeAfterDestruction(racer.destroyed), racer.hp + racer.maxHp * EXTINGUISHER_LIFE);
+    racer.effects.burning = 0;                       // e apaga o fogo
     onSound('extinguisher', racer.x, racer.z);
     onExtinguisher(racer);
   };
@@ -110,8 +111,20 @@ export function createTraps({ scene, car, race, harpoon, onSound, onExtinguisher
     onPlaced(type, opponent.dist - DROP_DISTANCE_BEHIND, opponent.lane, opponent, trap.id);
   };
 
+  // Flecha incendiária que caiu no chão: o asfalto fica queimando ali. `shooter` é quem atirou (de race.field);
+  // `owner` segue a regra de `place` (nulo quando foi o jogador deste navegador). No vão não há chão para queimar.
+  traps.burnGround = (dist, lane, owner, shooter) => {
+    if (inGap(dist)) return;
+    const trap = place(GROUND_FIRE, dist, lane, owner, shooter);
+    onSound(GROUND_FIRE.id, trap.x, trap.z);
+    onPlaced(GROUND_FIRE, dist, lane, shooter, trap.id);
+  };
+
   // Armadilha solta em outro navegador: aparece aqui e só afeta os carros simulados aqui.
-  traps.placeFromNetwork = (typeId, dist, lane, owner, id) => { place(TRAP_TYPES[typeId], dist, lane, owner, owner, id); };
+  traps.placeFromNetwork = (typeId, dist, lane, owner, id) => {
+    const type = hazardType(typeId);
+    if (type) place(type, dist, lane, owner, owner, id);
+  };
   // Outro navegador acionou a dinamite: aqui ela explode também, para quem estiver perto.
   traps.detonateFromNetwork = id => {
     const trap = traps.active.find(candidate => candidate.id === id && candidate.explodedFor < 0);
@@ -193,6 +206,19 @@ export function createTraps({ scene, car, race, harpoon, onSound, onExtinguisher
     return Math.abs(wrapDistance(racer.dist - trap.dist)) < halfLength + 2 && Math.abs(racer.lane - trap.lane) < halfWidth + 1;
   }
 
+  // Fogo no chão: queima quem está em cima enquanto estiver; avisa e toca o som só na primeira vez.
+  function updateGroundFire(trap) {
+    if (trap.age > trap.type.life) { remove(trap); return; }
+    for (const racer of race.field) {
+      if (racer.remote || racer.dead > 0 || !touches(trap, racer)) continue;
+      burning.ignite(racer, trap.owner ?? trap.dropper, trap.type.duration);
+      if (trap.hitBy.has(racer)) continue;
+      trap.hitBy.add(racer);
+      onSound(trap.type.id, racer.x, racer.z);
+      onCaught(racer, trap.type, trap.owner);
+    }
+  }
+
   function updateGroundTrap(trap) {
     if (trap.age > trap.type.life) { remove(trap); return; }
     for (const racer of race.field) {
@@ -225,7 +251,8 @@ export function createTraps({ scene, car, race, harpoon, onSound, onExtinguisher
     for (const trap of [...traps.active]) {
       trap.age += dt;
       trap.visual.update(dt);
-      if (trap.type.effect) updateGroundTrap(trap);
+      if (trap.type === GROUND_FIRE) updateGroundFire(trap);
+      else if (trap.type.effect) updateGroundTrap(trap);
       else updateDynamite(trap, dt);
     }
   };

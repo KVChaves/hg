@@ -8,7 +8,7 @@ import { fbm } from '../art/shade.js';
 export const track = { length: 1, count: 0, step: 1, px: null, py: null, pz: null, tx: null, tz: null, slope: null, curvature: null, turn: null, wall: null, roll: null, gap: null, epic: null, drop: null, boost: null, enclosed: null, heightAt: () => 0 };
 
 const CONTROL_COUNT = 18, HARMONICS = [[2, 0.8], [3, 0.55], [4, 0.3]];
-export const OPEN_WALL = TRACK_WIDTH / 2 + 4.5;       // até onde o centro do carro pode sair da pista, onde ficam os muros
+export const OPEN_WALL = TRACK_WIDTH / 2 + 3;         // até onde o centro do carro pode sair da pista, onde ficam os muros
 export const TWIST_RADIUS = 10;                       // distância da estrada ao eixo do tubo em que ela gira
 export const SHARP_RADIUS = 34;                       // raio (m) a partir do qual a curva conta como fechada
 const FLAT_OUT_RADIUS = 62;                           // acima desse raio dá para fazer a curva a 120 km/h sem frear
@@ -18,7 +18,7 @@ const MAX_SLOPE = 0.2, MAX_RELIEF_RETRIES = 8, RELIEF_REDUCTION = 0.8;
 const FLAT_START_RADIUS = 150, ROAD_LIFT = 0.2;       // a largada é plana; a estrada fica um pouco acima do terreno
 const BLEND_FROM = 10, BLEND_TO = 30;                 // perto da estrada o terreno acompanha a altura dela
 const CHASM_FROM = 42, CHASM_TO = 80;
-const BANK_FROM = 16, BANK_TO = 50;                   // barrancos ao lado da estrada, nos biomas que têm
+const BANK_FROM = 16, BANK_TO = 50;                   // barrancos ao lado da estrada, nos biomas que têm (`bankRange` muda)
 const GROUND_SINK = 1.4, SINK_TO = 18;                // e passa por baixo do asfalto, para nunca atravessá-lo
 
 const smoothstep = (from, to, value) => {
@@ -131,7 +131,9 @@ function measureRoad({ count, step, px, pz }, heightAt) {
 }
 
 // Altura final do terreno: livre longe da pista e assentada sob a estrada perto dela.
-function conformToRoad(terrainAt, { count, px, pz }, py, banks = 0) {
+// `banks` é a altura dos barrancos e `bankRange` [de, até] a distância do centro da pista em que eles sobem:
+// começando colado na pista, a estrada corre no fundo de um vale.
+function conformToRoad(terrainAt, { count, px, pz }, py, banks = 0, [bankFrom, bankTo] = [BANK_FROM, BANK_TO]) {
   return (x, z) => {
     let nearest = Infinity, index = 0;
     for (let i = 0; i < count; i++) {
@@ -139,7 +141,7 @@ function conformToRoad(terrainAt, { count, px, pz }, py, banks = 0) {
       if (d < nearest) { nearest = d; index = i; }
     }
     const distance = Math.sqrt(nearest), terrain = terrainAt(x, z);
-    const bank = banks * smoothstep(BANK_FROM, BANK_TO, distance) - track.drop[index] * (1 - smoothstep(CHASM_FROM, CHASM_TO, distance));   // sob os saltos o terreno afunda e vira abismo
+    const bank = banks * smoothstep(bankFrom, bankTo, distance) - track.drop[index] * (1 - smoothstep(CHASM_FROM, CHASM_TO, distance));   // sob os saltos o terreno afunda e vira abismo
     if (distance >= BLEND_TO) return terrain + bank;
     const road = py[index] - ROAD_LIFT;
     return road + (terrain - road) * smoothstep(BLEND_FROM, BLEND_TO, distance) - GROUND_SINK * (1 - smoothstep(BLEND_FROM, SINK_TO, distance)) + bank;
@@ -183,7 +185,7 @@ export function generateTrack(seed, shape) {
     py: road.py, slope: road.slope, wall: new Float32Array(geometry.count).fill(OPEN_WALL),
     roll: new Float32Array(geometry.count), gap: new Uint8Array(geometry.count), epic: new Uint8Array(geometry.count),
     drop: new Float32Array(geometry.count), boost: new Uint8Array(geometry.count), enclosed: new Uint8Array(geometry.count),
-    heightAt: conformToRoad(heightAt, geometry, road.py, shape.banks),
+    heightAt: conformToRoad(heightAt, geometry, road.py, shape.banks, shape.bankRange),
   });
 }
 
@@ -215,6 +217,24 @@ export function nearestIndex(x, z, hint) {
     if (d < best) { best = d; bestIndex = i; }
   }
   return bestIndex;
+}
+
+// Onde a reta que sai de `origin` na direção `dir` (normalizada) bate no asfalto, até `range` metros.
+// Devolve { x, y, z, dist, lane } ou nulo (não chegou ao chão, caiu fora da pista, num vão ou no tubo).
+const GROUND_RAY_STEP = 0.75, MAX_GROUND_ROLL = 0.2;
+export function groundHit(origin, dir, range) {
+  let index = -1;
+  for (let d = GROUND_RAY_STEP; d <= range; d += GROUND_RAY_STEP) {
+    const x = origin.x + dir.x * d, y = origin.y + dir.y * d, z = origin.z + dir.z * d;
+    index = nearestIndex(x, z, index);
+    if (y > track.py[index]) continue;
+    if (Math.abs(track.roll[index]) > MAX_GROUND_ROLL || track.gap[index] === 1) return null;
+    const n = Math.hypot(track.tx[index], track.tz[index]) || 1, tx = track.tx[index] / n, tz = track.tz[index] / n;
+    const lane = -(x - track.px[index]) * tz + (z - track.pz[index]) * tx;
+    if (Math.abs(lane) > OPEN_WALL) return null;
+    return { x, y: track.py[index], z, dist: index * track.step, lane };
+  }
+  return null;
 }
 
 // Ponto do mapa sobre um abismo ou ao lado do tubo: ali o chão afunda, então não vai cenário.

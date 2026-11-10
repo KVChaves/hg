@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { paintGradient, paintSilhouette } from '../atmosphere.js';
 import { cutTop, paintBlocks, speckle } from './wallPaint.js';
-import { acrossRoad, archFrame, nearRoad, pickFrom, scatter, solid } from './propKit.js';
+import { acrossRoad, archFrame, EDGE, nearRoad, pickFrom, scatter, solid } from './propKit.js';
 
 // Céu frio com aurora, estrada de neve batida, pinheiros e cristais de gelo.
 export const WINTER_MOUNTAIN = {
@@ -43,7 +43,7 @@ export const WINTER_MOUNTAIN = {
       cutTop(ctx, w, x => Math.round(1.5 + Math.sin(x * 0.17) * 1.5));
     },
   },
-  epic: { abyss: 0x3a6a9a, glow: false, edge: '#c8f4ff', tube: { wall: '#7cc4e4', speckle: ['#a8def2', '#5aa4cc', '#d4f0fa'], rib: 0xb8e6f6, portal: 0xeaf6fc, lines: [{ angle: Math.PI * 0.5, width: 0.04, color: 0xc8f4ff }] } },
+  epic: { shallow: true, ramp: { stone: [0x3e4652, 0x5a6470, 0x6e7884, 0x4e5662], mortar: 0x2a3038, moss: [0xe8f0f6, 0xd0dce6, 0xffffff] }, abyss: 0x3a6a9a, glow: false, edge: '#c8f4ff', tube: { wall: '#7cc4e4', speckle: ['#a8def2', '#5aa4cc', '#d4f0fa'], rib: 0xb8e6f6, portal: 0xeaf6fc, lines: [{ angle: Math.PI * 0.5, width: 0.04, color: 0xc8f4ff }] } },
   weather: { count: 700, size: 2, fall: 11, sway: 3.2, swaySpeed: 1.8, colors: [0xffffff, 0xe8f0fa] },
 
   paintSky(ctx, w, h) {
@@ -91,10 +91,10 @@ export const WINTER_MOUNTAIN = {
     // Montes de neve na beira e paredões de gelo fecham a estrada.
     const drift = new THREE.IcosahedronGeometry(3, 0);
     drift.scale(1.6, 0.6, 1.2);
-    nearRoad(ctx, { count: 300, from: 10.5, to: 18, sizeOf: random => 0.6 + random(), parts: [{ geometry: drift, material: solid(0xffffff), colorOf: pickFrom([0xf4f8fc, 0xdce8f2, 0xc8d8e8]) }] });
+    nearRoad(ctx, { count: 300, from: EDGE - 1.5, to: EDGE + 6, sizeOf: random => 0.6 + random(), parts: [{ geometry: drift, material: solid(0xffffff), colorOf: pickFrom([0xf4f8fc, 0xdce8f2, 0xc8d8e8]) }] });
     const iceColumn = new THREE.CylinderGeometry(1.4, 2.6, 16, 6);
     iceColumn.translate(0, 8, 0);
-    nearRoad(ctx, { count: 110, from: 14, to: 30, sizeOf: random => [0.6 + random() * 0.8, 0.6 + random() * 1.2, 0.6 + random() * 0.8], parts: [{ geometry: iceColumn, material: solid(0xffffff), colorOf: pickFrom([0x7cc4e4, 0xa8def2, 0x5aa4cc]) }] });
+    nearRoad(ctx, { count: 110, from: EDGE + 2, to: EDGE + 18, sizeOf: random => [0.6 + random() * 0.8, 0.6 + random() * 1.2, 0.6 + random() * 0.8], parts: [{ geometry: iceColumn, material: solid(0xffffff), colorOf: pickFrom([0x7cc4e4, 0xa8def2, 0x5aa4cc]) }] });
 
     // Cabanas com a janela acesa.
     const hut = new THREE.BoxGeometry(8, 5, 7);
@@ -104,7 +104,7 @@ export const WINTER_MOUNTAIN = {
     roof.translate(0, 7, 0);
     const litWindow = new THREE.BoxGeometry(8.1, 1.4, 1.8);
     litWindow.translate(0, 2.8, 0);
-    nearRoad(ctx, { count: 26, from: 20, to: 34, parts: [{ geometry: hut, material: solid(0x5a3c24) }, { geometry: roof, material: solid(0xf0f4f8) }, { geometry: litWindow, material: solid(0xffc860, { fog: false }) }] });
+    nearRoad(ctx, { count: 26, from: EDGE + 8, to: EDGE + 22, parts: [{ geometry: hut, material: solid(0x5a3c24) }, { geometry: roof, material: solid(0xf0f4f8) }, { geometry: litWindow, material: solid(0xffc860, { fog: false }) }] });
 
     // Teleférico cruzando a pista.
     acrossRoad(ctx, {

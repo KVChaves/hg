@@ -19,6 +19,11 @@ export const SOUND_FILES = {
   crash: `${CAR}/crash.wav`,
   carHit: `${CAR}/hit.wav`,
   carPunched: `${CAR}/punched.wav`,
+  // Bala batendo na lataria do próprio carro: quatro variações, sorteadas a cada acerto.
+  bulletHit1: `${CAR}/bullet-hit-1.wav`,
+  bulletHit2: `${CAR}/bullet-hit-2.wav`,
+  bulletHit3: `${CAR}/bullet-hit-3.wav`,
+  bulletHit4: `${CAR}/bullet-hit-4.wav`,
   // Armadilhas: o nome é o id em game/trapTypes.js. Os espinhos ainda não têm som.
   dynamite: `${TRAPS}/dynamite.wav`,
   oil: `${TRAPS}/oil.wav`,
@@ -27,6 +32,9 @@ export const SOUND_FILES = {
   harpoon: `${TRAPS}/harpoon.wav`,
   harpoonHit: `${TRAPS}/harpoon-hit.wav`,
   extinguisher: `${TRAPS}/extinguisher.wav`,
+  // Fogo da besta incendiária: o estalo ao pegar e o laço do próprio carro queimando.
+  fire: `${TRAPS}/fire.wav`,
+  burning: `${TRAPS}/burning.wav`,
 };
 
 // Tocam em sequência em tudo o que não é corrida: menus, salas, garagem e resultados.

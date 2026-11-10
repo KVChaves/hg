@@ -5,6 +5,7 @@ const CASINGS = {
   round: { width: 2, height: 4, color: '#d0a040' },
   long: { width: 2, height: 6, color: '#d8b050' },
   shell: { width: 3, height: 7, color: '#a02418' },
+  grenade: { width: 5, height: 7, color: '#c8a040' },              // estojo largo da granada
 };
 
 export function createGunEffects(floorY, onCasingLand) {

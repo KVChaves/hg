@@ -2,7 +2,7 @@ import { Raster } from '../../art/raster.js';
 import { colorRamp, dither } from '../../art/shade.js';
 import { familyOf } from '../../game/weaponTypes.js';
 import { DARK_STEEL, layerOf, materials, STEEL } from './gunPaint.js';
-import { buildAutoShotgun, buildCrossbow, buildFlamethrower, buildMagnum, buildSniper } from './gunArtNew.js';
+import { buildAutoShotgun, buildCrossbow, buildGrenadeLauncher, buildMagnum, buildSniper } from './gunArtNew.js';
 
 // Armas desenhadas em partes móveis (mesmos ids de game/weaponTypes.js). Cada camada é uma imagem do
 // tamanho da arma, e `pose(p)` diz como ela se move. Todos os pontos são pixels da imagem:
@@ -244,15 +244,20 @@ function buildRifle(custom, m) {
 
 const BUILDERS = {
   revolver: buildRevolver, shotgun: buildShotgun, smg: buildSmg, rifle: buildRifle,
-  magnum: buildMagnum, sniper: buildSniper, autoshotgun: buildAutoShotgun, crossbow: buildCrossbow, flamethrower: buildFlamethrower,
+  magnum: buildMagnum, sniper: buildSniper, autoshotgun: buildAutoShotgun, crossbow: buildCrossbow, grenade: buildGrenadeLauncher,
 };
 const BASE_METAL = {
   revolver: STEEL, shotgun: STEEL, smg: DARK_STEEL, rifle: STEEL,
   // Armas que dividem o desenho de outra ganham cor própria.
-  magnum: colorRamp(0x6c6c78), sniper: DARK_STEEL, autoshotgun: DARK_STEEL, crossbow: colorRamp(0x7a5a34), flamethrower: colorRamp(0xb04820),
+  magnum: [0x3c3e44, 0x6a6c74, 0x9a9ca4, 0xc4c6cc, 0xe8eaee], sniper: colorRamp(0x5a6448), autoshotgun: colorRamp(0x6a7480), crossbow: colorRamp(0x8c8478), grenade: colorRamp(0x5c6250),
+};
+
+// Cabo próprio: madrepérola no revólver pesado, coronha cor de areia na sniper e borracha na escopeta automática.
+const BASE_GRIP = {
+  magnum: [0x5a5448, 0x8a8270, 0xb4ac98, 0xd8d0bc, 0xf0ead8], sniper: colorRamp(0x9a8a64), autoshotgun: colorRamp(0x5a4a3a),
 };
 
 export function buildGunArt(id, custom) {
-  const m = materials(BASE_METAL[id], custom);
+  const m = materials(BASE_METAL[id], custom, BASE_GRIP[id]);
   return { ...(BUILDERS[id] ?? BUILDERS[familyOf(id)])(custom, m), flash: m.flash };
 }

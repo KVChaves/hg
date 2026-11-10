@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 
 // Fumaça e fogo que mostram a vida de cada carro. É só visual: lê o estado dos carros a cada quadro.
-// Cada `racer` é { x, z, yaw, vx, vz, health (0 a 1), elevation (metros, ao capotar), visible }.
+// Cada `racer` é { x, z, yaw, vx, vz, health (0 a 1), burning (em chamas pela besta), elevation (metros, ao capotar), visible }.
 
-const SMOKE_POOL = 280, FIRE_POOL = 140;
+const SMOKE_POOL = 280, FIRE_POOL = 260;
 
 // Faixas de vida, da mais saudável para a pior; `above` é o limite inferior da faixa.
 const STAGES = [
@@ -82,11 +82,12 @@ export function createCarDamageEffects(scene, racerCount) {
       smoke.mesh.setColorAt(index, smoke.color.setHex(stage.color));
       smoke.mesh.instanceColor.needsUpdate = true;
     }
-    if (!stage.burning) return;
-    emitter.fire += FIRE_RATE * dt * FIRE_POINTS_PER_CAR;
+    if (!stage.burning && !racer.burning) return;
+    // Incendiado: chamas mais altas, em todos os pontos do carro.
+    emitter.fire += FIRE_RATE * dt * (racer.burning ? FIRE_POINTS.length * 1.5 : FIRE_POINTS_PER_CAR);
     for (; emitter.fire >= 1; emitter.fire--) {
-      const point = emitter.firePoints[Math.floor(Math.random() * FIRE_POINTS_PER_CAR)];
-      spawn(fire, racer, point, FIRE_SPREAD, FIRE_LIFE, FIRE_RISE, FIRE_START_SIZE);
+      const point = racer.burning ? FIRE_POINTS[Math.floor(Math.random() * FIRE_POINTS.length)] : emitter.firePoints[Math.floor(Math.random() * FIRE_POINTS_PER_CAR)];
+      spawn(fire, racer, point, FIRE_SPREAD * (racer.burning ? 2.5 : 1), FIRE_LIFE, FIRE_RISE, FIRE_START_SIZE * (racer.burning ? 1.4 : 1));
     }
   }
 

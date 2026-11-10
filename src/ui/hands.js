@@ -24,11 +24,11 @@ const REQUEST_LIFETIME = 0.6, BUTTON_PRESS_TIME = 0.16, BUTTON_PRESS_DEPTH = 2, 
 const GUN_BLEND_SPEED = 26, RELOAD_BLEND_SPEED = 10, HAND_TRAVEL_TIME = 0.13;
 const NITRO_HAND_TWIST = -0.35, NITRO_SHAKE_SPEED = 40;
 
-// Recuo como mola: o tiro empurra e a arma volta balançando.
-const RECOIL_STIFFNESS = 260, RECOIL_DAMPING = 18, RECOIL_IMPULSE = 11;
-const RECOIL_BACK = 5, RECOIL_UP = 9, RECOIL_TILT = 0.26;
+// Recuo como mola: o tiro empurra e a arma volta balançando. Cada arma tem o seu jeito (art.recoil).
+const RECOIL_IMPULSE = 11, SHAKE_TIME = 0.1;
 const SWAY_FROM_MOUSE = 7, SWAY_LIMIT = 14, SWAY_SPEED = 10, BREATHE_SPEED = 1.7, BREATHE_SIZE = 1.2;
 const DRAW_TUMBLE = 0.6;                           // giro da arma ao sair do teto
+const BOLT_GRAB = 6;                               // o punho fechado segura o ferrolho (ou a bomba) pelos dedos
 
 const lerp = (a, b, t) => a + (b - a) * t;
 const ease = (current, target, speed, dt) => current + (target - current) * (1 - Math.exp(-speed * dt));
@@ -36,7 +36,7 @@ const ease = (current, target, speed, dt) => current + (target - current) * (1 -
 export function createHands({ weapon, traps, look, cabin, customs, isAiming, wantsFire, wantsNitro, onGunSound }) {
   const leftFist = paintLeftFist();
   const rightFist = paintRightFist();
-  const fists = { round: paintFistHolding('round'), shell: paintFistHolding('shell'), magazine: paintFistHolding('magazine'), bolt: paintFistHolding('bolt'), canister: paintFistHolding('canister') };
+  const fists = { round: paintFistHolding('round'), shell: paintFistHolding('shell'), magazine: paintFistHolding('magazine'), bolt: paintFistHolding('bolt'), grenade: paintFistHolding('grenade') };
   const gunHand = paintGunHand(false);
   const gunHandFiring = paintGunHand(true);
 
@@ -63,7 +63,7 @@ export function createHands({ weapon, traps, look, cabin, customs, isAiming, wan
   // A mão é uma só: cada frame ela tem um único destino, nesta ordem de prioridade.
   function chooseState() {
     if (weapon.isReloading) return 'reload';
-    if (isAiming() || wantsFire() || fireRequest > 0 || weapon.sinceShot < JUST_SHOT_TIME) return 'gun';
+    if (isAiming() || wantsFire() || fireRequest > 0 || weapon.sinceShot < JUST_SHOT_TIME || handOnAction()) return 'gun';
     if (trapRequest > 0 || buttonPress > 0) return 'trap';
     if (wantsNitro()) return 'nitro';
     if (weapon.sinceShot < HOLD_AFTER_SHOT) return 'gun';
@@ -71,6 +71,8 @@ export function createHands({ weapon, traps, look, cabin, customs, isAiming, wan
   }
 
   const arrived = () => travel >= 1;
+  // A mão está manobrando a arma (o ferrolho da sniper, a bomba do lança-granadas).
+  const handOnAction = () => (animator?.pose.actionHand ?? 0) > 0;
   const isHoldingGun = () => state === 'gun' || state === 'reload';
   const isGunReady = () => state === 'gun' && arrived();
   const isNitroReady = () => state === 'nitro' && arrived();
@@ -132,7 +134,8 @@ export function createHands({ weapon, traps, look, cabin, customs, isAiming, wan
       roundProgress: weapon.roundProgress, carrying: weapon.carryingRound,
     }));
 
-    recoilVelocity += (-RECOIL_STIFFNESS * recoil - RECOIL_DAMPING * recoilVelocity) * dt;
+    const { stiffness, damping } = art().recoil;
+    recoilVelocity += (-stiffness * recoil - damping * recoilVelocity) * dt;
     recoil += recoilVelocity * dt;
 
     const mouseSpeed = dt > 0 ? (look.yaw - lastYaw) / dt : 0;
@@ -170,9 +173,12 @@ export function createHands({ weapon, traps, look, cabin, customs, isAiming, wan
     const rest = projectCabinPixel(GUN_REST.x, GUN_REST.y, look);
     const pose = art().reload;
     const breathe = Math.sin(breatheClock * BREATHE_SPEED) * BREATHE_SIZE * aim;
-    gun.x = lerp(lerp(rest.x, GUN_AIM.x, aim), pose.x, reloading) + recoil * RECOIL_BACK + swayX * aim;
-    gun.y = lerp(lerp(rest.y, GUN_AIM.y, aim), pose.y, reloading) - recoil * RECOIL_UP + breathe;
-    gun.angle = lerp(0, pose.angle, reloading) + recoil * RECOIL_TILT + Math.sin(aim * Math.PI) * DRAW_TUMBLE * (1 - reloading);
+    const { back, up, tilt, shake } = art().recoil;
+    // Armas de rajada tremem enquanto atiram.
+    const jitter = shake && weapon.sinceShot < SHAKE_TIME ? shake : 0;
+    gun.x = lerp(lerp(rest.x, GUN_AIM.x, aim), pose.x, reloading) + recoil * back + swayX * aim + Math.round((Math.random() - 0.5) * 2 * jitter);
+    gun.y = lerp(lerp(rest.y, GUN_AIM.y, aim), pose.y, reloading) - recoil * up + breathe + Math.round((Math.random() - 0.5) * 2 * jitter);
+    gun.angle = lerp(0, pose.angle, reloading) + recoil * tilt + Math.sin(aim * Math.PI) * DRAW_TUMBLE * (1 - reloading);
   }
 
   function gunPoint(x, y) {
@@ -204,9 +210,16 @@ export function createHands({ weapon, traps, look, cabin, customs, isAiming, wan
         return { ...projectCabinPixel(grips.trapButton.x, grips.trapButton.y + BUTTON_REACH + push, look), angle: 0 };
       }
       case 'gun': {
-        // No rifle, a mão acompanha a alavanca a cada ciclo.
+        // No rifle, a mão acompanha a alavanca a cada ciclo; na sniper, vai até o ferrolho e volta.
         const [hx, hy] = art().hand;
-        return { ...gunPoint(hx, hy + (art().handFollowsLever ?? 0) * (animator?.pose.lever ?? 0)), angle: gun.angle };
+        let x = hx, y = hy + (art().handFollowsLever ?? 0) * (animator?.pose.lever ?? 0);
+        const path = animator && art().handPath?.(animator.pose);
+        if (path?.weight > 0) {
+          const t = smooth(path.weight);
+          x = lerp(x, path.point[0], t);
+          y = lerp(y, path.point[1] + BOLT_GRAB, t);
+        }
+        return { ...gunPoint(x, y), angle: gun.angle };
       }
       case 'reload': {
         // Vai da arma até a munição no painel e volta com ela.
@@ -224,9 +237,12 @@ export function createHands({ weapon, traps, look, cabin, customs, isAiming, wan
 
   function poseImage() {
     if (travel < 0.75) return rightFist;
-    if (state === 'gun') return weapon.flash > 0 ? gunHandFiring : gunHand;
+    if (state === 'gun') {
+      if (handOnAction() && animator.pose.actionHand > 0.5) return rightFist;
+      return weapon.flash > 0 ? gunHandFiring : gunHand;
+    }
     if (state === 'reload') {
-      const delivered = (art().carry === 'magazine' || art().carry === 'canister') && weapon.roundProgress >= MAGAZINE_SEAT_AT;
+      const delivered = art().carry === 'magazine' && weapon.roundProgress >= MAGAZINE_SEAT_AT;
       return weapon.carryingRound && !delivered ? fists[art().carry] : rightFist;
     }
     return rightFist;

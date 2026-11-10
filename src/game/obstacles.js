@@ -7,12 +7,15 @@ import { damageOpponent } from './opponents.js';
 import { BIOME_OBSTACLES, OBSTACLE_TYPES } from './obstacleTypes.js';
 
 // Obstáculos dinâmicos: surgem à frente do líder e ficam na pista até alguém bater ou eles serem quebrados a tiro.
+// Quanto mais o líder abre do segundo colocado, mais obstáculos aparecem; e quem bate liderando perde muito mais
+// velocidade. É o freio para corrida que já está decidida (vale igual para jogador e bots).
 
 const FIRST_DELAY = 10, INTERVAL = [9, 15], SPAWN_AHEAD = [170, 230], MAX_ACTIVE = 4, MIN_SPACING = 70;
+const LEAD_FOR_DOUBLE = 60, MAX_PRESSURE = 4, PRESSURED_MAX_ACTIVE = 7, PRESSURED_SPACING = 45;   // metros de vantagem que dobram o ritmo
 const TRIGGER_RANGE = 60, DROP_HEIGHT = 14, DROP_TIME = 0.55, TOPPLE_TIME = 0.9, TOPPLE_SOLID_AT = 0.65;
-const CAR_HALF_WIDTH = 0.95, CAR_HALF_LENGTH = 1.8, HIT_SLOWDOWN = 0.55;
+const CAR_HALF_WIDTH = 0.95, CAR_HALF_LENGTH = 1.8, HIT_SLOWDOWN = 0.55, LEADER_HIT_SLOWDOWN = 0.2, LEADER_SPIN = 2.5;   // fração da velocidade que sobra
 const FINISH_MARGIN = 40, PASSED_MARGIN = 35, MAX_CURVE = 1 / 70;
-const EDGE_LANE = TRACK_WIDTH / 2 - 1.2, FREE_LANE = 4.2, BOT_LANE_LIMIT = 5.2, WANDER_LIMIT = 4.5;
+const EDGE_LANE = TRACK_WIDTH / 2 - 1.2, FREE_LANE = TRACK_WIDTH / 2 - 0.3, BOT_LANE_LIMIT = TRACK_WIDTH / 2 - 1.2, WANDER_LIMIT = TRACK_WIDTH / 2;
 const DODGE_CHANCE = 0.65, DODGE_SIGHT = 55, DODGE_CLEARANCE = 2.4, DODGE_HOLD = 1;
 
 const between = ([low, high]) => low + Math.random() * (high - low);
@@ -56,9 +59,19 @@ export function createObstacles({ scene, race, car, getBiome, isAuthority, onSou
     return ob;
   }
 
+  const alive = () => race.field.filter(racer => racer.dead <= 0);
+  const leaderOf = racers => racers.reduce((best, racer) => (!best || racer.dist > best.dist ? racer : best), null);
+
+  // Ritmo dos obstáculos: 1 com a corrida embolada, até MAX_PRESSURE com o líder disparado.
+  function pressure() {
+    const [first, second] = alive().map(racer => racer.dist).sort((a, b) => b - a);
+    if (second === undefined) return 1;
+    return Math.min(MAX_PRESSURE, 1 + (first - second) / LEAD_FOR_DOUBLE);
+  }
+
   // Sorteia o ponto: longe do líder, sem vão, salto, túnel, curva fechada nem outro obstáculo por perto.
-  function chooseSpot() {
-    const leader = race.field.filter(racer => racer.dead <= 0).reduce((best, racer) => (!best || racer.dist > best.dist ? racer : best), null);
+  function chooseSpot(spacing) {
+    const leader = leaderOf(alive());
     if (!leader) return null;
     const finish = (LAPS + 1) * track.length - FINISH_MARGIN;
     for (let attempt = 0; attempt < 12; attempt++) {
@@ -66,14 +79,14 @@ export function createObstacles({ scene, race, car, getBiome, isAuthority, onSou
       if (dist > finish || inGap(dist) || isEpic(dist)) continue;
       const index = Math.floor((((dist % track.length) + track.length) % track.length) / track.step) % track.count;
       if (track.enclosed[index] || track.curvature[index] > MAX_CURVE) continue;
-      if (obstacles.active.some(ob => Math.abs(ob.dist - dist) < MIN_SPACING)) continue;
+      if (obstacles.active.some(ob => Math.abs(ob.dist - dist) < spacing)) continue;
       return dist;
     }
     return null;
   }
 
-  function spawn() {
-    const dist = chooseSpot();
+  function spawn(spacing) {
+    const dist = chooseSpot(spacing);
     if (dist === null) return;
     const typeId = pick(BIOME_OBSTACLES[getBiome().id] ?? []);
     if (!typeId) return;
@@ -112,14 +125,17 @@ export function createObstacles({ scene, race, car, getBiome, isAuthority, onSou
   };
 
   function crash(racer, ob) {
+    const leading = leaderOf(alive()) === racer, keep = leading ? LEADER_HIT_SLOWDOWN : HIT_SLOWDOWN;
     if (racer.isPlayer) {
       damagePlayer(car, ob.type.damage);
-      car.vx *= HIT_SLOWDOWN;
-      car.vz *= HIT_SLOWDOWN;
+      car.vx *= keep;
+      car.vz *= keep;
+      if (leading) car.spin += (Math.random() < 0.5 ? -1 : 1) * LEADER_SPIN;
       onPlayerHit(ob.type);
     } else {
       damageOpponent(racer, ob.type.damage * CAR_MAX_HP, null);
-      racer.v *= HIT_SLOWDOWN;
+      racer.v *= keep;
+      if (leading) racer.spin += (Math.random() < 0.5 ? -1 : 1) * LEADER_SPIN;
     }
     destroy(ob);
   }
@@ -208,8 +224,10 @@ export function createObstacles({ scene, race, car, getBiome, isAuthority, onSou
     }
     if (!race.started || race.finished || dt <= 0) return;
 
-    if (isAuthority() && obstacles.active.length < MAX_ACTIVE && (timer -= dt) <= 0) {
-      spawn();
+    const push = pressure();
+    const limit = push >= 2 ? PRESSURED_MAX_ACTIVE : MAX_ACTIVE;
+    if (isAuthority() && obstacles.active.length < limit && (timer -= dt * push) <= 0) {
+      spawn(push >= 2 ? PRESSURED_SPACING : MIN_SPACING);
       timer = between(INTERVAL);
     }
     for (const ob of [...obstacles.active]) {

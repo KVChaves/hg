@@ -37,10 +37,11 @@ function wallGeometry(side, style, isCovered) {
   return geometry;
 }
 
-// Dentro dos túneis fechados e do tubo a parede deles faz esse papel; nos saltos não há muro.
+// Dentro dos túneis fechados e do tubo a parede deles faz esse papel; nos saltos a mureta da rampa (epicVisuals).
 export function buildWalls(group, layout, style) {
+  if (!style) return;                                // bioma sem muro: o próprio barranco fecha a pista (o limite continua)
   const solid = layout.tunnels.filter(tunnel => !tunnel.open);
-  const isCovered = k => track.gap[k] === 1 || track.roll[k] !== 0 || solid.some(({ start, length }) => {
+  const isCovered = k => track.gap[k] === 1 || track.drop[k] > 0 || track.roll[k] !== 0 || solid.some(({ start, length }) => {
     const offset = ((k * track.step - start) % track.length + track.length) % track.length;
     return offset < length;
   });

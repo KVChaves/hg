@@ -52,7 +52,6 @@ export const WEAPON_SOUNDS = {
 // Arquivos novos: assets/audio/weapons/<arma>/<nome>.wav (veja a lista em NOVOS-SONS.md).
 const own = (path, volume, fallback, fallbackVolume = volume) => ({ ...sound(path, volume), fallback: fallback.url ?? fallback, fallbackVolume: fallback.volume ?? fallbackVolume });
 const HARPOON_SOUND = { url: 'assets/audio/traps/harpoon.wav', volume: 0.5 };
-const EXTINGUISHER_SOUND = { url: 'assets/audio/traps/extinguisher.wav', volume: 0.8 };
 const BASE = WEAPON_SOUNDS;
 
 WEAPON_SOUNDS.magnum = {
@@ -88,10 +87,12 @@ WEAPON_SOUNDS.crossbow = {
   roundIn: own('crossbow/bolt-in', 0.5, ROUND_IN),
   reloadEnd: own('crossbow/latch', 0.4, LEVER_CLOSE),
 };
-WEAPON_SOUNDS.flamethrower = {
-  // Som contínuo: toca em laço enquanto a arma atira. De longe (outro jogador) usa a rajada curta.
-  fire: { ...own('flamethrower/fire-loop', 1.1, EXTINGUISHER_SOUND), loop: true, remote: own('flamethrower/fire-short', 1, EXTINGUISHER_SOUND) },
+WEAPON_SOUNDS.grenade = {
+  fire: own('grenade/fire', 0.9, BASE.shotgun.fire, 0.9),
   dry: DRY_FIRE,
-  reloadStart: own('flamethrower/tank-out', 0.6, BASE.smg.reloadStart),
-  magazineIn: own('flamethrower/tank-in', 0.6, BASE.smg.magazineIn),
+  reloadStart: own('grenade/port-open', 0.5, BASE.shotgun.reloadStart),
+  roundIn: own('grenade/round-in', 0.8, ROUND_IN),
+  reloadEnd: own('grenade/pump', 0.6, BASE.shotgun.reloadEnd),
+  pump: own('grenade/pump', 0.6, BASE.shotgun.reloadEnd),
+  casing: CASING,
 };

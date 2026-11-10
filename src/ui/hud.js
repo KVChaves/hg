@@ -1,6 +1,6 @@
 import { SLIPSTREAM_KMH, VIEW } from '../config.js';
 import { ctxText, textWidth } from '../art/font.js';
-import { bayer } from '../art/shade.js';
+import { bayer, hash } from '../art/shade.js';
 import { clearClickable } from './panelKit.js';
 import { drawRacerNames } from './racerNames.js';
 
@@ -12,6 +12,8 @@ const SLIPSTREAM_MIN_SHOWN = 0.08, SLIPSTREAM_STREAKS = 26, SLIPSTREAM_CENTER_Y 
 const TOP_MESSAGE_X = 275, TOP_MESSAGE_Y = 32;       // abaixo do título dos feitos, ainda no teto da cabine
 const SUPPLY_BIG_TEXT = 26;                          // mensagens maiores usam a letra pequena para não cobrir o placar
 const WRONG_WAY_BLINK = 5;                           // meias-piscadas por segundo do aviso de contramão
+const BURN_FLAMES = 34, BURN_FLAME_HEIGHT = 46, BURN_FRAMES = 12;   // chamas no pé da tela com o carro pegando fogo
+const BURN_COLORS = ['#7a1808', '#d83a10', '#ff8a20', '#ffd060'];
 
 function centered(ctx, text, y, color, scale = 1) {
   const x = Math.round(CENTER_X - textWidth(text, scale) / 2);
@@ -63,7 +65,7 @@ function paintDamageBand(width, height, edgeAt) {
   return band;
 }
 
-export function createHud(canvas, { featFeed, mainMenu, multiplayer, podium, matchSetup, results, matchLabel, biomeName, race, weapon, hands, garage, workshop, externalView, spectator, canSkipSpectate, isLocked, combat, car, activeCamera, opponents, isBehindCabin, isInSmoke, roadsideHelp, traps }) {
+export function createHud(canvas, { pause, scope, featFeed, mainMenu, multiplayer, podium, matchSetup, results, matchLabel, biomeName, race, weapon, hands, garage, workshop, externalView, spectator, canSkipSpectate, isLocked, combat, car, activeCamera, opponents, isBehindCabin, isInSmoke, roadsideHelp, traps }) {
   canvas.width = VIEW.width;
   canvas.height = VIEW.height;
   const ctx = canvas.getContext('2d');
@@ -95,6 +97,30 @@ export function createHud(canvas, { featFeed, mainMenu, multiplayer, podium, mat
     else if (Math.abs(angle) > Math.PI - SECTOR) drawBand.back();
     else if (angle > 0) drawBand.left();
     else drawBand.right();
+  }
+
+  // Carro em chamas: línguas de fogo em pixel subindo do pé da tela, mais altas quanto mais fogo resta.
+  function drawBurning() {
+    const left = car.effects.burning;
+    if (left <= 0 || car.wrecked > 0) return;
+    const frame = Math.floor(performance.now() / 1000 * BURN_FRAMES), strength = Math.min(1, left / 1.5);
+    const width = VIEW.width / BURN_FLAMES;
+    for (let i = 0; i < BURN_FLAMES; i++) {
+      const edge = Math.abs(i / (BURN_FLAMES - 1) - 0.5) * 2;           // mais alto nos cantos, para não tapar a pista
+      const h = Math.round(BURN_FLAME_HEIGHT * strength * (0.35 + 0.65 * edge) * (0.55 + 0.45 * hash(i, frame)));
+      const x = Math.round(i * width + (hash(i + 50, frame) - 0.5) * 4);
+      // cada língua afina até a ponta e entorta um pouco; as camadas de dentro são mais claras e baixas
+      BURN_COLORS.forEach((color, layer) => {
+        const lh = Math.round(h * (1 - layer * 0.24)), lw = width * 1.6 * (1 - layer * 0.22);
+        ctx.fillStyle = color;
+        for (let row = 0; row < lh; row += 2) {
+          const t = row / Math.max(1, lh), w = Math.max(1, Math.round(lw * (1 - t) ** 0.8));
+          const bend = Math.round(Math.sin(t * 3 + i + frame * 0.7) * t * 3);
+          ctx.fillRect(Math.round(x + width / 2 - w / 2) + bend, VIEW.height - row - 2, w, 2);
+        }
+      });
+    }
+    if (Math.floor(performance.now() / 250) % 2 === 0) centered(ctx, 'PEGANDO FOGO', 290, '#ffb040', 2);
   }
 
   function drawCrosshair() {
@@ -135,7 +161,7 @@ export function createHud(canvas, { featFeed, mainMenu, multiplayer, podium, mat
     }
     if (weapon.hitPartTime > 0 && weapon.hitPart) centered(ctx, `${weapon.hitPart}!`, 198, '#ff8040');
     if (weapon.outOfAmmo > 0) centered(ctx, 'SEM MUNICAO', 214, '#f06050');
-    if (!isLocked() && !spectator.active) centered(ctx, 'CLIQUE PARA CAPTURAR O MOUSE', 150, '#e8d8c0');
+    if (!isLocked() && !spectator.active && !pause.isOpen) centered(ctx, 'CLIQUE PARA CAPTURAR O MOUSE', 150, '#e8d8c0');
     if (race.wrongWay && race.goTimer <= 0) {
       if (Math.floor(race.time * WRONG_WAY_BLINK) % 2 === 0) centered(ctx, 'CONTRAMAO', 112, '#ff3a2a', 3);
       centered(ctx, 'VIRE O CARRO', 142, '#ffe9a0');
@@ -181,12 +207,16 @@ export function createHud(canvas, { featFeed, mainMenu, multiplayer, podium, mat
       return;
     }
     if (workshop.isOpen) { workshop.draw(ctx); return; }
-    if (!externalView.active && !spectator.active) {
+    const scoped = scope.active && !externalView.active && !spectator.active;
+    if (!externalView.active && !spectator.active && !scoped) {
       hands.draw(ctx);
       if (hands.isHoldingGun()) drawCrosshair();
     }
-    if (race.started) drawRacerNames(ctx, activeCamera(), opponents, (x, y, z) => isInSmoke(x, z) || (!externalView.active && isBehindCabin(x, y, z)));
+    if (race.started) drawRacerNames(ctx, activeCamera(), opponents, (x, y, z) => isInSmoke(x, z) || (!externalView.active && !scoped && isBehindCabin(x, y, z)));
+    if (scoped) scope.draw(ctx);
+    if (!externalView.active && !spectator.active) drawBurning();
     drawDamage();
     drawMessages();
+    if (pause.isOpen) pause.draw(ctx);
   };
 }

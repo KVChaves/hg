@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { paintGradient, paintSilhouette } from '../atmosphere.js';
 import { speckle } from './wallPaint.js';
-import { acrossRoad, archFrame, alongRoad, nearRoad, pickFrom, scatter, solid } from './propKit.js';
+import { acrossRoad, alongRoad, archFrame, EDGE, nearRoad, pickFrom, scatter, solid } from './propKit.js';
 
 // Céu em brasa, piso de chapas de aço, escória com rachaduras de fogo, chaminés e tanques.
 export const FIRE_FACTORY = {
@@ -48,7 +48,7 @@ export const FIRE_FACTORY = {
       }
     },
   },
-  epic: { abyss: 0xff6a10, glow: true, edge: '#ffd040', tube: { wall: '#3a3430', speckle: ['#4e4640', '#6a3a1c', '#2a2422'], rib: 0xd8a818, portal: 0xe8b018, lines: [{ angle: 0, width: 0.04, color: 0xff7a18 }, { angle: Math.PI, width: 0.04, color: 0xff7a18 }] } },
+  epic: { ramp: { stone: [0x2a2422, 0x3a3230, 0x4a3e38, 0x342c28], mortar: 0x140e0c, moss: [0xff6a10, 0xffa030, 0x1a1412] }, abyss: 0xff6a10, glow: true, edge: '#ffd040', tube: { wall: '#3a3430', speckle: ['#4e4640', '#6a3a1c', '#2a2422'], rib: 0xd8a818, portal: 0xe8b018, lines: [{ angle: 0, width: 0.04, color: 0xff7a18 }, { angle: Math.PI, width: 0.04, color: 0xff7a18 }] } },
   weather: { count: 320, size: 2, fall: -6, sway: 1.6, swaySpeed: 2, colors: [0xff7a18, 0xffb040, 0xff4010] },
 
   paintSky(ctx, w, h) {
@@ -89,7 +89,7 @@ export const FIRE_FACTORY = {
 
     const flame = new THREE.ConeGeometry(1.2, 5, 5);
     flame.translate(0, 2.5, 0);
-    alongRoad(ctx, { every: 44, offset: 14, sizeOf: random => 0.7 + random() * 0.9, parts: [{ geometry: flame, material: solid(0xffffff, { fog: false }), colorOf: pickFrom([0xff9a20, 0xff6a10, 0xffc040]) }] });
+    alongRoad(ctx, { every: 44, offset: EDGE + 2, sizeOf: random => 0.7 + random() * 0.9, parts: [{ geometry: flame, material: solid(0xffffff, { fog: false }), colorOf: pickFrom([0xff9a20, 0xff6a10, 0xffc040]) }] });
 
     // Caçambas despejando metal derretido.
     const bucket = new THREE.CylinderGeometry(3.2, 2.2, 3.4, 8);
@@ -97,7 +97,7 @@ export const FIRE_FACTORY = {
     const pour = new THREE.CylinderGeometry(0.6, 0.9, 14, 6);
     pour.translate(0, 7, 0);
     const moltenMaterial = solid(0xff8a18, { fog: false });
-    nearRoad(ctx, { count: 26, from: 15, to: 26, parts: [{ geometry: bucket, material: solid(0x34302c) }, { geometry: pour, material: moltenMaterial }] });
+    nearRoad(ctx, { count: 26, from: EDGE + 3, to: EDGE + 14, parts: [{ geometry: bucket, material: solid(0x34302c) }, { geometry: pour, material: moltenMaterial }] });
     ctx.onUpdate(time => moltenMaterial.color.setHex(Math.floor(time * 9) % 2 ? 0xff8a18 : 0xffb030));
 
     // Dutos passando por cima da estrada.

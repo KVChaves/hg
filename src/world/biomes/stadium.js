@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { paintGradient } from '../atmosphere.js';
 import { ctxText } from '../../art/font.js';
-import { acrossRoad, archFrame, alongRoad, pickFrom, scatter, solid } from './propKit.js';
+import { acrossRoad, alongRoad, archFrame, EDGE, pickFrom, scatter, solid } from './propKit.js';
 
 // Dia claro de competição: grama listrada, arquibancadas, refletores, bandeiras e confete.
 export const STADIUM = {
@@ -40,7 +40,7 @@ export const STADIUM = {
       ctx.fillRect(0, h - 6, w, 6);
     },
   },
-  epic: { abyss: 0x2060c0, glow: false, edge: '#f0ece4', tube: { wall: '#d8d4cc', speckle: ['#d82020', '#2060c0', '#c8c4bc'], rib: 0xd82020, portal: 0x2060c0, lines: [{ angle: Math.PI * 0.5, width: 0.05, color: 0xfff4c8 }, { angle: Math.PI * 1.5, width: 0.05, color: 0xfff4c8 }] } },
+  epic: { shallow: true, ramp: { stone: [0x6e6c68, 0x8a8884, 0x9a9890, 0x7a7874], mortar: 0x4a4844, moss: [0xd82020, 0xe8e4dc] }, abyss: 0x2060c0, glow: false, edge: '#f0ece4', tube: { wall: '#d8d4cc', speckle: ['#d82020', '#2060c0', '#c8c4bc'], rib: 0xd82020, portal: 0x2060c0, lines: [{ angle: Math.PI * 0.5, width: 0.05, color: 0xfff4c8 }, { angle: Math.PI * 1.5, width: 0.05, color: 0xfff4c8 }] } },
   weather: { count: 260, size: 2, fall: 3.5, sway: 2.4, swaySpeed: 2.2, colors: [0xff3040, 0x3070f0, 0xf0d020, 0x30c060, 0xffffff] },
 
   paintSky(ctx, w, h) {
@@ -79,13 +79,13 @@ export const STADIUM = {
     const flag = new THREE.BoxGeometry(2.2, 1.3, 0.05);
     flag.translate(1.1, 6.2, 0);
     alongRoad(ctx, {
-      every: 22, offset: 11.5,
+      every: 22, offset: EDGE - 0.5,
       parts: [{ geometry: mast, material: solid(0xc0c0c8) }, { geometry: flag, material: solid(0xffffff), colorOf: pickFrom([0xd82020, 0x2060c0, 0xf0d020, 0x20a060]) }],
     });
 
     // Arquibancadas acompanhando a pista.
     alongRoad(ctx, {
-      every: 44, offset: 34, facesRoad: true, sizeOf: random => [38, 12 + random() * 8, 14],
+      every: 44, offset: EDGE + 22, facesRoad: true, sizeOf: random => [38, 12 + random() * 8, 14],
       parts: [
         { geometry: stand, material: solid(0x6a6c78) },
         { geometry: crowd, material: solid(0xffffff), colorOf: pickFrom([0xc04030, 0x3060b0, 0xe0c040, 0x40a060, 0xe8e0d0]) },

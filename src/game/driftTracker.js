@@ -19,6 +19,7 @@ export function createDriftTracker(car, onDrift) {
   }
 
   return {
+    get current() { return duration; },               // segundos do drift em andamento (0 se não há)
     update(dt) {
       if (dt <= 0) return;
       if (car.wrecked > 0 || car.overturned) { duration = pause = 0; return; }
