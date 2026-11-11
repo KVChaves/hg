@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { CAR_MAX_HP, TRACK_WIDTH } from '../config.js';
 import { surfaceAt, track, trackAt, wrapDistance } from '../world/track.js';
 import { createDebris, createObstacleVisual, createShadow } from '../world/obstacleVisuals.js';
-import { damagePlayer } from './car.js';
+import { crashDamage } from './car.js';
 import { damageOpponent } from './opponents.js';
 import { HAZARD_KINDS } from './hazardKinds.js';
 import { OBSTACLE_TYPES } from './obstacleTypes.js';
@@ -142,7 +142,7 @@ export function createObstacles({ scene, race, car, isAuthority, onSound, onPlay
   function crash(racer, ob) {
     const leading = leaderOf(alive()) === racer, keep = leading ? LEADER_HIT_SLOWDOWN : HIT_SLOWDOWN;
     if (racer.isPlayer) {
-      damagePlayer(car, ob.type.damage);
+      crashDamage(car, ob.type.damage);
       car.vx *= keep;
       car.vz *= keep;
       if (leading) car.spin += (Math.random() < 0.5 ? -1 : 1) * LEADER_SPIN;

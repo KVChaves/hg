@@ -4,7 +4,7 @@
 const SERVER_ADDRESS = new URLSearchParams(location.search).get('server') ?? location.host;
 const SERVER_ERRORS = {
   full: 'SALA CHEIA', in_progress: 'PARTIDA EM ANDAMENTO', banned: 'VOCE FOI EXPULSO DESTA SALA',
-  no_room: 'SALA NAO ENCONTRADA', cannot_create: 'NAO FOI POSSIVEL CRIAR A SALA',
+  no_room: 'SALA NAO ENCONTRADA', need_racers: 'ADICIONE UM BOT PARA INICIAR', cannot_create: 'NAO FOI POSSIVEL CRIAR A SALA',
 };
 export const LEFT_REASONS = { kicked: 'VOCE FOI EXPULSO DA SALA', closed: 'O ADMIN ENCERROU A SALA', lost: 'CONEXAO COM O SERVIDOR PERDIDA' };
 

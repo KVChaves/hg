@@ -1,3 +1,4 @@
+import { DEFAULT_PARTS, isPartId, PART_KEYS } from './carUpgrades.js';
 import { fitsBudget, maxUpgradeLevel, NO_UPGRADES, UPGRADES } from './shop.js';
 import { MAX_TRAP_SLOTS, TRAP_TYPES } from './trapTypes.js';
 import { WEAPON_TYPES } from './weaponTypes.js';
@@ -33,6 +34,11 @@ function savedLevels(saved) {
   return levels;
 }
 
+// Peças de desempenho do carro; qualquer valor desconhecido volta ao padrão.
+export function savedParts(saved) {
+  return Object.fromEntries(PART_KEYS.map(key => [key, isPartId(key, saved?.[key]) ? saved[key] : DEFAULT_PARTS[key]]));
+}
+
 export function loadEquipment() {
   let saved = {};
   try { saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch { /* sem armazenamento: usa o padrão */ }
@@ -41,8 +47,10 @@ export function loadEquipment() {
     weaponId: WEAPON_TYPES[saved.weaponId] ? saved.weaponId : DEFAULT.weaponId,
     ...trunkFrom(Array.isArray(saved.trapIds) ? saved.trapIds : DEFAULT.trapIds, saved.trapCounts),
     upgrades: savedLevels(saved.upgrades),
+    parts: savedParts(saved.parts),
   };
   // Se os preços mudaram e a compra salva não cabe mais, desfaz o que for preciso.
+  if (!fitsBudget(equipment)) equipment.parts = { ...DEFAULT_PARTS };
   if (!fitsBudget(equipment)) equipment.upgrades = { ...NO_UPGRADES };
   if (!fitsBudget(equipment)) Object.assign(equipment, { weaponId: DEFAULT.weaponId, ...trunkFrom(DEFAULT.trapIds) });
   return equipment;

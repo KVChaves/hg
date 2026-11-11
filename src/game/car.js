@@ -1,5 +1,6 @@
 import { ACCEL, MAX_SPEED, NITRO_ACCEL, NITRO_DRAIN, NITRO_MAX_SPEED, SLIPSTREAM_KMH, TRACK_WIDTH, WHEELBASE } from '../config.js';
 import { createRig } from './carRoll.js';
+import { NEUTRAL_STATS } from './carUpgrades.js';
 import { createEffects, tickEffects } from './effects.js';
 
 const OFFROAD_LIMIT = TRACK_WIDTH / 2 + 1.4;
@@ -18,7 +19,7 @@ export function createCar() {
     steer: 0, speed: 0, nitro: 0, nitroToFill: 1, health: 1, roll: 0, bob: 0,
     trackIndex: -1, offTrack: 0, lateral: 0, nitroActive: false,
     visualSteer: 0, effects: createEffects(), wrecked: 0, flip: null, invulnerable: 0, destroyed: 0, slipping: false,
-    capsizes: 0, uprightFor: Infinity, rig: createRig(), overturned: false, spin: 0, drifting: false, slipstream: 0, armor: 1, wx: 0, wy: 0, wz: 0, twist: 0, twistHeading: 0, twistYaw: 0, twistPitch: 0, enclosed: false, roadTurn: 0, nitroCapacity: 1,
+    capsizes: 0, uprightFor: Infinity, rig: createRig(), overturned: false, spin: 0, drifting: false, slipstream: 0, armor: 1, wx: 0, wy: 0, wz: 0, twist: 0, twistHeading: 0, twistYaw: 0, twistPitch: 0, enclosed: false, roadTurn: 0, nitroCapacity: 1, parts: { ...NEUTRAL_STATS },   // efeitos das peças de desempenho (carUpgrades.js)
     vy: 0, airborne: false, sunk: 0, jump: null, tube: false, impact: 0, icy: false, destroyedBy: null,   // voo nas rampas e queda no rio (flight.js)
   };
 }
@@ -46,6 +47,11 @@ export function trackCapsizes(car, dt) {
   } else {
     car.uprightFor += dt;
   }
+}
+
+// Batidas (parede, obstáculo, outro carro) passam pelo para-choque; tiro e fogo não.
+export function crashDamage(car, amount) {
+  damagePlayer(car, amount * car.parts.crash);
 }
 
 // `amount` de 0 a 1, em relação à vida padrão; `armor` é a melhoria comprada. Logo depois de voltar à pista o carro não sofre dano.
@@ -80,7 +86,7 @@ export function updateCar(car, dt, keys, canAccelerate, nitroHandReady) {
   let side = car.vx * rx + car.vz * rz;
 
   const throttle = canAccelerate && (keys.KeyW || keys.ArrowUp);
-  const brake = keys.KeyS || keys.ArrowDown;
+  const brake = canAccelerate && (keys.KeyS || keys.ArrowDown);   // antes da largada o carro fica parado: nem ré
   const handbrake = keys.ShiftLeft || keys.ShiftRight;
   const left = keys.KeyA || keys.ArrowLeft, right = keys.KeyD || keys.ArrowRight;
   const useNitro = Boolean(canAccelerate && keys.Space && car.nitro > 0 && nitroHandReady);
@@ -89,7 +95,9 @@ export function updateCar(car, dt, keys, canAccelerate, nitroHandReady) {
   const steerTarget = (right ? 1 : 0) - (left ? 1 : 0);
   car.steer += (steerTarget - car.steer) * Math.min(1, dt * (steerTarget ? 6 : 9));
 
-  const top = (useNitro ? NITRO_MAX_SPEED : MAX_SPEED + car.slipstream * SLIPSTREAM_KMH / 3.6) * (puncture > 0 ? PUNCTURE_SPEED_FACTOR : 1);
+  const { parts } = car;
+  const punctureFactor = puncture > 0 ? 1 - (1 - PUNCTURE_SPEED_FACTOR) * parts.punctureEffect : 1;
+  const top = (useNitro ? NITRO_MAX_SPEED : MAX_SPEED + car.slipstream * SLIPSTREAM_KMH / 3.6) * punctureFactor;
   let accel = 0;
   if (throttle || useNitro) accel += forward < 0 ? 30 : ACCEL * Math.max(0, Math.min(1, (top - forward) / 8));
   if (useNitro) { accel += NITRO_ACCEL * Math.max(0, Math.min(1, (top - forward) / 8)); car.nitro = Math.max(0, car.nitro - dt * NITRO_DRAIN / car.nitroCapacity); }
@@ -99,19 +107,19 @@ export function updateCar(car, dt, keys, canAccelerate, nitroHandReady) {
   if (!throttle && !useNitro) forward -= forward * 0.12 * dt + Math.sign(forward) * Math.min(Math.abs(forward), 1.2 * dt);
   if (forward > top) forward = Math.max(top, forward - 10 * dt);
   if (handbrake) forward -= Math.sign(forward) * Math.min(Math.abs(forward), 10 * dt);
-  if (car.offTrack > OFFROAD_LIMIT) forward -= forward * 1.4 * dt;
+  if (car.offTrack > OFFROAD_LIMIT) forward -= forward * 1.4 * parts.offroad * dt;
   if (car.wrecked > 0) forward *= Math.exp(-WRECK_BRAKING * dt);
 
-  side *= Math.exp(-(oil > 0 ? OIL_GRIP : handbrake ? 1.2 : car.icy ? ICE_SIDE_GRIP : car.enclosed ? ENCLOSED_SIDE_GRIP : 7) * dt);
+  side *= Math.exp(-(oil > 0 ? OIL_GRIP * parts.oil : handbrake ? 1.2 : car.icy ? ICE_SIDE_GRIP * parts.ice : car.enclosed ? ENCLOSED_SIDE_GRIP : 7 * parts.grip) * dt);
 
   // Pneu furado puxa para um lado; óleo faz o volante escapar sozinho.
-  const disturbance = (puncture > 0 ? PUNCTURE_PULL : 0) + (oil > 0 ? Math.sin(car.bob * 3) * OIL_WOBBLE : 0);
+  const disturbance = (puncture > 0 ? PUNCTURE_PULL * parts.punctureEffect : 0) + (oil > 0 ? Math.sin(car.bob * 3) * OIL_WOBBLE : 0);
   car.visualSteer = Math.max(-1, Math.min(1, car.steer + disturbance));
 
   const angle = car.visualSteer * 0.62 / (1 + Math.abs(forward) / 22);
   const drifting = handbrake && Math.abs(forward) > DRIFT_MIN_SPEED;
   car.drifting = drifting;
-  const yawLimit = drifting ? DRIFT_YAW_RATE : GRIP_ACCEL * (car.enclosed ? ENCLOSED_GRIP : 1) / Math.max(Math.abs(forward), GRIP_MIN_SPEED);
+  const yawLimit = drifting ? DRIFT_YAW_RATE : GRIP_ACCEL * parts.grip * (car.enclosed ? ENCLOSED_GRIP : 1) / Math.max(Math.abs(forward), GRIP_MIN_SPEED);
   const yawRate = Math.max(-yawLimit, Math.min(yawLimit, forward * Math.tan(angle) / WHEELBASE));
   car.yaw -= yawRate * dt;
   if (car.enclosed) car.yaw -= car.roadTurn * forward * ENCLOSED_CURVE_ASSIST * dt;

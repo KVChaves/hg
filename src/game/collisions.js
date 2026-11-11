@@ -1,6 +1,7 @@
 import { CAR_MAX_HP } from '../config.js';
 import { wrapDistance } from '../world/track.js';
-import { damagePlayer } from './car.js';
+import { crashDamage } from './car.js';
+import { ramOf } from './carUpgrades.js';
 import { flipElevation } from './carFlip.js';
 import { applyHit, isOverturned, rigElevation, stepRig } from './carRoll.js';
 import { damageOpponent, poseOpponent } from './opponents.js';
@@ -22,6 +23,7 @@ const DAMAGE_MIN_IMPACT = 4, DAMAGE_PER_SPEED = 0.4, DAMAGE_PER_SPEED_SQUARED = 
 const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
 
 export function createCollisions({ car, field, onCrash, onDestroyed }) {
+  const ramOfRacer = racer => (racer.isPlayer ? car.parts.ram : ramOf(racer.bumper));
   const stateOf = racer => (racer.isPlayer ? car : racer);
   const isOut = racer => racer.dead > 0 || racer.sunk > 0;
   const heightOfBody = racer => (racer.isPlayer ? car.y : racer.y);
@@ -107,8 +109,9 @@ export function createCollisions({ car, field, onCrash, onDestroyed }) {
 
     // Perto de uma roda a pancada calça o pneu e levanta aquele lado do carro.
     const alongForward = (cx - x) * fx + (cz - z) * fz, alongRight = (cx - x) * rx + (cz - z) * rz;
-    const lift = Math.hypot(dvx, dvz) * wheelCloseness(alongForward, alongRight) * WHEEL_LIFT;
-    applyHit(state.rig, { contactX: alongRight, sideChange: lateral, lift });
+    const tip = racer.isPlayer ? car.parts.tip : 1;   // suspensão alta tomba mais fácil
+    const lift = Math.hypot(dvx, dvz) * wheelCloseness(alongForward, alongRight) * WHEEL_LIFT * tip;
+    applyHit(state.rig, { contactX: alongRight, sideChange: lateral * tip, lift });
   }
 
   function hurt(racer, amount, other) {
@@ -116,7 +119,7 @@ export function createCollisions({ car, field, onCrash, onDestroyed }) {
     let destroyed;
     if (racer.isPlayer) {
       const wasAlive = car.health > 0 && car.wrecked <= 0;
-      damagePlayer(car, amount / CAR_MAX_HP);
+      crashDamage(car, amount / CAR_MAX_HP);
       destroyed = wasAlive && car.health <= 0;
     } else {
       destroyed = damageOpponent(racer, amount, other);
@@ -149,8 +152,9 @@ export function createCollisions({ car, field, onCrash, onDestroyed }) {
 
     if (impact < DAMAGE_MIN_IMPACT) return;
     const damage = impact * DAMAGE_PER_SPEED + impact * impact * DAMAGE_PER_SPEED_SQUARED;
-    hurt(a.racer, damage, b.racer);
-    hurt(b.racer, damage, a.racer);
+    // O para-choque de quem bate aumenta o dano do outro (o dos bots é o padrão).
+    hurt(a.racer, damage * ramOfRacer(b.racer), b.racer);
+    hurt(b.racer, damage * ramOfRacer(a.racer), a.racer);
   }
 
   const heightOf = racer => (racer.dead > 0 ? flipElevation(stateOf(racer).flip, racer.dead) : rigElevation(stateOf(racer).rig));

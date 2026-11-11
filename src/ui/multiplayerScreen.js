@@ -21,7 +21,7 @@ const CONFIG_X = 356, CONFIG_ROWS = [78, 128], ARROW = 26, VALUE_WIDTH = 50, ARR
 const GARAGE = { x: 368, y: 222, width: 190, height: 26 };
 const START = { x: 368, y: 256, width: 190, height: 26 };
 const LEAVE = { x: 368, y: 290, width: 190, height: 26 };
-const CONFIG_FIELDS = [{ key: 'cars', label: 'CORREDORES', min: 2, max: MAX_RACERS }, { key: 'races', label: 'CORRIDAS', min: 1, max: 10 }];
+const CONFIG_FIELDS = [{ key: 'bots', label: 'BOTS', min: 0 }, { key: 'races', label: 'CORRIDAS', min: 1, max: 10 }];
 
 const centered = (ctx, text, y, color, scale = 1) => ctxText(ctx, text, Math.round(VIEW.width / 2 - textWidth(text, scale) / 2), y, color, scale);
 
@@ -44,7 +44,7 @@ export function createMultiplayerScreen({ stage, net, getName, setName, onBack, 
     { field, step: 1, label: '>', x: ARROW_X + ARROW + VALUE_WIDTH, y: CONFIG_ROWS[row] - 6, width: ARROW, height: 22 },
   ]);
 
-  const isOpenRoomFull = room => room.players >= room.cars;
+  const isOpenRoomFull = room => room.players >= MAX_RACERS;
 
   function clickBrowse(x, y) {
     if (nameField.click(x, y)) return;
@@ -56,8 +56,7 @@ export function createMultiplayerScreen({ stage, net, getName, setName, onBack, 
     });
   }
 
-  const canRemoveBot = room => room.config.cars > Math.max(2, room.players.length);
-
+  
   function clickRoom(x, y) {
     const { room } = net;
     if (inside(LEAVE, x, y)) { net.leave(); return; }
@@ -65,15 +64,13 @@ export function createMultiplayerScreen({ stage, net, getName, setName, onBack, 
     if (!net.isAdmin) return;
     if (inside(START, x, y)) { net.start(); return; }
     const arrow = arrows.find(candidate => inside(candidate, x, y));
-    if (arrow) { net.configure({ [arrow.field.key]: room.config[arrow.field.key] + arrow.step }); return; }
+    if (arrow) { net.configure({ [arrow.field.key]: room.config[arrow.field.key] + arrow.step }); return; }   // o servidor limita ao que cabe na sala
     room.players.forEach((player, i) => {
       if (player.id !== net.id && inside(kickButton(i), x, y)) net.kick(player.id);
     });
-    // Expulsar um bot tira uma vaga de corredor; os bots são iguais na lista, então sai um deles.
-    if (canRemoveBot(room)) {
-      for (let i = room.players.length; i < room.config.cars; i++) {
-        if (inside(kickButton(i), x, y)) { net.configure({ cars: room.config.cars - 1 }); return; }
-      }
+    // Expulsar um bot libera a vaga; os bots são iguais na lista, então sai um deles.
+    for (let i = room.players.length; i < room.players.length + room.config.bots; i++) {
+      if (inside(kickButton(i), x, y)) { net.configure({ bots: room.config.bots - 1 }); return; }
     }
   }
 
@@ -127,15 +124,15 @@ export function createMultiplayerScreen({ stage, net, getName, setName, onBack, 
   function drawRoster(ctx, room) {
     for (let i = 0; i < MAX_RACERS; i++) {
       const y = ROSTER.top + i * ROSTER.height + 7, player = room.players[i];
-      const isBot = !player && i < room.config.cars;
+      const isBot = !player && i < room.players.length + room.config.bots;
       ctxText(ctx, `${i + 1}.`, ROSTER.x, y, COLOR.muted);
       if (player) {
         ctxText(ctx, player.name, ROSTER.x + 24, y, player.id === net.id ? COLOR.selected : COLOR.text);
         if (player.id === room.hostId) ctxText(ctx, 'ADMIN', ROSTER.x + 110, y, COLOR.selected);
         if (net.isAdmin && player.id !== net.id) drawButton(ctx, kickButton(i), 'EXPULSAR', inside(kickButton(i), pointer.x, pointer.y));
       } else {
-        ctxText(ctx, isBot ? 'BOT' : '-', ROSTER.x + 24, y, COLOR.muted);
-        if (isBot && net.isAdmin && canRemoveBot(room)) drawButton(ctx, kickButton(i), 'EXPULSAR', inside(kickButton(i), pointer.x, pointer.y));
+        ctxText(ctx, isBot ? 'BOT' : 'VAGA LIVRE', ROSTER.x + 24, y, COLOR.muted);
+        if (isBot && net.isAdmin) drawButton(ctx, kickButton(i), 'EXPULSAR', inside(kickButton(i), pointer.x, pointer.y));
       }
     }
   }
@@ -147,7 +144,7 @@ export function createMultiplayerScreen({ stage, net, getName, setName, onBack, 
       ctxText(ctx, value, ARROW_X + ARROW + Math.round((VALUE_WIDTH - textWidth(value)) / 2), y, COLOR.selected);
     });
     if (net.isAdmin) for (const arrow of arrows) drawButton(ctx, arrow, arrow.label, inside(arrow, pointer.x, pointer.y));
-    const bots = room.config.cars - room.players.length;
+    const bots = room.config.bots;
     ctxText(ctx, `${room.players.length} JOGADORES E ${bots} BOTS`, CONFIG_X, 172, COLOR.muted);
     if (isWaiting()) {
       ctxText(ctx, 'PARTIDA EM ANDAMENTO', START.x + 12, START.y - 72, COLOR.selected);

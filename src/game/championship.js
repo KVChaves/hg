@@ -10,8 +10,8 @@ export function createMatch({ racerNames, raceCount }) {
     racesDone: 0,
     lastOrder: null,                                 // nomes na ordem de chegada da última corrida
     biomesPlayed: [],                                // ids dos biomas já sorteados, em ordem (pickMatchBiome)
-    // Largada invertida: quem chegou por último larga na frente. Sem corrida anterior, não define.
-    get nextGrid() { return match.lastOrder && [...match.lastOrder].reverse(); },
+    // Quem chegou na frente larga na frente. Sem corrida anterior, não define.
+    get nextGrid() { return match.lastOrder && [...match.lastOrder]; },
     get currentRace() { return Math.min(match.racesDone + 1, raceCount); },
     get isOver() { return match.racesDone >= raceCount; },
 

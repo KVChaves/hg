@@ -1,6 +1,6 @@
 import { CAR_MAX_HP, LAPS, TRACK_WIDTH } from '../config.js';
 import { hazardAt, inFlightZone, inGap, isEpic, nearestIndex, onBridge, OPEN_WALL, surfaceAt, track, trackAt, valleyRise, valleySlope, wrapDistance } from '../world/track.js';
-import { damagePlayer, resetCar, trackCapsizes } from './car.js';
+import { crashDamage, damagePlayer, resetCar, trackCapsizes } from './car.js';
 import { resetRig, rigLean } from './carRoll.js';
 import { createFlip, flipLandingTime, lifeAfterDestruction, RESPAWN_PROTECTION } from './carFlip.js';
 import { createCollisions } from './collisions.js';
@@ -112,14 +112,14 @@ export function createRace(car, opponents, { onCrash, onDestroyed }) {
         reportWallCrash(impact);
         car.vx -= nx * vn * bounce;
         car.vz -= nz * vn * bounce;
-        damagePlayer(car, Math.max(0, impact - (enclosed ? TUNNEL_SCRAPE_SPEED : 0)) * IMPACT_DAMAGE / CAR_MAX_HP);
+        crashDamage(car, Math.max(0, impact - (enclosed ? TUNNEL_SCRAPE_SPEED : 0)) * IMPACT_DAMAGE / CAR_MAX_HP);
       }
       turnAlongWall(nx * sign, nz * sign, tx[i], tz[i], dt);
     }
     car.enclosed = track.enclosed[i] === 1;
     car.icy = track.bridge[i] === 1;
     car.roadTurn = track.turn[i] * (-Math.sin(car.yaw) * tx[i] - Math.cos(car.yaw) * tz[i]);   // a curva como o carro a enxerga, de frente ou de ré
-    car.offTrack = wall < OPEN_WALL || track.valley ? 0 : Math.abs(offset);   // túnel, tubo e vale não têm mato: a faixa junto da parede não freia
+    car.offTrack = wall < OPEN_WALL ? 0 : Math.abs(offset);   // túnel e tubo não têm mato: a faixa junto da parede não freia; no vale a encosta freia
     car.lateral = offset;
 
     let delta = s - race.lastS;
@@ -174,7 +174,7 @@ export function createRace(car, opponents, { onCrash, onDestroyed }) {
     car.vx -= t.tx * along * (1 + FACE_BOUNCE);
     car.vz -= t.tz * along * (1 + FACE_BOUNCE);
     reportWallCrash(Math.abs(along));
-    damagePlayer(car, Math.abs(along) * IMPACT_DAMAGE / CAR_MAX_HP);
+    crashDamage(car, Math.abs(along) * IMPACT_DAMAGE / CAR_MAX_HP);
   }
 
   // Altura do carro: colado no chão, voando sobre o rio ou boiando nele.
@@ -196,7 +196,7 @@ export function createRace(car, opponents, { onCrash, onDestroyed }) {
     if (result === 'blocked' && car.jump) bounceOffBank(t);
     if (result === 'landed') {
       reportWallCrash(car.impact);
-      damagePlayer(car, Math.max(0, car.impact - HARD_LANDING) * LANDING_DAMAGE / CAR_MAX_HP);
+      damagePlayer(car, Math.max(0, car.impact - HARD_LANDING) * LANDING_DAMAGE * car.parts.landing / CAR_MAX_HP);
     }
     if (ground === null && fallIsCertain(car, car.jump, race.playerDist)) car.sunk = FALL_TIME;   // não alcança mais: está caindo
   }
@@ -346,7 +346,9 @@ export function createRace(car, opponents, { onCrash, onDestroyed }) {
     resetCar(car);
     opponents.forEach(resetOpponent);
     Object.assign(playerProxy, { dead: 0, protectedFor: 0, slipstream: 0 });
-    placeOnGrid(finishNames ? finishNames.map(name => field.find(racer => racer.name === name)).filter(Boolean) : firstGrid());
+    // Quem não estava na corrida anterior (entrou depois) larga no fim do grid.
+    const previous = finishNames?.map(name => field.find(racer => racer.name === name)).filter(Boolean);
+    placeOnGrid(previous ? [...previous, ...field.filter(racer => !previous.includes(racer))] : firstGrid());
   };
   race.setPlayerName = name => { playerProxy.name = name; };
   race.renameRacer = (racer, name) => {

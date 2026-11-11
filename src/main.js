@@ -17,6 +17,7 @@ import { rigElevation } from './game/carRoll.js';
 import { createMatch } from './game/championship.js';
 import { createHarpoon, createPullReceiver } from './game/harpoon.js';
 import { loadPlayerName, savePlayerName } from './game/playerProfile.js';
+import { partStats } from './game/carUpgrades.js';
 import { loadEquipment } from './game/equipment.js';
 import { upgradeFactor } from './game/shop.js';
 import { addRaceResult } from './game/raceResults.js';
@@ -223,7 +224,7 @@ const hands = createHands({
   cabin,
   isAiming: () => Boolean(keys.AimButton),
   wantsFire: () => Boolean(keys.FireButton) && !externalView.active && !outOfAction(),
-  wantsNitro: () => Boolean(keys.Space) && car.nitro > 0 && race.started && !inMenus() && !outOfAction(),
+  wantsNitro: () => Boolean(keys.Space) && car.nitro > 0 && race.started && !car.airborne && car.sunk <= 0 && !inMenus() && !outOfAction(),   // no ar o registro não abre
 });
 const scope = createScope({
   camera, weapon, hands, car,
@@ -231,12 +232,13 @@ const scope = createScope({
   canAim: () => !externalView.active && !spectator.active && !inMenus() && !outOfAction(),
 });
 
-function applyEquipment({ weaponId, trapIds, trapCounts, upgrades }) {
+function applyEquipment({ weaponId, trapIds, trapCounts, upgrades, parts }) {
   weapon.equip(weaponId, upgradeFactor('ammo', upgrades.ammo));
   weapon.setTracerColor(customs[weaponId].colors.flash);
   cabin.setWeapon(weapon.type, weapon.maxReserve);
   traps.setLoadout(trapIds.flatMap((id, slot) => (id ? [{ id, count: trapCounts[slot] }] : [])));
   car.armor = upgradeFactor('life', upgrades.life);
+  car.parts = partStats(parts);
   car.nitroCapacity = upgradeFactor('nitro', upgrades.nitro);
 }
 
@@ -496,7 +498,7 @@ function startMatch({ cars, races, biome: biomeId = 'random' }) {
   startNextRace();
 }
 
-// A largada de cada corrida é a ordem de chegada da anterior, invertida.
+// A largada de cada corrida é a ordem de chegada da anterior.
 function startNextRace() {
   beginRace(matchBiome ?? pickMatchBiome(match.biomesPlayed), Math.floor(Math.random() * 1e9), match.nextGrid);
 }

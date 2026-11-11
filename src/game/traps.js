@@ -15,6 +15,9 @@ export function createTraps({ scene, car, race, harpoon, burning, onSound, onExt
   const traps = { slots: [], selected: 0, active: [], notice: { text: '', time: 0, good: false } };
   const throws = [];                                  // carros sendo jogados por uma explosão
 
+  // Vidro e pneus do jogador encurtam alguns efeitos (game/carUpgrades.js).
+  const effectScale = (racer, effect) => (racer.isPlayer ? { puncture: car.parts.punctureTime, paint: car.parts.paint, smoke: car.parts.smoke }[effect] ?? 1 : 1);
+
   Object.defineProperty(traps, 'current', { get: () => traps.slots[traps.selected] });
 
   // `items` é a lista de { id, count } comprada na garagem.
@@ -224,7 +227,7 @@ export function createTraps({ scene, car, race, harpoon, burning, onSound, onExt
     for (const racer of race.field) {
       if (racer.remote || racer.dead > 0 || trap.hitBy.has(racer) || !touches(trap, racer)) continue;
       trap.hitBy.add(racer);
-      racer.effects[trap.type.effect] = trap.type.duration;
+      racer.effects[trap.type.effect] = trap.type.duration * effectScale(racer, trap.type.effect);
       onSound(trap.type.id, racer.x, racer.z);
       onCaught(racer, trap.type, trap.owner);
     }

@@ -1,3 +1,5 @@
+import { CAR_PARTS, DEFAULT_PARTS, PART_KEYS } from '../../game/carUpgrades.js';
+
 // Peças externas do carro do jogador. `options` são as variações; `colorDefault` indica que a peça
 // aceita qualquer cor. Peças só com cor não têm `options`; a altura não tem cor.
 
@@ -53,16 +55,23 @@ export const CAR_SLOTS = {
     label: 'Farol', short: 'FAROL', default: 'rect', colorDefault: 0xf8f4d8,
     options: named([['rect', 'Retangular'], ['round', 'Redondo'], ['twin', 'Duplo'], ['slim', 'Fino'], ['covered', 'Com grade']]),
   },
+  bumper: { label: 'Para-choque', short: 'PARACHOQUE', default: 'stock', colorDefault: 0x34343a, options: named([['stock', 'Original'], ['sport', 'Esportivo'], ['steel', 'Aco'], ['ram', 'Ariete'], ['absorber', 'Absorvedor']]) },
   glass: {
     label: 'Vidros', short: 'VIDRO', default: 'clear', colorDefault: 0x3a3c44,
     options: { clear: { name: 'Claro', value: 0 }, light: { name: 'Leve', value: 0.18 }, medium: { name: 'Fume', value: 0.35 }, dark: { name: 'Escuro', value: 0.7 }, black: { name: 'Blindado', value: 0.92 } },
   },
 };
 
+// Pneus, vidro, altura e para-choque são peças de desempenho: nome, preço e efeito vêm de game/carUpgrades.js.
+for (const key of PART_KEYS) {
+  for (const [id, variant] of Object.entries(CAR_PARTS[key].variants)) {
+    Object.assign(CAR_SLOTS[key].options[id], { name: variant.name, price: variant.price, detail: `R$ ${variant.price}  ${variant.summary}` });
+  }
+}
+
 const STORAGE_KEY = 'halfgrip.car';
 
 // Carro do primeiro acesso: peças e cores sorteadas, só nas peças de aparência. Vidro, farol e pneu ficam no padrão.
-const RANDOM_EXCLUDE = { height: ['slammed', 'lifted'], glass: ['dark', 'black'] };
 const RANDOM_COLORED = ['body', 'pattern', 'decal', 'spoiler', 'hood', 'rim', 'trim'];
 
 function randomColor() {
@@ -77,8 +86,10 @@ function randomColor() {
 function randomCarSelection() {
   const selection = { options: {}, colors: {} };
   for (const [key, slot] of Object.entries(CAR_SLOTS)) {
-    if (slot.options) {
-      const ids = Object.keys(slot.options).filter(id => !RANDOM_EXCLUDE[key]?.includes(id));
+    if (PART_KEYS.includes(key)) {
+      selection.options[key] = DEFAULT_PARTS[key];   // peças de desempenho custam: o carro novo começa com as de fábrica
+    } else if (slot.options) {
+      const ids = Object.keys(slot.options);
       selection.options[key] = ids[Math.floor(Math.random() * ids.length)];
     }
     if (slot.colorDefault !== undefined) selection.colors[key] = RANDOM_COLORED.includes(key) ? randomColor() : slot.colorDefault;
@@ -131,6 +142,8 @@ export function resolveCarSpec({ options, colors }) {
     hood: value('hood'),
     hoodColor: colors.hood,
     height: value('height'),
+    bumper: options.bumper,
+    bumperColor: colors.bumper,
     tire: value('tire'),
     tireColor: colors.tire,
     rim: value('rim'),

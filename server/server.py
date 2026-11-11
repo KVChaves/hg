@@ -32,7 +32,7 @@ MAX_FRAME_BYTES = 64 * 1024
 MAX_MESSAGES_PER_SECOND = 200
 SEND_QUEUE_SIZE = 512
 
-MIN_RACERS, MAX_RACERS = 2, 8
+MIN_RACERS, MAX_RACERS = 2, 8                      # MAX_RACERS é o número de vagas da sala
 MIN_RACES, MAX_RACES = 1, 10
 MAX_ROOMS = 64
 MAX_RESULT_COUNT = 999
@@ -113,18 +113,18 @@ class Room:
         self.name = clean_text(name, ROOM_NAME_LENGTH) or f"Sala de {host.name}"
         self.host = host
         self.members = []
-        self.cars = MAX_RACERS
+        self.bots = 0                       # a sala tem sempre MAX_RACERS vagas; bots só existem se o admin pedir
         self.races = 3
         self.phase = "lobby"
         self.banned = set()
 
     def public_info(self):
-        return {"id": self.id, "name": self.name, "players": len(self.members), "cars": self.cars, "phase": self.phase}
+        return {"id": self.id, "name": self.name, "players": len(self.members), "cars": MAX_RACERS, "phase": self.phase}
 
     def state(self):
         return {
             "id": self.id, "name": self.name, "hostId": self.host.id, "phase": self.phase,
-            "config": {"cars": self.cars, "races": self.races},
+            "config": {"cars": MAX_RACERS, "bots": self.bots, "races": self.races},
             "players": [{"id": member.id, "name": member.name} for member in self.members],
         }
 
@@ -204,9 +204,10 @@ class Lobby:
             return client.send({"t": "error", "code": "no_room"})
         if client.id in room.banned:
             return client.send({"t": "error", "code": "banned"})
-        if len(room.members) >= room.cars:                # em partida, o jogador entra e espera a próxima corrida
+        if len(room.members) >= MAX_RACERS:               # em partida, o jogador entra e espera a próxima corrida
             return client.send({"t": "error", "code": "full"})
         self.join(client, room)
+        room.bots = min(room.bots, MAX_RACERS - len(room.members))   # quem entra toma o lugar de um bot, se a sala estava cheia
         self.publish_room(room)
 
     def on_name(self, client, message):
@@ -238,9 +239,9 @@ class Lobby:
         room = self.admin_room(client)
         if room is None or room.phase != "lobby":
             return
-        cars, races = message.get("cars"), message.get("races")
-        if isinstance(cars, int):
-            room.cars = max(MIN_RACERS, len(room.members), min(MAX_RACERS, cars))
+        bots, races = message.get("bots"), message.get("races")
+        if isinstance(bots, int):
+            room.bots = max(0, min(MAX_RACERS - len(room.members), bots))
         if isinstance(races, int):
             room.races = max(MIN_RACES, min(MAX_RACES, races))
         self.publish_room(room)
@@ -249,6 +250,8 @@ class Lobby:
         room = self.admin_room(client)
         if room is None or room.phase != "lobby":
             return
+        if len(room.members) + room.bots < MIN_RACERS:    # sozinho na sala, precisa de ao menos um bot
+            return client.send({"t": "error", "code": "need_racers"})
         room.phase = "playing"
         state = room.state()
         for member in room.members:
@@ -267,7 +270,7 @@ class Lobby:
         recorded = False
         for result in results:
             member = members.get(result.get("id")) if isinstance(result, dict) else None
-            if member is not None and self.valid_result(result, room.cars):
+            if member is not None and self.valid_result(result, MAX_RACERS):
                 self.ranking.record(member.name, result)
                 recorded = True
         if recorded:
@@ -282,7 +285,6 @@ class Lobby:
             return
         self.record_results(room, message.get("results"))
         room.phase = "lobby"
-        room.cars = max(room.cars, len(room.members))
         state = room.state()
         for member in room.members:
             member.send({"t": "ended", "room": state})

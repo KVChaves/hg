@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { pixelTexture } from '../textures.js';
+import { createBumper, disposeBumper } from './carBumper.js';
 import { createBodyGeometry, createSpoilerGeometry } from './carGeometry.js';
 import { createHoodOrnament, disposeHoodOrnament } from './carHood.js';
 import { paintLivery, paintRim, WHEEL_POSITIONS_Z } from './carLivery.js';
@@ -48,7 +49,7 @@ const FLAME_FLICKER = [0.7, 1.25];
 const DEFAULT_SPEC = {
   model: 'coupe', headlightShape: 'rect', primary: 0xc4c0b8, secondary: 0x98161e, glyph: 0xe8e4dc, pattern: 'digital', decal: 'crosses',
   spoiler: 'wing', hood: 'none', hoodColor: 0xd8d4cc, height: 0, tire: { width: 1, radius: 1 }, rim: 'spokes', rimColor: 0xb01820,
-  headlight: 0xf8f4d8, glass: { color: 0x3a3c44, level: 0 }, tireColor: 0x0a0a0c,
+  headlight: 0xf8f4d8, glass: { color: 0x3a3c44, level: 0 }, tireColor: 0x0a0a0c, bumper: 'stock', bumperColor: 0x34343a,
 };
 
 export function createCarModel(initialSpec, seed = 0) {
@@ -91,7 +92,7 @@ export function createCarModel(initialSpec, seed = 0) {
     }
   }
 
-  let flashing = false, radiusScale = 1, hoodOrnament = null, hoodKey = '';
+  let flashing = false, radiusScale = 1, hoodOrnament = null, hoodKey = '', bumper = null, bumperKey = '';
 
   function apply(partialSpec) {
     const spec = { ...DEFAULT_SPEC, ...partialSpec };
@@ -114,6 +115,17 @@ export function createCarModel(initialSpec, seed = 0) {
       }
       hoodOrnament = createHoodOrnament(spec.hood, spec.hoodColor, spec.model);
       lifted.add(hoodOrnament);
+    }
+
+    const nextBumper = `${spec.bumper}|${spec.bumperColor}`;
+    if (nextBumper !== bumperKey) {
+      bumperKey = nextBumper;
+      if (bumper) {
+        lifted.remove(bumper);
+        disposeBumper(bumper);
+      }
+      bumper = createBumper(spec.bumper, spec.bumperColor);
+      lifted.add(bumper);
     }
 
     spoiler.visible = spec.spoiler !== 'none';

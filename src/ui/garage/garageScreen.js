@@ -1,6 +1,7 @@
 import { ctxText, textWidth } from '../../art/font.js';
 import { PARTS } from '../../cabin/parts/index.js';
-import { saveEquipment } from '../../game/equipment.js';
+import { PART_KEYS } from '../../game/carUpgrades.js';
+import { saveEquipment, savedParts } from '../../game/equipment.js';
 import { loadSavedCars, SAVED_CAR_SLOTS, storeSavedCars } from '../../game/savedCars.js';
 import { BUDGET, fitsBudget, loadoutCost, maxUpgradeLevel, UPGRADES, upgradeFactor, upgradePrice } from '../../game/shop.js';
 import { MAX_TRAP_SLOTS, TRAP_TYPES } from '../../game/trapTypes.js';
@@ -44,6 +45,10 @@ const trunkOptions = () => ({
 
 export function createGarageScreen({ stage, cabin, customs, equipment, getName, setName, getReadyRoster, onKickPlayer, onProceed, onBetweenRacesEnd, onBack, onOpenWorkshop }) {
   const carSelection = loadCarSelection();
+  // As peças de desempenho (para-choque, pneus, vidro, suspensão) valem pelo que está no equipamento comprado.
+  const syncPartsToCar = () => { for (const key of PART_KEYS) carSelection.options[key] = equipment.parts[key]; };
+  equipment.parts = savedParts(equipment.parts);
+  syncPartsToCar();
   const carScene = createGarageScene(resolveCarSpec(carSelection));
 
   const makeSlot = (group, key, index, panel, short, thumbOf, options, hasColor) => ({
@@ -125,12 +130,15 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
       cabin.setPart(kind, saved.cabin[kind]);
       cabin.setPartColor(kind, saved.cabin.colors[kind]);
     }
-    if (fitsBudget(saved.equipment)) {
-      Object.assign(equipment, structuredClone(saved.equipment));
+    const savedEquipment = { ...structuredClone(saved.equipment), parts: savedParts(saved.equipment.parts) };
+    if (fitsBudget(savedEquipment)) {
+      Object.assign(equipment, savedEquipment);
       saveEquipment(equipment);
     } else {
       noFunds = NO_FUNDS_TIME;                       // os preços mudaram: leva só a aparência
     }
+    syncPartsToCar();
+    refreshCar();
   }
   let pointer = { x: -1, y: -1 }, dragging = false;
 
@@ -225,7 +233,11 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
     ctxText(ctx, label, slot.x + slot.width - textWidth(label) - 2, slot.y + 3, COLOR.selected);
   }
 
+  const isPartSlot = slot => slot.group === 'exterior' && PART_KEYS.includes(slot.key);
+  const withPart = (slot, id) => ({ ...equipment, parts: { ...equipment.parts, [slot.key]: id } });
+
   const priceOfEquipment = (slot, id) => {
+    if (isPartSlot(slot)) return slot.options[id].price;
     if (slot.group !== 'equipment') return null;
     if (slot.key === 'weapon') return WEAPON_TYPES[id].price;
     return id === 'none' ? 0 : TRAP_TYPES[id].price;
@@ -236,6 +248,10 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
       chooseEquipment(slot, id);
     } else if (slot.group === 'interior') {
       cabin.setPart(slot.key, id);
+    } else if (isPartSlot(slot)) {
+      if (!purchase(withPart(slot, id))) return;
+      carSelection.options[slot.key] = id;
+      refreshCar();
     } else {
       carSelection.options[slot.key] = id;
       refreshCar();
@@ -260,7 +276,7 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
     placement: stripPlacement,
     getSlot: () => active, currentId, currentColor,
     priceOf: priceOfEquipment,
-    isLocked: (slot, id) => slot.group === 'equipment' && !fitsBudget(withChoice(slot, id)),
+    isLocked: (slot, id) => (isPartSlot(slot) ? !fitsBudget(withPart(slot, id)) : slot.group === 'equipment' && !fitsBudget(withChoice(slot, id))),
     originalSwatch: slot => ORIGINAL_SWATCH[slot.key],
     onChoose: choose, onColor: setColor,
   });

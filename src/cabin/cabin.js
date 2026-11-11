@@ -155,7 +155,7 @@ export function createCabin({ camera, car, loadout }) {
 
     dashboard.update({ gear, nitroLevel: car.nitro, nitroOpen: car.nitroActive, reserveAmmo: weapon.reserve, trapSlot: traps.current, trapReady: traps.isReady(), dt });
     updateWindshield(car.effects, dt);
-    updateCracks(car.capsizes);
+    updateCracks(Math.round(car.capsizes * car.parts.crack));   // vidro blindado racha menos
     swingCharm(dt, frameTime);
     updateScoreboard(race, weapon.kills);
   }

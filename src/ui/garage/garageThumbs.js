@@ -43,6 +43,38 @@ function spoilerThumb(kind) {
   return r.commit();
 }
 
+// Frente do carro com o para-choque da variante.
+function bumperThumb(id) {
+  const r = new Raster(W, H);
+  r.rect(8, 4, 24, 12, 0x6a6a72);                    // carroceria vista de frente
+  r.rect(11, 6, 18, 6, 0x2a2e38);                    // para-brisa
+  r.disc(12, 22, 3, 0x18181c);
+  r.disc(28, 22, 3, 0x18181c);
+  if (id === 'stock') r.rect(8, 16, 24, 3, 0x34343a);
+  if (id === 'sport') {
+    r.rect(6, 19, 28, 2, 0x34343a);
+    r.rect(6, 15, 3, 6, 0x34343a);
+    r.rect(31, 15, 3, 6, 0x34343a);
+  }
+  if (id === 'steel') {
+    r.rect(5, 16, 30, 5, 0x34343a);
+    r.rect(5, 14, 3, 9, 0x34343a);
+    r.rect(32, 14, 3, 9, 0x34343a);
+    r.rect(14, 17, 2, 2, 0xa8a8b0);
+    r.rect(24, 17, 2, 2, 0xa8a8b0);
+  }
+  if (id === 'ram') {
+    r.rect(5, 16, 30, 4, 0x34343a);
+    for (const x of [11, 19, 27]) r.poly([[x - 2, 16], [x + 2, 16], [x, 11]], 0xa8a8b0);
+  }
+  if (id === 'absorber') {
+    r.rect(4, 15, 32, 8, 0x1c1c20);
+    r.rect(4, 17, 32, 1, 0xe0b030);
+    r.rect(4, 20, 32, 1, 0xe0b030);
+  }
+  return r.commit();
+}
+
 function heightThumb(value) {
   const r = new Raster(W, H);
   wheels(r);
@@ -223,6 +255,7 @@ const EXTERIOR = {
   trim: option => trimThumb(option.value),
   spoiler: option => spoilerThumb(option.value),
   height: option => heightThumb(option.value),
+  bumper: option => bumperThumb(option.value),
   tire: option => tireThumb(option.value),
   rim: option => paintRim(option.value, 0xb01820),
   glass: option => swatch(mix(0x4a4c56, 0, option.value)),

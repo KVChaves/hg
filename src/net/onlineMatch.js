@@ -40,8 +40,8 @@ export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = 
   function setUpRacers(room) {
     isHost = room.hostId === net.id;
     const others = room.players.filter(player => player.id !== net.id);
-    const botCount = room.config.cars - room.players.length;
-    setRacerCount(room.config.cars);
+    const botCount = room.config.bots;
+    setRacerCount(room.players.length + botCount);
     race.setPlayerName(room.players.find(player => player.id === net.id).name);
     me().netId = net.id;
     byId.clear();
@@ -52,6 +52,7 @@ export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = 
       const bot = i < botCount;
       op.netId = bot ? `${BOT_PREFIX}${i}` : others[i - botCount].id;
       op.remote = bot ? !isHost : true;
+      op.bumper = null;                                // o dos humanos chega com a aparência deles (k: 'spec')
       op.name = bot ? (taken.has(op.profile.name) ? `${op.profile.name} Bot` : op.profile.name) : others[i - botCount].name;
       op.onRemoteDamage = (amount, attacker) => sendHit(op, amount, attacker);
       op.onRemoteIgnite = (seconds, attacker) => net.relay({ k: 'burn', t: op.netId, s: seconds, by: attacker?.netId ?? null }, ownerOf(op));
@@ -92,8 +93,8 @@ export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = 
 
   function launchRace() {
     const names = race.field.map(racer => racer.name);
-    const inverted = getMatch().nextGrid?.filter(name => names.includes(name));
-    const grid = inverted ?? [...names].sort(() => Math.random() - 0.5);
+    const previous = getMatch().nextGrid?.filter(name => names.includes(name));
+    const grid = previous ?? [...names].sort(() => Math.random() - 0.5);
     broadcast({ k: 'go', b: pickMatchBiome(getMatch().biomesPlayed).id, s: Math.floor(Math.random() * 1e9), g: grid });
   }
 
@@ -230,7 +231,12 @@ export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = 
       const target = byId.get(data.t);
       if (target && !target.remote) pulls.start(target, byId.get(data.by));
     },
-    spec: (data, from) => byId.get(from)?.model?.apply(data.s),
+    spec: (data, from) => {
+      const racer = byId.get(from);
+      if (!racer) return;
+      racer.model?.apply(data.s);
+      racer.bumper = data.s.bumper;                  // o dano que o outro carro leva ao bater depende do para-choque
+    },
     ready: (data, from) => {
       ready.add(from);
       killsOf.set(from, data.kills);
@@ -294,12 +300,13 @@ export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = 
     openGarage(GARAGE_TIME);
   }
 
-  // Quem entrou (ou saiu) durante a corrida passa a valer na garagem seguinte: o lugar de um bot vira o jogador.
+  // Quem entrou (ou saiu) durante a corrida passa a valer na garagem seguinte: a vaga livre vira um carro novo.
   function resyncRoster(matchData) {
     const room = net.room;
     if (!room || !matchData) return;
     const known = race.field.filter(racer => !isBotId(racer.netId)).map(racer => racer.netId);
-    if (room.players.length === known.length && room.players.every(player => known.includes(player.id))) return;
+    const knownBots = race.field.length - known.length;
+    if (knownBots === room.config.bots && room.players.length === known.length && room.players.every(player => known.includes(player.id))) return;
     setUpRacers(room);
     getMatch().restore(matchData, race.field.map(racer => racer.name));
   }
@@ -335,6 +342,15 @@ export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = 
       byId.delete(racer.netId);
       ready.delete(racer.netId);
       race.removeRacer(racer);
+    }
+    // Quem entra enquanto todos ainda estão na garagem não espera a corrida: todos o encaixam na pista agora
+    // e o admin manda a ele o placar para entrar na garagem junto.
+    if (phase === 'garage') {
+      const joined = room.players.filter(player => !byId.has(player.id));
+      if (joined.length) {
+        resyncRoster(getMatch().snapshot());
+        if (isHost) for (const player of joined) net.relay({ k: 'inter', m: getMatch().snapshot() }, player.id);
+      }
     }
   }
 
