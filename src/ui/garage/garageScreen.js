@@ -1,6 +1,6 @@
 import { ctxText, textWidth } from '../../art/font.js';
 import { PARTS } from '../../cabin/parts/index.js';
-import { PART_KEYS } from '../../game/carUpgrades.js';
+import { PART_KEYS, partsCost } from '../../game/carUpgrades.js';
 import { saveEquipment, savedParts } from '../../game/equipment.js';
 import { loadSavedCars, SAVED_CAR_SLOTS, storeSavedCars } from '../../game/savedCars.js';
 import { BUDGET, fitsBudget, loadoutCost, maxUpgradeLevel, UPGRADES, upgradeFactor, upgradePrice } from '../../game/shop.js';
@@ -9,7 +9,7 @@ import { WEAPON_TYPES } from '../../game/weaponTypes.js';
 import { CAR_SLOTS, loadCarSelection, resolveCarSpec, saveCarSelection } from '../../world/car/carOptions.js';
 import { createNameField } from '../nameField.js';
 import { createOptionStrip } from '../optionStrip.js';
-import { COLOR, drawButton, drawSlotTile, drawTooltip, inside, markClickable, panelBox, pointerOnStage } from '../panelKit.js';
+import { COLOR, drawButton, drawSlotTile, drawTooltip, inside, markClickable, outline, panelBox, pointerOnStage } from '../panelKit.js';
 import { createGarageScene } from './garageScene.js';
 import { createReadyPanel } from './readyPanel.js';
 import { createSavedCarsPanel } from './savedCarsPanel.js';
@@ -28,6 +28,7 @@ const QUANTITY_SIZE = { width: 220, height: 20 };
 const NAME_BOX = { x: 528, y: 6, width: 106, height: 28 };
 const SAVED_CARS_BUTTON = { x: 528, y: 284, width: 106, height: 22 };
 const NEXT_BUTTON = { x: 240, y: 6, width: 160, height: 26 };
+const BANNER_Y = 35, BANNER_HEIGHT = 18;             // aviso do próximo mapa, logo abaixo do botão de pronto
 const MENU_BUTTON = { x: 118, y: 6, width: 116, height: 26 };
 const WORKSHOP_BUTTON = { x: 406, y: 6, width: 116, height: 26 };
 const INTERIOR_SHORT = { wheel: 'VOLANTE', shifter: 'CAMBIO', nitro: 'NITRO', health: 'VIDA', charm: 'ENFEITE', cabinColor: 'COR' };
@@ -43,7 +44,7 @@ const trunkOptions = () => ({
   ...Object.fromEntries(Object.values(TRAP_TYPES).map(type => [type.id, { name: `${type.label}: ${type.summary}`, detail: `R$ ${type.price} CADA  ATE ${type.maxCharges} UNIDADES` }])),
 });
 
-export function createGarageScreen({ stage, cabin, customs, equipment, getName, setName, getReadyRoster, onKickPlayer, onProceed, onBetweenRacesEnd, onBack, onOpenWorkshop }) {
+export function createGarageScreen({ stage, cabin, customs, equipment, getName, setName, getReadyRoster, getUpcomingBiome = () => null, onKickPlayer, onProceed, onBetweenRacesEnd, onBack, onOpenWorkshop }) {
   const carSelection = loadCarSelection();
   // As peças de desempenho (para-choque, pneus, vidro, suspensão) valem pelo que está no equipamento comprado.
   const syncPartsToCar = () => { for (const key of PART_KEYS) carSelection.options[key] = equipment.parts[key]; };
@@ -51,8 +52,13 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
   syncPartsToCar();
   const carScene = createGarageScene(resolveCarSpec(carSelection));
 
+  // O painel do carro tem duas abas: aparência (grátis) e desempenho (peças com preço e efeito).
+  const performanceKeys = ['bumper', 'bumperTrim', 'tire', 'glass', 'height'];
+  const lookKeys = Object.keys(CAR_SLOTS).filter(key => !performanceKeys.includes(key));
+  const tabOf = key => (performanceKeys.includes(key) ? 'performance' : 'look');
+
   const makeSlot = (group, key, index, panel, short, thumbOf, options, hasColor) => ({
-    group, key, short, options, hasColor,
+    group, key, short, options, hasColor, tab: group === 'exterior' ? tabOf(key) : null,
     thumbs: options ? Object.fromEntries(Object.entries(options).map(([id, option]) => [id, thumbOf(key, option)])) : null,
     x: panel.x + 6 + (index % panel.columns) * TILE.gapX,
     y: panel.y + 16 + Math.floor(index / panel.columns) * TILE.gapY,
@@ -61,7 +67,7 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
 
   const slots = [
     ...Object.keys(PARTS).map((key, i) => makeSlot('interior', key, i, LEFT, INTERIOR_SHORT[key], interiorThumb, COLOR_ONLY_INTERIOR.has(key) ? null : PARTS[key].options, true)),
-    ...Object.keys(CAR_SLOTS).map((key, i) => makeSlot('exterior', key, i, RIGHT, CAR_SLOTS[key].short, exteriorThumb, CAR_SLOTS[key].options ?? null, CAR_SLOTS[key].colorDefault !== undefined)),
+    ...[...lookKeys, ...performanceKeys].map(key => makeSlot('exterior', key, (tabOf(key) === 'look' ? lookKeys : performanceKeys).indexOf(key), RIGHT, CAR_SLOTS[key].short, exteriorThumb, CAR_SLOTS[key].options ?? null, CAR_SLOTS[key].colorDefault !== undefined)),
   ];
 
   const equipmentSlots = [
@@ -85,7 +91,7 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
   refreshEquipmentThumbs();
 
   const leftRows = Math.ceil(Object.keys(PARTS).length / LEFT.columns);
-  const rightRows = Math.ceil(Object.keys(CAR_SLOTS).length / RIGHT.columns);
+  const rightRows = Math.ceil(lookKeys.length / RIGHT.columns);
   const leftPanel = { ...LEFT, height: 16 + leftRows * TILE.gapY + 4 };
   const rightPanel = { ...RIGHT, height: 16 + rightRows * TILE.gapY + 4 };
   const equipmentPanel = { ...EQUIPMENT, height: 16 + Math.ceil(equipmentSlots.length / EQUIPMENT.columns) * TILE.gapY + 4 };
@@ -95,6 +101,15 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
     return { id, y, minus: { x: UPGRADE_PANEL.x + 72, y, width: 11, height: 10 }, plus: { x: UPGRADE_PANEL.x + 88, y, width: 11, height: 10 } };
   });
 
+  let rightTab = 'look';
+  const isShown = slot => slot.group !== 'exterior' || slot.tab === rightTab;
+  const shownSlots = () => slots.filter(isShown);
+  const TABS = [{ id: 'look', label: 'APARENCIA', x: RIGHT.x + 4, width: 68 }, { id: 'performance', label: 'DESEMPENHO', x: RIGHT.x + 76, width: 72 }]
+    .map(tab => ({ ...tab, y: RIGHT.y + 3, height: 12 }));
+  function selectTab(id) {
+    rightTab = id;
+    if (!isShown(active)) active = shownSlots().find(slot => slot.group === 'exterior');
+  }
   let active = slots.find(slot => slot.key === 'body');
   let browsing = false, browseDone = null;           // aberta só para personalizar (menu ou sala), sem corrida; `browseDone` diz para onde voltar
   let noFunds = 0, betweenRaces = 0;                 // segundos que restam do intervalo; 0 fora dele
@@ -271,8 +286,12 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
   // No interior a faixa fica no alto para não cobrir o volante; o enfeite pende do retrovisor, então nele vai para baixo.
   const stripPlacement = slot => (slot.group === 'interior' && slot.key !== 'charm' ? 'top' : 'bottom');
 
+  // O aviso do próximo mapa aparece na garagem de corrida (não quando ela só abre para personalizar o carro).
+  const upcomingBiome = () => (browsing ? null : getUpcomingBiome());
+  const stripTop = () => (upcomingBiome() ? BANNER_Y + BANNER_HEIGHT + 3 : 36);
+
   const strip = createOptionStrip({
-    x: 118, width: 362, top: 36, bottom: 356,
+    x: 118, width: 362, top: stripTop, bottom: 356,
     placement: stripPlacement,
     getSlot: () => active, currentId, currentColor,
     priceOf: priceOfEquipment,
@@ -322,7 +341,9 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
       if (inside(row.minus, x, y)) { changeUpgrade(row.id, -1); return; }
       if (inside(row.plus, x, y)) { changeUpgrade(row.id, 1); return; }
     }
-    const slot = slots.find(candidate => inside(candidate, x, y));
+    const tab = TABS.find(candidate => inside(candidate, x, y));
+    if (tab) { selectTab(tab.id); return; }
+    const slot = shownSlots().find(candidate => inside(candidate, x, y));
     if (slot) { active = slot; return; }
     strip.click(x, y);
   });
@@ -352,6 +373,22 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
     }
   }
 
+  // Resumo das peças de desempenho escolhidas, abaixo das miniaturas da aba.
+  function drawPartsSummary(ctx) {
+    const top = RIGHT.y + 16 + Math.ceil(performanceKeys.length / RIGHT.columns) * TILE.gapY + 4;
+    ctx.fillStyle = COLOR.edge;
+    ctx.fillRect(RIGHT.x + 6, top - 3, RIGHT.width - 12, 1);
+    PART_KEYS.forEach((key, i) => {
+      const option = CAR_SLOTS[key].options[equipment.parts[key]], y = top + 2 + i * 13;
+      ctxText(ctx, CAR_SLOTS[key].short, RIGHT.x + 8, y, COLOR.muted);
+      ctxText(ctx, option.name.toUpperCase().slice(0, 8), RIGHT.x + 58, y, option.price > 0 ? COLOR.selected : COLOR.text);
+      const price = option.price > 0 ? `R$${option.price}` : '-';
+      ctxText(ctx, price, RIGHT.x + RIGHT.width - 8 - textWidth(price), y, COLOR.text);
+    });
+    const total = partsCost(equipment.parts), label = `TOTAL R$ ${total}`;
+    ctxText(ctx, label, RIGHT.x + RIGHT.width - 8 - textWidth(label), top + 2 + PART_KEYS.length * 13 + 3, COLOR.selected);
+  }
+
   function drawStepper(ctx, box, label, enabled, hovered) {
     if (enabled) markClickable(box);
     ctx.fillStyle = !enabled ? COLOR.tileDark : hovered ? COLOR.buttonHover : COLOR.button;
@@ -371,7 +408,7 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
     if (hoveredRow) return upgradeInfo(hoveredRow);
     const fromStrip = strip.hoverInfo(pointer, labelOf(active));
     if (fromStrip) return fromStrip;
-    const slot = slots.find(candidate => inside(candidate, pointer.x, pointer.y));
+    const slot = shownSlots().find(candidate => inside(candidate, pointer.x, pointer.y));
     return slot ? { title: slot.options ? slot.options[currentId(slot)].name : labelOf(slot), detail: labelOf(slot) } : null;
   }
 
@@ -381,11 +418,17 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
     panelBox(ctx, leftPanel);
     ctxText(ctx, 'CABINE', leftPanel.x + 6, leftPanel.y + 5, COLOR.selected);
     panelBox(ctx, rightPanel);
-    ctxText(ctx, 'CARRO', rightPanel.x + 6, rightPanel.y + 5, COLOR.selected);
+    for (const tab of TABS) {
+      markClickable(tab);
+      ctx.fillStyle = tab.id === rightTab ? COLOR.button : inside(tab, pointer.x, pointer.y) ? COLOR.tileHover : COLOR.tileDark;
+      ctx.fillRect(tab.x, tab.y, tab.width, tab.height);
+      outline(ctx, tab, tab.id === rightTab ? COLOR.selected : COLOR.edge);
+      ctxText(ctx, tab.label, tab.x + Math.floor((tab.width - textWidth(tab.label)) / 2), tab.y + 3, tab.id === rightTab ? COLOR.text : COLOR.muted);
+    }
     panelBox(ctx, equipmentPanel);
     ctxText(ctx, 'EQUIPAMENTO', equipmentPanel.x + 6, equipmentPanel.y + 5, COLOR.selected);
 
-    for (const slot of slots) {
+    for (const slot of shownSlots()) {
       const color = currentColor(slot);
       drawSlotTile(ctx, slot, {
         image: slot.options ? slot.thumbs[currentId(slot)] : null,
@@ -397,6 +440,7 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
       if (slot.trunkIndex !== undefined) drawTrunkCount(ctx, slot);
     }
 
+    if (rightTab === 'performance') drawPartsSummary(ctx);
     drawUpgrades(ctx);
     strip.draw(ctx, pointer);
     drawQuantity(ctx);
@@ -406,9 +450,15 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
     drawButton(ctx, WORKSHOP_BUTTON, 'OFICINA >', inside(WORKSHOP_BUTTON, pointer.x, pointer.y));
     if (betweenRaces <= 0 && !waiting && !browsing) drawButton(ctx, MENU_BUTTON, '< MENU', inside(MENU_BUTTON, pointer.x, pointer.y));
     nameField.draw(ctx, pointer);
+    const upcoming = upcomingBiome();
+    if (upcoming) {
+      const text = `PROXIMO MAPA: ${upcoming}`, width = textWidth(text) + 20, box = { x: NEXT_BUTTON.x + Math.floor((NEXT_BUTTON.width - width) / 2), y: BANNER_Y, width, height: 18 };
+      panelBox(ctx, box);
+      ctxText(ctx, text, box.x + 10, box.y + 6, '#f0d060');
+    }
     drawButton(ctx, SAVED_CARS_BUTTON, 'MEUS CARROS', inside(SAVED_CARS_BUTTON, pointer.x, pointer.y));
     const stripBox = strip.box();
-    readyPanel.draw(ctx, pointer, stripPlacement(active) === 'top' ? stripBox.y + stripBox.height + 4 : 38);
+    readyPanel.draw(ctx, pointer, stripPlacement(active) === 'top' ? stripBox.y + stripBox.height + 4 : stripTop() + 2);
     if (savedCarsPanel.isOpen) { savedCarsPanel.draw(ctx, pointer); return; }
 
     const info = hoveredInfo();
@@ -476,7 +526,10 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
   screen.readyPanel = readyPanel;
   screen.changeQuantity = changeQuantity;
   screen.funds = () => BUDGET - loadoutCost(equipment);
-  screen.selectSlot = key => { active = slots.find(slot => slot.key === key); };
+  screen.selectSlot = key => {
+    active = slots.find(slot => slot.key === key);
+    if (active.group === 'exterior') rightTab = active.tab;
+  };
   screen.choose = (key, id) => choose(slots.find(slot => slot.key === key), id);
   screen.chooseColor = (key, color) => setColor(slots.find(slot => slot.key === key), color);
   return screen;

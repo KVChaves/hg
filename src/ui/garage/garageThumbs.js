@@ -46,48 +46,97 @@ function spoilerThumb(kind) {
 // Frente do carro com o para-choque da variante.
 function bumperThumb(id) {
   const r = new Raster(W, H);
-  r.rect(8, 4, 24, 12, 0x6a6a72);                    // carroceria vista de frente
-  r.rect(11, 6, 18, 6, 0x2a2e38);                    // para-brisa
-  r.disc(12, 22, 3, 0x18181c);
-  r.disc(28, 22, 3, 0x18181c);
-  if (id === 'stock') r.rect(8, 16, 24, 3, 0x34343a);
+  r.rect(9, 3, 22, 13, 0x6a6a72);                    // carroceria vista de frente
+  r.rect(12, 5, 16, 6, 0x2a2e38);                    // para-brisa
+  r.rect(10, 12, 4, 2, 0xf0e8b0);
+  r.rect(26, 12, 4, 2, 0xf0e8b0);                    // faróis
+  r.disc(11, 23, 3, 0x18181c);
+  r.disc(29, 23, 3, 0x18181c);
+  const dark = 0x34343a, gold = 0xd8b840, steel = 0xa8a8b0;
+  if (id === 'stock') r.rect(9, 16, 22, 3, dark);
   if (id === 'sport') {
-    r.rect(6, 19, 28, 2, 0x34343a);
-    r.rect(6, 15, 3, 6, 0x34343a);
-    r.rect(31, 15, 3, 6, 0x34343a);
+    r.rect(7, 20, 26, 2, dark);                      // splitter
+    r.rect(5, 17, 3, 5, dark);
+    r.rect(32, 17, 3, 5, dark);                      // aletas
+    r.rect(13, 16, 14, 3, 0x1a1a1e);                 // entrada de ar
+    for (const x of [15, 18, 21, 24]) r.rect(x, 16, 1, 3, gold);
   }
   if (id === 'steel') {
-    r.rect(5, 16, 30, 5, 0x34343a);
-    r.rect(5, 14, 3, 9, 0x34343a);
-    r.rect(32, 14, 3, 9, 0x34343a);
-    r.rect(14, 17, 2, 2, 0xa8a8b0);
-    r.rect(24, 17, 2, 2, 0xa8a8b0);
+    r.rect(6, 15, 28, 2, steel);                     // tubo de cima
+    r.rect(6, 20, 28, 2, steel);                     // tubo de baixo
+    for (const x of [6, 19, 32]) r.rect(x, 15, 2, 7, steel);
+    r.disc(12, 12, 2, gold);
+    r.disc(28, 12, 2, gold);                         // faróis auxiliares
+    r.rect(14, 22, 12, 2, 0x70747c);                 // protetor de cárter
   }
   if (id === 'ram') {
-    r.rect(5, 16, 30, 4, 0x34343a);
-    for (const x of [11, 19, 27]) r.poly([[x - 2, 16], [x + 2, 16], [x, 11]], 0xa8a8b0);
+    r.poly([[5, 21], [35, 21], [35, 17], [5, 17]], dark);
+    r.poly([[3, 21], [37, 21], [20, 16]], 0x4a4a52);
+    for (const x of [11, 20, 29]) r.poly([[x - 2, 17], [x + 2, 17], [x, 10]], gold);
   }
   if (id === 'absorber') {
-    r.rect(4, 15, 32, 8, 0x1c1c20);
-    r.rect(4, 17, 32, 1, 0xe0b030);
-    r.rect(4, 20, 32, 1, 0xe0b030);
+    r.rect(4, 15, 32, 8, dark);
+    r.disc(5, 19, 4, dark);
+    r.disc(34, 19, 4, dark);
+    r.rect(5, 17, 30, 1, gold);
+    r.rect(5, 20, 30, 1, gold);
+    for (const x of [10, 16, 22, 28]) r.rect(x, 17, 1, 4, gold);
+    r.rect(4, 18, 2, 1, 0xc02424);
+    r.rect(34, 18, 2, 1, 0xc02424);
   }
   return r.commit();
 }
 
-function heightThumb(value) {
+// Vidro de frente, no tom da película, com o detalhe da variante.
+function glassThumb({ id, value }) {
   const r = new Raster(W, H);
-  wheels(r);
-  carSide(r, Math.round(-value * 30));
+  const pane = mix(0x6c8aa6, 0, value);
+  r.poly([[6, 24], [11, 5], [29, 5], [34, 24]], 0x6a6a72);
+  r.poly([[9, 22], [13, 7], [27, 7], [31, 22]], pane);
+  if (id === 'light') { r.rect(10, 4, 20, 3, 0x1a1a1e); r.rect(7, 8, 2, 14, 0x1a1a1e); r.rect(31, 8, 2, 14, 0x1a1a1e); }   // pala e calhas
+  if (id === 'medium') { r.rect(6, 8, 3, 2, 0x1a1a1e); r.rect(31, 8, 3, 2, 0x1a1a1e); r.rect(9, 22, 22, 1, 0xa8a8b0); }
+  if (id === 'dark') {                                // barras de reforço cruzadas
+    for (let i = 0; i < 16; i++) { r.rect(12 + i, 22 - Math.round(i * 0.9), 1, 2, 0xa8a8b0); r.rect(27 - i, 22 - Math.round(i * 0.9), 1, 2, 0xa8a8b0); }
+    r.rect(9, 22, 22, 2, 0xa8a8b0);
+  }
+  if (id === 'black') { r.poly([[6, 24], [11, 5], [14, 5], [10, 24]], 0x0c0c10); r.poly([[34, 24], [29, 5], [26, 5], [30, 24]], 0x0c0c10); }
   return r.commit();
 }
 
-function tireThumb({ width, radius }) {
+function heightThumb(option) {
   const r = new Raster(W, H);
-  const outer = 10 * radius + 2;
-  r.ellipse(20, 14, outer * (0.75 + width * 0.25), outer, 0x18181c);
-  r.disc(20, 14, 7, 0x8a8a90);
+  const offset = Math.round(-option.value * 30);
+  wheels(r);
+  carSide(r, offset);
+  if (option.id === 'slammed' || option.id === 'low') r.rect(11, 19 + offset, 18, option.id === 'slammed' ? 3 : 2, 0x1a1a1e);   // saia lateral
+  if (option.id === 'high' || option.id === 'lifted') {
+    r.rect(3, 22 + offset, 6, 2, 0x9aa0aa);          // protetor de cárter
+    r.rect(31, 18 + offset, 2, 6, 0x141418);         // para-lama de borracha
+  }
+  if (option.id === 'lifted') {
+    r.rect(15, 6 + offset, 12, 2, 0x1a1a1e);         // barra de faróis
+    for (const x of [17, 20, 23, 26]) r.rect(x, 5 + offset, 1, 1, 0xfff2b0);
+  }
+  return r.commit();
+}
+
+function tireThumb({ id, value: { width, radius } }) {
+  const r = new Raster(W, H);
+  const outer = 10 * radius + 2, wide = outer * (0.75 + width * 0.25);
+  if (id === 'offroad') {                            // garras em volta do pneu
+    for (let i = 0; i < 14; i++) {
+      const a = (i / 14) * Math.PI * 2;
+      r.rect(Math.round(20 + Math.cos(a) * (wide + 1)) - 1, Math.round(14 + Math.sin(a) * (outer + 1)) - 1, 3, 3, 0x0a0a0c);
+    }
+  }
+  r.ellipse(20, 14, wide, outer, 0x18181c);
+  if (id === 'big') r.ellipse(20, 14, wide - 3, outer - 3, 0xe07820);          // anel de reforço
+  r.ellipse(20, 14, wide - (id === 'big' ? 5 : 2), outer - (id === 'big' ? 5 : 2), 0x18181c);
+  if (id === 'wide') r.disc(20, 14, 9, 0xe8e8ec);    // letras brancas
+  r.disc(20, 14, id === 'wide' ? 8 : 7, id === 'wide' ? 0x18181c : 0x8a8a90);
+  r.disc(20, 14, id === 'wide' ? 6 : 7, 0x8a8a90);
   r.disc(20, 14, 3, 0x3a3a40);
+  if (id === 'slim') for (let i = 0; i < 10; i++) { const a = (i / 10) * Math.PI * 2; r.rect(Math.round(20 + Math.cos(a) * (wide + 1)), Math.round(14 + Math.sin(a) * (outer + 1)), 1, 1, 0xc8ccd4); }   // pinos
   return r.commit();
 }
 
@@ -254,11 +303,11 @@ const EXTERIOR = {
   decalNumber: option => decalNumberThumb(option.value),
   trim: option => trimThumb(option.value),
   spoiler: option => spoilerThumb(option.value),
-  height: option => heightThumb(option.value),
+  height: option => heightThumb(option),
   bumper: option => bumperThumb(option.value),
-  tire: option => tireThumb(option.value),
+  tire: option => tireThumb(option),
   rim: option => paintRim(option.value, 0xb01820),
-  glass: option => swatch(mix(0x4a4c56, 0, option.value)),
+  glass: option => glassThumb(option),
 };
 
 const resolveImage = option => (typeof option.image === 'function' ? option.image() : option.image);

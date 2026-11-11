@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { pixelTexture } from '../textures.js';
+import { createBodyAddons, createTireDetails } from './carAddons.js';
 import { createBumper, disposeBumper } from './carBumper.js';
 import { createBodyGeometry, createSpoilerGeometry } from './carGeometry.js';
 import { createHoodOrnament, disposeHoodOrnament } from './carHood.js';
@@ -49,7 +50,7 @@ const FLAME_FLICKER = [0.7, 1.25];
 const DEFAULT_SPEC = {
   model: 'coupe', headlightShape: 'rect', primary: 0xc4c0b8, secondary: 0x98161e, glyph: 0xe8e4dc, pattern: 'digital', decal: 'crosses',
   spoiler: 'wing', hood: 'none', hoodColor: 0xd8d4cc, height: 0, tire: { width: 1, radius: 1 }, rim: 'spokes', rimColor: 0xb01820,
-  headlight: 0xf8f4d8, glass: { color: 0x3a3c44, level: 0 }, tireColor: 0x0a0a0c, bumper: 'stock', bumperColor: 0x34343a,
+  headlight: 0xf8f4d8, glass: { color: 0x3a3c44, level: 0 }, tireColor: 0x0a0a0c, bumper: 'stock', bumperColor: 0x34343a, bumperTrimColor: 0xd8b840, tireKind: 'street', heightKind: 'stock', glassKind: 'clear', model: 'coupe',
 };
 
 export function createCarModel(initialSpec, seed = 0) {
@@ -92,7 +93,7 @@ export function createCarModel(initialSpec, seed = 0) {
     }
   }
 
-  let flashing = false, radiusScale = 1, hoodOrnament = null, hoodKey = '', bumper = null, bumperKey = '';
+  let flashing = false, radiusScale = 1, hoodOrnament = null, hoodKey = '', bumper = null, bumperKey = '', addons = null, addonsKey = '', tireDetails = [], tireKey = '';
 
   function apply(partialSpec) {
     const spec = { ...DEFAULT_SPEC, ...partialSpec };
@@ -117,15 +118,34 @@ export function createCarModel(initialSpec, seed = 0) {
       lifted.add(hoodOrnament);
     }
 
-    const nextBumper = `${spec.bumper}|${spec.bumperColor}`;
+    const nextBumper = `${spec.bumper}|${spec.bumperColor}|${spec.bumperTrimColor}`;
     if (nextBumper !== bumperKey) {
       bumperKey = nextBumper;
       if (bumper) {
         lifted.remove(bumper);
         disposeBumper(bumper);
       }
-      bumper = createBumper(spec.bumper, spec.bumperColor);
+      bumper = createBumper(spec.bumper, spec.bumperColor, spec.bumperTrimColor);
       lifted.add(bumper);
+    }
+
+    const nextAddons = `${spec.model}|${spec.heightKind}|${spec.glassKind}|${spec.bumperTrimColor}`;
+    if (nextAddons !== addonsKey) {
+      addonsKey = nextAddons;
+      addons?.dispose();
+      addons = createBodyAddons({ model: spec.model, heightKind: spec.heightKind, glassKind: spec.glassKind, accent: spec.bumperTrimColor });
+      lifted.add(addons.group);
+    }
+
+    const nextTires = `${spec.tireKind}|${spec.bumperTrimColor}`;
+    if (nextTires !== tireKey) {
+      tireKey = nextTires;
+      tireDetails.forEach(set => set.dispose());
+      tireDetails = wheels.map(wheel => {
+        const set = createTireDetails(spec.tireKind, wheel.userData.side, spec.bumperTrimColor);
+        wheel.add(set.group);
+        return set;
+      });
     }
 
     spoiler.visible = spec.spoiler !== 'none';

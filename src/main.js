@@ -291,6 +291,7 @@ const results = createResultsScreen({
   onNext: () => garage.openBetweenRaces(TIME_BETWEEN_RACES),
   onFinished: () => podium.open(match),
   localName: () => race.field[0].name,
+  getUpcomingBiome: () => upcomingBiomeName(),
 });
 const podium = createPodiumScreen({
   stage,
@@ -328,6 +329,7 @@ const garage = createGarageScreen({
     else renameSoloDriver(name);
   },
   getReadyRoster: () => online.readyRoster(),
+  getUpcomingBiome: () => upcomingBiomeName(),
   onKickPlayer: id => net.kick(id),
   onOpenWorkshop: id => workshop.open(id),
   onProceed: () => {
@@ -495,13 +497,29 @@ function startMatch({ cars, races, biome: biomeId = 'random' }) {
   race.setPlayerName(playerName);
   for (const op of opponents) op.name = op.profile.name === playerName ? `${playerName} Bot` : op.profile.name;   // nomes únicos na tabela
   match = createMatch({ racerNames: race.field.map(racer => racer.name), raceCount: races });
+  if (!matchBiome && previewedBiome) {               // o aviso da garagem vale para a primeira corrida
+    match.biomesPlayed.push(previewedBiome.id);
+    match.upcomingBiome = previewedBiome.id;
+  }
+  previewedBiome = null;
   startNextRace();
 }
 
 // A largada de cada corrida é a ordem de chegada da anterior.
 function startNextRace() {
-  beginRace(matchBiome ?? pickMatchBiome(match.biomesPlayed), Math.floor(Math.random() * 1e9), match.nextGrid);
+  const planned = BIOMES.find(candidate => candidate.id === match.upcomingBiome);
+  match.upcomingBiome = null;
+  beginRace(planned ?? matchBiome ?? pickMatchBiome(match.biomesPlayed), Math.floor(Math.random() * 1e9), match.nextGrid);
 }
+
+// Entre as corridas todos veem o bioma da próxima; online quem sorteia é o admin (net/onlineMatch.js).
+function planUpcomingBiome() {
+  if (!match.isOver && !match.upcomingBiome) match.upcomingBiome = (matchBiome ?? pickMatchBiome(match.biomesPlayed)).id;
+}
+// Antes da primeira corrida (a partida ainda não existe) o bioma é o escolhido na configuração ou um sorteado na hora.
+let previewedBiome = null;
+const firstBiome = () => BIOMES.find(candidate => candidate.id === matchSetup.matchConfig().biome) ?? (previewedBiome ??= pickMatchBiome([]));
+const upcomingBiomeName = () => (match ? BIOMES.find(candidate => candidate.id === match.upcomingBiome)?.name ?? null : firstBiome().name);
 
 // `grid` são os nomes na ordem de largada; sem ele usa a largada padrão.
 function beginRace(chosenBiome, seed, grid) {
@@ -542,6 +560,7 @@ function finishRaceFlow(frameTime) {
   if (!raceRecorded) {
     raceRecorded = true;
     match.recordRace(race.finishOrder);
+    if (!online.active) planUpcomingBiome();
     addRaceResult({ position: race.finalRank, racers: race.field.length, time: race.time, kills: weapon.kills });
   }
   if ((sinceFinish += frameTime) < RESULTS_DELAY) return;

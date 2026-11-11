@@ -8,7 +8,7 @@ const FINISH = { x: 20, y: 62, width: 200, height: 214 };
 const TABLE = { x: 230, y: 62, width: 390, height: 214 };
 const BUTTON = { x: 220, y: 318, width: 200, height: 28 };
 const FIRST_ROW = 96, ROW_HEIGHT = 21;
-const COLUMNS = { position: 12, name: 40, wins: 112, silvers: 156, bronzes: 206, totalPositions: 264 };
+const COLUMNS = { position: 12, name: 40, wins: 112, silvers: 156, bronzes: 206, totalPositions: 264, points: 360 };
 const TOTAL_HEADER = 'POSICOES TOTAIS';
 const OFF_PODIUM = '#8a8780';
 const PLAYER_COLOR = '#f01818';
@@ -20,7 +20,7 @@ const formatTime = seconds => {
 
 const centered = (ctx, text, y, color, scale = 1) => ctxText(ctx, text, Math.round(VIEW.width / 2 - textWidth(text, scale) / 2), y, color, scale);
 
-export function createResultsScreen({ stage, onNext, onFinished, localName }) {
+export function createResultsScreen({ stage, onNext, onFinished, localName, getUpcomingBiome = () => null }) {
   const screen = { isOpen: false };
   let pointer = { x: -1, y: -1 }, match = null, finish = [], queued = null, waitsForHost = false;
 
@@ -73,6 +73,7 @@ export function createResultsScreen({ stage, onNext, onFinished, localName }) {
     ctxText(ctx, 'PRATA', TABLE.x + COLUMNS.silvers, TABLE.y + 12, MEDALS[1]);
     ctxText(ctx, 'BRONZE', TABLE.x + COLUMNS.bronzes, TABLE.y + 12, MEDALS[2]);
     ctxText(ctx, TOTAL_HEADER, TABLE.x + COLUMNS.totalPositions, TABLE.y + 12, COLOR.muted);
+    ctxText(ctx, 'PTS', TABLE.x + COLUMNS.points, TABLE.y + 12, COLOR.selected);
     match.standings().forEach((entry, i) => {
       const y = FIRST_ROW + i * ROW_HEIGHT - (finish.length > 7 ? 2 : 0);
       ctxText(ctx, `${i + 1}.`, TABLE.x + COLUMNS.position, y, COLOR.muted);
@@ -80,6 +81,7 @@ export function createResultsScreen({ stage, onNext, onFinished, localName }) {
       ctxText(ctx, String(entry.wins), TABLE.x + COLUMNS.wins + 10, y, COLOR.text);
       ctxText(ctx, String(entry.silvers), TABLE.x + COLUMNS.silvers + 12, y, COLOR.text);
       ctxText(ctx, String(entry.bronzes), TABLE.x + COLUMNS.bronzes + 15, y, COLOR.text);
+      ctxText(ctx, String(entry.points), TABLE.x + COLUMNS.points, y, COLOR.selected);
       const total = String(entry.totalPositions);
       ctxText(ctx, total, TABLE.x + COLUMNS.totalPositions + Math.floor((textWidth(TOTAL_HEADER) - textWidth(total)) / 2), y, COLOR.text);
     });
@@ -95,6 +97,8 @@ export function createResultsScreen({ stage, onNext, onFinished, localName }) {
       const champion = match.standings()[0].name;
       centered(ctx, champion === localName() ? 'VOCE VENCEU A PARTIDA!' : `CAMPEAO: ${champion}`, 290, '#f0d060', 2);
     }
+    const upcoming = !match.isOver && getUpcomingBiome();
+    if (upcoming) centered(ctx, `PROXIMO MAPA: ${upcoming}`, 290, '#f0d060', 2);
     if (waitsForHost) centered(ctx, match.isOver ? 'O PODIO ABRE EM INSTANTES' : 'A GARAGEM ABRE EM INSTANTES', BUTTON.y + 10, COLOR.muted);
     else drawButton(ctx, BUTTON, match.isOver ? 'VER PODIO >' : 'PROXIMA CORRIDA >', inside(BUTTON, pointer.x, pointer.y));
   };

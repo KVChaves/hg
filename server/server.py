@@ -24,6 +24,7 @@ from urllib.parse import unquote, urlsplit
 ROOT = Path(__file__).resolve().parent.parent
 RANKING_FILE = Path(__file__).resolve().parent / "ranking.json"
 RANKING_LIMIT = 50
+MEDAL_POINTS = {"gold": 3, "silver": 1.5, "bronze": 1}   # mesmo peso do campeonato; as demais posições não somam
 PUBLIC_ENTRIES = {"index.html", "css", "src", "vendor", "assets"}   # o resto do projeto não é servido
 
 WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
@@ -79,7 +80,9 @@ class Ranking:
     def table(self):
         rows = [{"name": name, **{key: value for key, value in entry.items() if key != "positionSum"}, "average": round(entry["positionSum"] / entry["matches"], 2)}
                 for name, entry in self.players.items() if entry["matches"] > 0]
-        rows.sort(key=lambda row: (-row["trophies"], -row["gold"], -row["silver"], -row["bronze"], row["average"]))
+        for row in rows:
+            row["points"] = row["gold"] * MEDAL_POINTS["gold"] + row["silver"] * MEDAL_POINTS["silver"] + row["bronze"] * MEDAL_POINTS["bronze"]
+        rows.sort(key=lambda row: (-row["points"], -row["gold"], -row["silver"], -row["bronze"], row["average"]))
         return rows[:RANKING_LIMIT]
 
 

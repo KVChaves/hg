@@ -73,7 +73,7 @@ export function createPodiumScreen({ stage, localName, getRoster, onReady, onKic
     centeredAt(ctx, String(place + 1), x, top + 11, medal, digit);
     const statsY = BASE_Y - 24;
     centeredAt(ctx, `${entry.wins}/${entry.silvers}/${entry.bronzes}`, x, statsY, COLOR.text);
-    centeredAt(ctx, `SOMA ${entry.totalPositions}`, x, statsY + 11, COLOR.muted);
+    centeredAt(ctx, `${entry.points} PTS  SOMA ${entry.totalPositions}`, x, statsY + 11, COLOR.muted);
 
     const isLocal = entry.name === localName(), big = entry.name.length <= SHORT_NAME;
     centeredAt(ctx, entry.name, x, top - (big ? 18 : 12), isLocal ? '#ffffff' : medal, big ? 2 : 1);

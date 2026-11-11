@@ -74,6 +74,11 @@ export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = 
     race.setOnline(true);
     setUpRacers(room);
     setMatch(createMatch({ racerNames: race.field.map(racer => racer.name), raceCount: room.config.races }));
+    if (isHost) {                                    // o mapa da primeira corrida já vale na garagem
+      const match = getMatch();
+      match.upcomingBiome = pickMatchBiome(match.biomesPlayed).id;
+      net.relay({ k: 'nb', b: match.upcomingBiome });
+    }
     openGarage(Infinity);                            // a partida só começa com todos prontos
   }
 
@@ -95,7 +100,8 @@ export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = 
     const names = race.field.map(racer => racer.name);
     const previous = getMatch().nextGrid?.filter(name => names.includes(name));
     const grid = previous ?? [...names].sort(() => Math.random() - 0.5);
-    broadcast({ k: 'go', b: pickMatchBiome(getMatch().biomesPlayed).id, s: Math.floor(Math.random() * 1e9), g: grid });
+    const match = getMatch(), biomeId = match.upcomingBiome ?? pickMatchBiome(match.biomesPlayed).id;   // o sorteado entre as corridas, se houver
+    broadcast({ k: 'go', b: biomeId, s: Math.floor(Math.random() * 1e9), g: grid });
   }
 
   function stepHost(dt) {
@@ -109,7 +115,9 @@ export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = 
       if (done === humans.length || finishGrace >= FINISH_GRACE) broadcast({ k: 'end', r: race.closeForAll() });
     } else if (phase === 'results' && (phaseTimer -= dt) <= 0) {
       phase = 'waiting';
-      broadcast({ k: getMatch().isOver ? 'podium' : 'inter', m: getMatch().snapshot() });
+      const match = getMatch();
+      if (!match.isOver && !match.upcomingBiome) match.upcomingBiome = pickMatchBiome(match.biomesPlayed).id;   // todos veem o próximo mapa na garagem
+      broadcast({ k: match.isOver ? 'podium' : 'inter', m: match.snapshot() });
     } else if (phase === 'podium' && humanIds().every(id => ready.has(id))) {
       phase = 'waiting';
       net.endMatch(matchResults());
@@ -202,6 +210,7 @@ export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = 
 
   const HANDLERS = {
     s: data => data.r.forEach(receiveSnapshot),
+    nb: data => { if (getMatch()) getMatch().upcomingBiome = data.b; },
     hit: receiveHit,
     kill: data => {
       if (data.b) { rewardKillFor(byId.get(data.b)); return; }
@@ -242,6 +251,7 @@ export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = 
       killsOf.set(from, data.kills);
     },
     go: data => {
+      getMatch().upcomingBiome = null;
       garage.closeAfterWait();
       for (const visual of harpoonVisuals.values()) visual.hide();
       beginRace(BIOMES.find(biome => biome.id === data.b), data.s, data.g);
@@ -257,6 +267,7 @@ export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = 
     },
     inter: data => {
       if (!online.active) { joinLate(data.m); return; }
+      getMatch().upcomingBiome = data.m.upcomingBiome ?? null;
       resyncRoster(data.m);
       openGarage(GARAGE_TIME);
     },

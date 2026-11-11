@@ -26,8 +26,9 @@ const HARD_LANDING = 11, LANDING_DAMAGE = 3;         // a partir de 11 m/s de de
 const AIR_PITCH_RATE = 3, BANK_RATE = 8;             // no ar o bico acompanha a trajetória aos poucos
 const FACE_BOUNCE = 0.2;                             // quem bate na face da outra margem volta com isso da velocidade
 
-const gridDistance = slot => track.length - 8 - (slot >> 1) * 10 - (slot & 1) * 4;
-const gridLane = slot => (slot & 1 ? 1 : -1) * TRACK_WIDTH * 0.24;   // duas filas, uma de cada lado do centro
+const GRID_ROW_GAP = 16, GRID_STAGGER = 7;           // metros entre as filas e entre os dois carros de uma fila
+const gridDistance = slot => track.length - 8 - (slot >> 1) * GRID_ROW_GAP - (slot & 1) * GRID_STAGGER;
+const gridLane = slot => (slot & 1 ? 1 : -1) * TRACK_WIDTH * 0.27;   // duas filas, uma de cada lado do centro
 
 export function createRace(car, opponents, { onCrash, onDestroyed }) {
   const playerProxy = { name: 'Player', netId: 'player', sunk: 0, slipstream: 0, wx: 0, wy: 0, wz: 0, twist: 0, y: 0, yaw: 0, dist: 0, lane: 0, v: 0, dead: 0, protectedFor: 0, x: 0, z: 0, isPlayer: true, effects: car.effects };

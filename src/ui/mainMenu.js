@@ -15,7 +15,7 @@ const RANKING_TAB = { x: 440, y: 34, width: 160, height: 22 };
 const RANKING_BACK = { x: 245, y: 302, width: 150, height: 26 };
 const RANKING_ROWS = 13;
 const RANKING_COLUMNS = [
-  { label: 'JOGADOR', x: 40 }, { label: 'TROFEUS', x: 136, color: '#f0c840' }, { label: 'OURO', x: 196, color: '#f0c840' },
+  { label: 'JOGADOR', x: 40 }, { label: 'PONTOS', x: 136, color: '#f0c840' }, { label: 'OURO', x: 196, color: '#f0c840' },
   { label: 'PRATA', x: 240, color: '#c8d4e4' }, { label: 'BRONZE', x: 288, color: '#cc8448' }, { label: 'ABATES', x: 342 },
   { label: 'POS MEDIA', x: 396 }, { label: 'PARTIDAS', x: 464 },
 ];
@@ -142,7 +142,7 @@ export function createMainMenu({ stage, settings, net, onSingleplayer, onMultipl
       const y = top + 16 + i * 16;
       ctxText(ctx, `${i + 1}.`, RANKING_PANEL.x + 14, y, COLOR.selected);
       ctxText(ctx, row.name, RANKING_PANEL.x + 40, y, COLOR.text);
-      [row.trophies, row.gold, row.silver, row.bronze, row.kills, row.average.toFixed(1), row.matches].forEach((value, column) => {
+      [Number(row.points).toString(), row.gold, row.silver, row.bronze, row.kills, row.average.toFixed(1), row.matches].forEach((value, column) => {
         ctxText(ctx, String(value), RANKING_PANEL.x + RANKING_COLUMNS[column + 1].x, y, COLOR.text);
       });
     });

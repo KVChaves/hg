@@ -55,7 +55,8 @@ export const CAR_SLOTS = {
     label: 'Farol', short: 'FAROL', default: 'rect', colorDefault: 0xf8f4d8,
     options: named([['rect', 'Retangular'], ['round', 'Redondo'], ['twin', 'Duplo'], ['slim', 'Fino'], ['covered', 'Com grade']]),
   },
-  bumper: { label: 'Para-choque', short: 'PARACHOQUE', default: 'stock', colorDefault: 0x34343a, options: named([['stock', 'Original'], ['sport', 'Esportivo'], ['steel', 'Aco'], ['ram', 'Ariete'], ['absorber', 'Absorvedor']]) },
+  bumper: { label: 'Para-choque', short: 'CHOQUE', default: 'stock', colorDefault: 0x34343a, options: named([['stock', 'Original'], ['sport', 'Esportivo'], ['steel', 'Aco'], ['ram', 'Ariete'], ['absorber', 'Absorvedor']]) },
+  bumperTrim: { label: 'Detalhe do para-choque', short: 'DETALHE', colorDefault: 0xd8b840 },
   glass: {
     label: 'Vidros', short: 'VIDRO', default: 'clear', colorDefault: 0x3a3c44,
     options: { clear: { name: 'Claro', value: 0 }, light: { name: 'Leve', value: 0.18 }, medium: { name: 'Fume', value: 0.35 }, dark: { name: 'Escuro', value: 0.7 }, black: { name: 'Blindado', value: 0.92 } },
@@ -65,7 +66,7 @@ export const CAR_SLOTS = {
 // Pneus, vidro, altura e para-choque são peças de desempenho: nome, preço e efeito vêm de game/carUpgrades.js.
 for (const key of PART_KEYS) {
   for (const [id, variant] of Object.entries(CAR_PARTS[key].variants)) {
-    Object.assign(CAR_SLOTS[key].options[id], { name: variant.name, price: variant.price, detail: `R$ ${variant.price}  ${variant.summary}` });
+    Object.assign(CAR_SLOTS[key].options[id], { id, name: variant.name, price: variant.price, detail: `R$ ${variant.price}  ${variant.summary}` });
   }
 }
 
@@ -143,7 +144,11 @@ export function resolveCarSpec({ options, colors }) {
     hoodColor: colors.hood,
     height: value('height'),
     bumper: options.bumper,
+    tireKind: options.tire,
+    heightKind: options.height,
+    glassKind: options.glass,
     bumperColor: colors.bumper,
+    bumperTrimColor: colors.bumperTrim,
     tire: value('tire'),
     tireColor: colors.tire,
     rim: value('rim'),

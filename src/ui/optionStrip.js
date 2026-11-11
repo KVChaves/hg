@@ -49,7 +49,7 @@ export function createOptionStrip({ x, width, top, bottom, placement, getSlot, c
     const optionsHeight = slot.options ? OPTIONS_ROW_HEIGHT + ROW_PADDING : 0;
     const colorHeight = slot.hasColor ? COLOR_ROW_HEIGHT + ROW_PADDING : 0;
     const height = ROW_PADDING + optionsHeight + colorHeight;
-    const y = placement(slot) === 'top' ? top : bottom - height;
+    const y = placement(slot) === 'top' ? (typeof top === 'function' ? top() : top) : bottom - height;
     const box = { x, y, width, height };
     const colorY = y + ROW_PADDING + optionsHeight;
     const reset = { x: x + 6, y: colorY, width: RESET_WIDTH, height: COLOR_ROW_HEIGHT };
