@@ -25,6 +25,12 @@ const WORLD_SOUNDS = {
   harpoon: { volume: 0.55, minGap: 0.1 },
   harpoonHit: { volume: 0.7, minGap: 0.1 },
   extinguisher: { volume: 1.8, minGap: 0.1 },                 // o arquivo é bem mais baixo que os outros
+  shield: { volume: 0.8, minGap: 0.2 },
+  emp: { volume: 0.7, minGap: 0.2 },
+  mineLaunch: { volume: 0.8, minGap: 0.1 },
+  mineStick: { volume: 0.8, minGap: 0.1 },
+  mineBeep: { volume: 0.9, minGap: 0.08 },
+  mine: { volume: 1, minGap: 0.1 },
   oil: { volume: 0.9, minGap: 0.3 },
   paint: { volume: 0.9, minGap: 0.3 },
   smoke: { volume: 2, minGap: 0.6 },                      // o arquivo é bem mais baixo que os outros

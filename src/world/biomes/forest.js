@@ -3,12 +3,14 @@ import { paintGradient, paintSilhouette } from '../atmosphere.js';
 import { cutTop, speckle } from './wallPaint.js';
 import { alongRoad, EDGE, nearRoad, pickFrom, scatter, solid } from './propKit.js';
 import { useImage } from '../textures.js';
+import { forestGate } from './finishGates.js';
 
 // Pôr do sol de outono, estrada de terra batida, árvores vermelhas e cogumelos gigantes.
 export const FOREST = {
   id: 'forest', name: 'FLORESTA', music: 'forestField',
   sky: 0xd88040, fog: [14, 190], cabinTint: 0xf4c89c,
   shape: { wiggle: 0.2, targetLength: 2150, relief: 13, hillScale: 190, banks: 6, sharpCurves: 2 },
+  surface: { grip: 0.95, side: 0.9, drag: 0.02, offroad: 1.2 },                  // terra batida: segura um pouco menos que asfalto
   layout: {
     jump: { fallLabel: 'CAIU NA LAMA' },
     hazards: [{ kind: 'rockfall', count: 3 }],                // paredões de onde caem pedras
@@ -27,9 +29,16 @@ export const FOREST = {
     base: [122, 84, 48], variation: 22, image: useImage('assets/tex/dirt.png'), shade: 1.15, edge: '#5a3a1c', center: '#7c5630',
     paint(ctx) { ctx.fillStyle = 'rgba(70,44,20,.55)'; ctx.fillRect(16, 0, 4, 64); ctx.fillRect(44, 0, 4, 64); },
   },
-  kerb: ['#5a3a1c', '#a87a40'],
-  gantry: [0x3a2412, 0x8a4414, 0xe8c070],
-  tunnel: { rib: 0x4a2c14, leaves: 0xb83c14 },
+  // Beira de toras deitadas, com folhas caídas.
+  kerb: {
+    paint(ctx, n) {
+      ['#3a2210', '#5a3618', '#74481e', '#5a3618'].forEach((color, row) => { ctx.fillStyle = color; ctx.fillRect(0, row * 4, n, 4); });
+      ctx.fillStyle = '#2a1608'; ctx.fillRect(0, 0, n, 1); ctx.fillRect(0, 8, n, 1);
+      ctx.fillStyle = '#c85a14'; for (let i = 0; i < 5; i++) ctx.fillRect(Math.random() * n, Math.random() * n, 2, 1);
+    },
+  },
+  gantry: forestGate,
+  tunnel: { arch: 'timber', rib: 0x5a3618, leaves: 0xb83c14 },
   // Paliçada de troncos com ponta.
   wall: {
     height: 2.8, tile: 6,

@@ -4,6 +4,7 @@ import { speckle } from './wallPaint.js';
 import { acrossRoad, alongRoad, archFrame, EDGE, nearRoad, pickFrom, scatter, solid } from './propKit.js';
 import { useImage } from '../textures.js';
 import { partsOf } from './originalModels.js';
+import { factoryGate } from './finishGates.js';
 
 const EMBER = 0xc8a090;                // calor sobre as texturas do original
 
@@ -11,10 +12,13 @@ const EMBER = 0xc8a090;                // calor sobre as texturas do original
 export const FIRE_FACTORY = {
   id: 'fireFactory', name: 'FABRICA DE FOGO', music: 'fireFactory',
   sky: 0x4a1608, fog: [8, 170], cabinTint: 0xf0a878,
-  shape: { wiggle: 0.24, targetLength: 2050, relief: 7, hillScale: 150, sharpCurves: 2 },
+  // Circuito compacto de curvas fechadas, com esteiras rolantes que empurram cada metade da pista para um lado.
+  shape: { wiggle: 0.22, targetLength: 1900, relief: 7, hillScale: 150, sharpCurves: 4, harmonics: [[3, 0.5], [4, 0.5], [5, 0.3]] },
+  surface: { grip: 1, side: 0.9, offroad: 1.6 },
   layout: {
     jump: { fallLabel: 'CAIU NO VULCAO', volcano: true },   // a rampa passa por cima da cratera
     hazards: [{ kind: 'crane', count: 3 }],                   // guindastes que derrubam a carga
+    belts: { count: 2, length: 110, force: 14 },              // esteiras rolantes: cada metade da pista corre para um lado
     tunnels: { count: 2, length: [80, 130] },
   },
   ground: {
@@ -29,10 +33,12 @@ export const FIRE_FACTORY = {
       for (let y = 0; y < 64; y += 16) ctx.fillRect(0, y, 64, 1);
       ctx.fillStyle = '#9a98a0';
       for (let x = 3; x < 64; x += 16) for (let y = 3; y < 64; y += 16) ctx.fillRect(x, y, 1, 1);
+      ctx.fillStyle = 'rgba(0,0,0,.4)'; for (let i = 0; i < 5; i++) ctx.fillRect(Math.random() * 56, Math.random() * 60, 6 + Math.random() * 6, 3);   // óleo e fuligem
+      ctx.fillStyle = 'rgba(224,112,24,.5)'; for (let i = 0; i < 4; i++) ctx.fillRect(Math.random() * 60, Math.random() * 64, 1, 2 + Math.random() * 4);   // brasas
     },
   },
   kerb: ['#e8b018', '#1a1816'],
-  gantry: [0x2c2826, 0xd86818, 0xf0d040],
+  gantry: factoryGate,
   tunnel: { wall: '#3a3430', speckle: ['#4e4640', '#2a2422', '#6a3a1c'], rib: 0x8a6420, portal: 0xd89018, lines: [{ angle: Math.PI / 2, width: 0.05, color: 0xff7a18 }, { angle: 0.5, width: 0.03, color: 0xffb030 }, { angle: Math.PI - 0.5, width: 0.03, color: 0xffb030 }] },
   // Chapas de aço enferrujadas com faixa de perigo.
   wall: {

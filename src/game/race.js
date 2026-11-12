@@ -1,5 +1,5 @@
 import { CAR_MAX_HP, LAPS, TRACK_WIDTH } from '../config.js';
-import { hazardAt, inFlightZone, inGap, isEpic, nearestIndex, onBridge, OPEN_WALL, surfaceAt, track, trackAt, valleyRise, valleySlope, wrapDistance } from '../world/track.js';
+import { beltPush, hazardAt, inFlightZone, inGap, isEpic, nearestIndex, onBridge, OPEN_WALL, surfaceAt, track, trackAt, valleyRise, valleySlope, wrapDistance } from '../world/track.js';
 import { crashDamage, damagePlayer, resetCar, trackCapsizes } from './car.js';
 import { resetRig, rigLean } from './carRoll.js';
 import { createFlip, flipLandingTime, lifeAfterDestruction, RESPAWN_PROTECTION } from './carFlip.js';
@@ -119,6 +119,11 @@ export function createRace(car, opponents, { onCrash, onDestroyed }) {
     }
     car.enclosed = track.enclosed[i] === 1;
     car.icy = track.bridge[i] === 1;
+    if (!car.airborne && car.sunk <= 0 && track.belts.length) {   // esteira rolante: empurra o carro ao longo da pista
+      const push = beltPush(race.playerDist, offset) * dt;
+      car.vx += tx[i] * push;
+      car.vz += tz[i] * push;
+    }
     car.roadTurn = track.turn[i] * (-Math.sin(car.yaw) * tx[i] - Math.cos(car.yaw) * tz[i]);   // a curva como o carro a enxerga, de frente ou de ré
     car.offTrack = wall < OPEN_WALL ? 0 : Math.abs(offset);   // túnel e tubo não têm mato: a faixa junto da parede não freia; no vale a encosta freia
     car.lateral = offset;

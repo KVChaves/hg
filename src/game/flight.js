@@ -4,7 +4,9 @@ import { trackAt } from '../world/track.js';
 // quando o chão cai mais rápido que a gravidade o puxaria. No ar ninguém controla nada: a trajetória é uma
 // parábola, e só a velocidade na saída do bico decide até onde o carro vai.
 
-export const GRAVITY = 9.81;
+// Gravidade da corrida: cada bioma pode mudar (`gravity`), como o espaço. Importar GRAVITY acompanha a mudança.
+export let GRAVITY = 9.81;
+export const setGravity = value => { GRAVITY = value; };
 // Da hora em que a queda fica certa (abaixo da borda de pouso, descendo) até voltar à pista: cair e afundar
 // cabem nesses segundos.
 export const FALL_TIME = 3;

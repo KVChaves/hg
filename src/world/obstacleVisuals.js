@@ -73,6 +73,90 @@ const BUILDERS = {
       add(body, cylinder(0.47, 0.47, 0.14), 0xe8c020, x, 0.75, z);
     }
   },
+  tumbleweed(body) {                                 // bola de galhos secos: rola ao atravessar
+    add(body, ball(1.2), 0xb89a5a, 0, 1.2, 0);
+    for (const [rx, ry] of [[0, 0], [Math.PI / 2, 0], [0, Math.PI / 2]]) {
+      const ring = new THREE.TorusGeometry(1.25, 0.1, 5, 12);
+      ring.rotateX(rx); ring.rotateY(ry);
+      add(body, ring, 0x8a6e3a, 0, 1.2, 0);
+    }
+    add(body, ball(0.7, 0), 0xa08448, 0.5, 1.5, 0.4);
+  },
+  camel(body) {                                      // de frente para +x
+    const fur = 0xc89a5a, dark = 0x8a6a3a;
+    add(body, box(2.2, 0.95, 0.95), fur, 0, 1.85, 0);
+    add(body, cone(0.5, 0.9, 6), fur, -0.35, 2.7, 0);
+    add(body, cone(0.5, 0.9, 6), fur, 0.5, 2.65, 0);
+    add(body, box(0.5, 1.3, 0.5), fur, 1.25, 2.5, 0).rotation.z = -0.35;
+    add(body, box(0.8, 0.45, 0.45), fur, 1.75, 3.2, 0);
+    add(body, box(0.1, 0.1, 0.1), 0x1a1208, 1.95, 3.35, 0.2);
+    add(body, box(0.1, 0.1, 0.1), 0x1a1208, 1.95, 3.35, -0.2);
+    add(body, box(0.15, 0.7, 0.15), dark, -1.2, 1.7, 0);
+    add(body, box(1.5, 0.12, 0.98), 0xb02828, 0, 2.35, 0);   // manta
+    for (const [x, z] of [[0.8, 0.32], [0.8, -0.32], [-0.8, 0.32], [-0.8, -0.32]]) add(body, box(0.22, 1.45, 0.22), dark, x, 0.72, z);
+  },
+  cactus(body) {
+    const green = 0x3a8a3a, light = 0x5aa84a;
+    add(body, cylinder(0.45, 0.5, 3.4, 8), green, 0, 1.7, 0);
+    add(body, box(0.9, 0.3, 0.3), green, -0.7, 1.9, 0);
+    add(body, cylinder(0.25, 0.28, 1.3, 6), light, -1.15, 2.5, 0);
+    add(body, box(0.9, 0.3, 0.3), green, 0.7, 1.4, 0);
+    add(body, cylinder(0.25, 0.28, 1.1, 6), light, 1.15, 1.95, 0);
+    add(body, ball(0.18, 0), 0xe8a0c0, 0, 3.5, 0);
+  },
+  pillar(body) {                                     // base na origem, coluna para cima (tomba girando em z)
+    const bands = [0xc88a50, 0xa86a38, 0xe0b078, 0xb87a44, 0xd09860];
+    bands.forEach((color, i) => add(body, cylinder(0.85 - i * 0.04, 0.95 - i * 0.04, 1.7, 7), color, 0, 0.85 + i * 1.7, 0));
+    add(body, cylinder(1.3, 0.85, 0.8, 7), 0xa86a38, 0, 9.0, 0);
+  },
+  crab(body) {                                       // de frente para +x (anda de lado)
+    add(body, box(1.1, 0.4, 0.8), 0xd84a2a, 0, 0.45, 0);
+    add(body, box(0.25, 0.25, 0.5), 0xf08060, 0.55, 0.65, 0.55);
+    add(body, box(0.25, 0.25, 0.5), 0xf08060, 0.55, 0.65, -0.55);
+    for (const z of [0.4, -0.4]) add(body, box(0.1, 0.35, 0.1), 0x1a1208, 0.45, 0.8, z * 0.5);
+    for (const z of [-1, 1]) for (const x of [-0.3, 0, 0.3]) add(body, box(0.08, 0.08, 0.5), 0xb83a20, x, 0.2, z * 0.6);
+  },
+  beachBall(body) {                                  // rola ao atravessar
+    const part = (color, from) => add(body, new THREE.SphereGeometry(1.3, 12, 8, from, Math.PI / 3), color, 0, 1.3, 0);
+    [[0xe83a3a, 0], [0xffffff, Math.PI / 3], [0xf0d030, Math.PI * 2 / 3], [0xffffff, Math.PI], [0x3a7ae8, Math.PI * 4 / 3], [0xffffff, Math.PI * 5 / 3]].forEach(([color, from]) => part(color, from));
+  },
+  umbrella(body) {
+    add(body, cylinder(0.06, 0.06, 2.6, 5), 0xd8d8d0, 0, 1.3, 0);
+    add(body, cone(1.8, 0.8, 8), 0xe83a3a, 0, 2.7, 0);
+    add(body, cone(1.82, 0.4, 8), 0xffffff, 0, 2.55, 0);
+    add(body, box(1.6, 0.06, 1.0), 0x3a7ae8, 0.2, 0.04, 1.4);   // toalha
+  },
+  coconut(body) {
+    for (const [x, z, r] of [[0, 0, 0.55], [0.7, 0.3, 0.45], [-0.5, 0.5, 0.4]]) {
+      add(body, ball(r), 0x6a4a28, x, r, z);
+      add(body, ball(0.1, 0), 0x2a1a10, x + r * 0.3, r * 1.7, z);
+    }
+  },
+  meteor(body) {
+    add(body, new THREE.DodecahedronGeometry(1.5, 0), 0x4a4440, 0, 1.4, 0).scale.set(1, 0.85, 1.1);
+    add(body, new THREE.DodecahedronGeometry(0.8, 0), 0xff8a30, 0.5, 1.7, 0.4, { fog: false });
+    add(body, new THREE.DodecahedronGeometry(0.5, 0), 0xffd070, -0.8, 1.0, -0.5, { fog: false });
+  },
+  rover(body) {                                      // de frente para +x
+    add(body, box(2.6, 0.7, 1.5), 0xd8d8e0, 0, 1.0, 0);
+    add(body, box(1.2, 0.6, 1.1), 0xb0b4c0, 0.3, 1.65, 0);
+    add(body, box(1.0, 0.08, 1.8), 0x2848a8, -0.7, 2.1, 0);
+    add(body, cylinder(0.04, 0.04, 1.4, 4), 0x8a8e9a, -1.1, 2.0, 0.5);
+    add(body, box(0.3, 0.3, 0.3), 0xf0f0ff, 1.5, 1.2, 0.4, { fog: false });
+    for (const x of [-1, 0, 1]) for (const z of [0.85, -0.85]) add(body, cylinder(0.4, 0.4, 0.3, 8).rotateX(Math.PI / 2), 0x303038, x, 0.4, z);
+  },
+  antenna(body) {                                    // base na origem, mastro para cima (tomba girando em z)
+    add(body, cylinder(0.15, 0.25, 8.5, 6), 0xb8bcc8, 0, 4.25, 0);
+    for (const y of [2, 4.5, 7]) add(body, box(0.9, 0.12, 0.12), 0x6a6e7a, 0, y, 0);
+    add(body, cone(1.3, 0.8, 8).rotateX(Math.PI), 0xe8eaf0, 0, 8.9, 0);
+    add(body, box(0.25, 0.25, 0.25), 0xe84030, 0, 9.5, 0, { fog: false });
+  },
+  crystal(body) {
+    for (const [x, z, h, t] of [[0, 0, 2.6, 0.1], [0.8, 0.4, 1.7, -0.25], [-0.7, 0.3, 1.9, 0.3], [0.2, -0.7, 1.4, 0.15]]) {
+      const mesh = add(body, cone(0.5, h, 5), 0x40e0f0, x, h / 2, z, { fog: false });
+      mesh.rotation.z = t;
+    }
+  },
   crates(body) {
     add(body, box(1.3, 1.3, 1.3), 0x8a6030, -0.7, 0.65, 0);
     add(body, box(1.1, 1.1, 1.1), 0x9a7038, 0.75, 0.55, 0.2);

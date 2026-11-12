@@ -10,8 +10,11 @@ export function createHarpoonVisual(scene) {
   cable.visible = tip.visible = false;
   scene.add(cable, tip);
   const from = new THREE.Vector3(), to = new THREE.Vector3();
+  const slack = new THREE.Color(0x5a5048), strained = new THREE.Color(0xff3a20);
 
   return {
+    // 0 a 1: o cabo vai do marrom ao vermelho quando está para esticar demais.
+    setTension(level) { cable.material.color.copy(slack).lerp(strained, level); },
     hide() { cable.visible = tip.visible = false; },
     // Pontos em metros: `start` é a frente do carro, `end` a ponta do arpão.
     show(startX, startY, startZ, endX, endY, endZ) {

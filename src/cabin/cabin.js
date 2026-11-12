@@ -130,7 +130,7 @@ export function createCabin({ camera, car, loadout }) {
     sprite.rotation = angle;
   }
 
-  function update({ look, gear, weapon, race, traps, dt, frameTime }) {
+  function update({ look, gear, weapon, race, traps, rivals, dt, frameTime }) {
     const motion = Math.min(Math.abs(car.speed) * 3.6 / 60, 1);
     body.position.set(car.wx, car.wy + Math.sin(car.bob * 2.3) * 0.012 * motion, car.wz);
     body.rotation.set(car.pitch + Math.sin(car.bob * 1.7) * 0.004 * motion, car.yaw, car.roll + car.twist);
@@ -159,7 +159,7 @@ export function createCabin({ camera, car, loadout }) {
     updateWindshield(car.effects, dt);
     updateCracks(Math.round(car.capsizes * car.parts.crack));   // vidro blindado racha menos
     swingCharm(dt, frameTime);
-    updateScoreboard(race, weapon.kills);
+    updateScoreboard(race, weapon.kills, rivals);
   }
 
   // Pontos, em pixels da cabine, onde as mãos do piloto seguram.

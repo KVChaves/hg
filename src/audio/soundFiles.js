@@ -32,6 +32,13 @@ export const SOUND_FILES = {
   harpoon: `${TRAPS}/harpoon.wav`,
   harpoonHit: `${TRAPS}/harpoon-hit.wav`,
   extinguisher: `${TRAPS}/extinguisher.wav`,
+  // Escudo, EMP e mina teleguiada.
+  shield: `${TRAPS}/shield.mp3`,
+  emp: `${TRAPS}/emp.mp3`,
+  mineLaunch: `${TRAPS}/mine-launch.mp3`,
+  mineStick: `${TRAPS}/mine-stick.mp3`,
+  mineBeep: `${TRAPS}/mine-beep.mp3`,
+  mine: `${TRAPS}/mine-explosion.mp3`,
   // Fogo da besta incendiária: o estalo ao pegar e o laço do próprio carro queimando.
   fire: `${TRAPS}/fire.wav`,
   burning: `${TRAPS}/burning.wav`,
@@ -42,6 +49,9 @@ export const MENU_MUSIC = ['01', '02', '03', '04', '05'].map(name => `assets/aud
 
 // Uma música por bioma (o nome é o campo `music` em world/biomes).
 export const PHASE_MUSIC = {
+  beach: 'assets/audio/music/beach.mp3',
+  space: 'assets/audio/music/space.mp3',
+  desert: 'assets/audio/music/desert.mp3',
   fireFactory: 'assets/audio/music/fire-factory.mp3',
   forestField: 'assets/audio/music/forest-field.mp3',
   jungle: 'assets/audio/music/jungle.mp3',

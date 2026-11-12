@@ -3,17 +3,21 @@ import { paintGradient, paintSilhouette } from '../atmosphere.js';
 import { cutTop, paintBlocks, speckle } from './wallPaint.js';
 import { acrossRoad, archFrame, EDGE, nearRoad, pickFrom, scatter, solid } from './propKit.js';
 import { useImage } from '../textures.js';
+import { winterGate } from './finishGates.js';
 
 // Céu frio com aurora, estrada de neve batida, pinheiros e cristais de gelo.
 export const WINTER_MOUNTAIN = {
   id: 'winterMountain', name: 'MONTANHA NEVADA', music: 'winterMountain',
   sky: 0xa4b8cc, fog: [16, 200], cabinTint: 0xc4d8f0,
-  shape: { wiggle: 0.24, targetLength: 2200, relief: 30, hillScale: 210, banks: 11, sharpCurves: 2 },
+  // Sobe e desce bastante; neve e gelo seguram pouco, e uma nevasca fecha a vista num trecho.
+  shape: { wiggle: 0.26, targetLength: 2200, relief: 46, hillScale: 150, banks: 11, sharpCurves: 3 },
+  surface: { grip: 0.72, side: 0.42, accel: 0.92, offroad: 1.4 },
   layout: {
     jump: { fallLabel: 'CAIU NO LAGO GELADO' },
     hazards: [{ kind: 'snowslope', count: 2 }, { kind: 'icicles', count: 2 }],   // encostas de neve e pingentes na boca dos túneis
     // Ponte de gelo sem borda sobre um cânion: escorrega, e quem sai pela beirada cai no lago lá embaixo.
     bridge: { length: 150, below: 16, fallLabel: 'CAIU DA PONTE' },
+    storm: { length: 300, label: 'NEVE', color: 0xe6eef8, fog: [4, 34], wind: 45, grip: 0.8 },
     tunnels: { count: 2, length: [110, 170] },
   },
   ground: {
@@ -21,11 +25,24 @@ export const WINTER_MOUNTAIN = {
     paint(ctx) { ctx.fillStyle = 'rgba(150,180,215,.35)'; for (let i = 0; i < 24; i++) ctx.fillRect(Math.random() * 64, Math.random() * 64, 2 + Math.random() * 8, 1); },
   },
   road: {
-    base: [172, 182, 196], variation: 16, edge: '#f4f8fc', center: '#6aa0d0',
-    paint(ctx) { ctx.fillStyle = 'rgba(238,244,250,.8)'; for (let i = 0; i < 30; i++) ctx.fillRect(Math.random() * 64, Math.random() * 64, 1 + Math.random() * 7, 1); },
+    base: [196, 206, 220], variation: 10, edge: '#f4f8fc', center: '#6aa0d0',
+    // Neve batida: trilhas de pneu cinzentas e placas de gelo azulado.
+    paint(ctx) {
+      ctx.fillStyle = 'rgba(110,126,150,.5)'; ctx.fillRect(14, 0, 4, 64); ctx.fillRect(46, 0, 4, 64);
+      ctx.fillStyle = 'rgba(120,190,230,.45)'; for (let i = 0; i < 7; i++) ctx.fillRect(Math.random() * 56, Math.random() * 64, 4 + Math.random() * 8, 2);
+      ctx.fillStyle = 'rgba(250,252,255,.85)'; for (let i = 0; i < 30; i++) ctx.fillRect(Math.random() * 64, Math.random() * 64, 1 + Math.random() * 5, 1);
+    },
   },
-  kerb: ['#2858a0', '#f0f4f8'],
-  gantry: [0x34404e, 0x2858a0, 0xe8eef4],
+  // Beira de bloco de gelo com neve acumulada.
+  kerb: {
+    paint(ctx, n) {
+      ctx.fillStyle = '#8ccfea'; ctx.fillRect(0, 0, n, n);
+      ctx.fillStyle = '#74bcdc'; ctx.fillRect(0, 7, n, 1); ctx.fillRect(8, 0, 1, 8); ctx.fillRect(3, 8, 1, 8);
+      ctx.fillStyle = '#d8f2fc'; ctx.fillRect(1, 1, 5, 1); ctx.fillRect(10, 1, 4, 1); ctx.fillRect(5, 9, 6, 1);
+      ctx.fillStyle = '#f4f8fc'; for (let i = 0; i < 6; i++) ctx.fillRect(Math.random() * n, Math.random() * n, 2 + Math.random() * 3, 2);
+    },
+  },
+  gantry: winterGate,
   tunnel: {
     wall: '#7cc4e4', speckle: ['#a8def2', '#5aa4cc', '#d4f0fa'], rib: 0xb8e6f6, portal: 0xeaf6fc,
     lines: [{ angle: Math.PI / 2, width: 0.05, color: 0xc8f4ff }],

@@ -9,6 +9,7 @@ import { createHarpoon } from './harpoon.js';
 import { damageOpponent } from './opponents.js';
 import { damageAtDistance, WEAPON_TYPES } from './weaponTypes.js';
 import { rollPart } from './carParts.js';
+import { EMP_RADIUS } from './trapTypes.js';
 
 // Combate dos adversários: cada piloto escolhe um alvo entre todos que estão à sua frente, atira,
 // recarrega, solta armadilhas em quem vem atrás e usa os power-ups. Vale a munição limitada do jogador.
@@ -25,18 +26,19 @@ const TRAP_GAP = { default: [8, 40], dynamite: [6, 22] };
 const TRAP_LANE_REACH = 6;
 const HIT_FLASH_TIME = 0.3;
 const POWERUP_RETRY = 0.3, POWERUP_PAUSE = [4, 9], EXTINGUISH_BELOW = 0.45;
+const SHIELD_BELOW = 0.7, EMP_BOT_REACH = 0.7;   // o bot ergue o escudo com a vida abaixo disso (ou com raiva) e pulsa com alguém perto
 const HARPOON_NEAR = 4, HARPOON_FAR = 17, HARPOON_AIM = 1;   // só dispara com o alvo reto à frente
 const FIRING_ARC_COS = Math.cos(LOOK.maxYaw);         // o piloto só atira até onde a cabeça vira, como o jogador
 
 const random = ([low, high]) => low + Math.random() * (high - low);
 
-export function createOpponentCombat({ scene, car, race, opponents, traps, burning, look, onShot, onSound, onDestroyed, onBotShot, onRemotePull, onKill, onPlayerShot = () => {} }) {
+export function createOpponentCombat({ scene, car, race, opponents, traps, burning, look, onShot, onSound, onDestroyed, onBotShot, onRemotePull, onTetherEnd, onKill, onPlayerShot = () => {} }) {
   const visuals = createCombatVisuals(scene);
   const from = new THREE.Vector3(), to = new THREE.Vector3();
   const combat = { hitFlash: 0, hitAngle: 0, update, reset, showRemoteShot, explodeAt: (x, y, z) => visuals.explode(x, y, z), harpoonTip: op => harpoons.get(op).tip };
   const field = race.field;
   const attackersOn = new Map();                     // quantos já atiram em cada alvo neste quadro
-  const harpoons = new Map(opponents.map(op => [op, createHarpoon({ owner: op, car, race, visual: createHarpoonVisual(scene), onSound, onRemotePull })]));
+  const harpoons = new Map(opponents.map(op => [op, createHarpoon({ owner: op, car, race, visual: createHarpoonVisual(scene), onSound, onRemotePull, onTetherEnd: target => onTetherEnd(target, op) })]));
   let raceTime = 0, playerExploded = false;
 
   const rangeOf = op => Math.min(op.arsenal.type.range, ENGAGE_RANGE);
@@ -89,7 +91,7 @@ export function createOpponentCombat({ scene, car, race, opponents, traps, burni
       return;
     }
     const wasAlive = car.health > 0 && car.wrecked <= 0;
-    damagePlayer(car, amount / CAR_MAX_HP);
+    damagePlayer(car, amount * car.parts.bullet / CAR_MAX_HP);
     if (wasAlive && car.health <= 0) onKill(target, op);
     combat.hitFlash = HIT_FLASH_TIME;
     combat.hitAngle = bearing;
@@ -191,7 +193,7 @@ export function createOpponentCombat({ scene, car, race, opponents, traps, burni
       arsenal.aimTime = random(AIM_TIME);
       arsenal.burstLeft = 0;
     }
-    if (!target || (arsenal.aimTime -= dt) > 0 || arsenal.cooldown > 0) return;
+    if (!target || op.effects.emp > 0 || (arsenal.aimTime -= dt) > 0 || arsenal.cooldown > 0) return;
     shoot(op, target);
     scheduleNextShot(op);
   }
@@ -246,6 +248,15 @@ export function createOpponentCombat({ scene, car, race, opponents, traps, burni
       traps.extinguish(op);
       return true;
     }
+    if (type.id === 'shield') {
+      if (op.effects.shield > 0 || (op.hp / op.maxHp > SHIELD_BELOW && op.grudge <= 0)) return false;
+      return traps.usePower('shield', op);
+    }
+    if (type.id === 'emp') {
+      const crowded = field.some(racer => racer !== op && racer.dead <= 0 && Math.hypot(racer.x - op.x, racer.z - op.z) < EMP_RADIUS * EMP_BOT_REACH);
+      return crowded && traps.usePower('emp', op);
+    }
+    if (type.id === 'mine') return !isBlinded(op) && traps.usePower('mine', op);
     const harpoon = harpoons.get(op);
     if (harpoon.busy || !hasHarpoonShot(op)) return false;
     harpoon.fire();

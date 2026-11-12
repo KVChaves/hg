@@ -5,7 +5,7 @@ import { createAtmosphere } from './atmosphere.js';
 import { buildTunnels } from './tunnels.js';
 import { buildWalls } from './walls.js';
 import { buildEpicSections } from './epicVisuals.js';
-import { buildHazardSites } from './hazardSites.js';
+import { buildBeltSites, buildHazardSites, buildStormSites } from './hazardSites.js';
 import { createRandom, generateTrack, isOverChasm, surfaceAt, track, trackAt, valleyReach } from './track.js';
 import { noiseTexture, pixelTexture, surfaceTexture } from './textures.js';
 import { pngNow } from '../cabin/pngPixels.js';
@@ -82,12 +82,19 @@ function roadTexture({ base, variation, edge, center, paint, image, shade }) {
   return asphalt;
 }
 
-function kerbTexture([first, second]) {
+// Borda da pista: lista de duas cores (listras) ou `{ paint(ctx, size) }` para uma imagem própria do bioma.
+// A imagem se repete a cada 4 m ao longo da pista.
+function kerbTexture(kerb) {
   const canvas = document.createElement('canvas');
-  canvas.width = 2; canvas.height = 8;
   const ctx = canvas.getContext('2d');
-  ctx.fillStyle = first; ctx.fillRect(0, 0, 2, 4);
-  ctx.fillStyle = second; ctx.fillRect(0, 4, 2, 4);
+  if (Array.isArray(kerb)) {
+    canvas.width = 2; canvas.height = 8;
+    ctx.fillStyle = kerb[0]; ctx.fillRect(0, 0, 2, 4);
+    ctx.fillStyle = kerb[1]; ctx.fillRect(0, 4, 2, 4);
+  } else {
+    canvas.width = canvas.height = 16;
+    kerb.paint(ctx, 16);
+  }
   const texture = pixelTexture(canvas);
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
   return texture;
@@ -159,16 +166,21 @@ function addStartLine(group, biome) {
   const gantry = new THREE.Group();
   gantry.position.set(t.x, t.y, t.z);
   gantry.rotation.y = yaw;
-  const box = (w, h, d, x, y, color) => {
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshBasicMaterial({ color }));
-    mesh.position.set(x, y, 0);
-    gantry.add(mesh);
-  };
-  const postX = TRACK_WIDTH / 2 + 2.5, [post, banner, trim] = biome.gantry;
-  box(0.8, 8, 0.8, -postX, 4, post);
-  box(0.8, 8, 0.8, postX, 4, post);
-  box(TRACK_WIDTH + 5.8, 1.4, 1, 0, 8, banner);
-  box(TRACK_WIDTH + 5.8, 0.3, 1.1, 0, 7.2, trim);
+  const postX = TRACK_WIDTH / 2 + 2.5, span = TRACK_WIDTH + 5.8;
+  if (typeof biome.gantry === 'function') {          // arco de chegada próprio do bioma (world/biomes/finishGates.js)
+    biome.gantry(gantry, { postX, span });
+  } else {
+    const box = (w, h, d, x, y, color) => {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshBasicMaterial({ color }));
+      mesh.position.set(x, y, 0);
+      gantry.add(mesh);
+    };
+    const [post, banner, trim] = biome.gantry;
+    box(0.8, 8, 0.8, -postX, 4, post);
+    box(0.8, 8, 0.8, postX, 4, post);
+    box(span, 1.4, 1, 0, 8, banner);
+    box(span, 0.3, 1.1, 0, 7.2, trim);
+  }
   group.add(gantry);
 }
 
@@ -207,7 +219,7 @@ export function createWorldScene() {
   scene.fog = new THREE.Fog(0x000000, 15, 230);
   const atmosphere = createAtmosphere(scene);
   let content = null, time = 0, biomeAnimations = [], currentBiome = null;
-  const daySky = new THREE.Color(), black = new THREE.Color(0x000000);
+  const stormColor = new THREE.Color(), daySky = new THREE.Color(), black = new THREE.Color(0x000000);
 
   // Gera pista e cenário novos com o bioma pedido.
   scene.buildMap = (biome, seed) => {
@@ -239,6 +251,8 @@ export function createWorldScene() {
     buildEpicSections(content, layout, biome, animation => biomeAnimations.push(animation));
     buildWalls(content, layout, biome.wall);
     buildHazardSites(content, layout, animation => biomeAnimations.push(animation));
+    buildStormSites(content, layout, animation => biomeAnimations.push(animation));
+    buildBeltSites(content, layout, animation => biomeAnimations.push(animation));
     biome.addProps({
       onUpdate: animation => biomeAnimations.push(animation), group: content, random: createRandom(seed + 2), bounds, heightAt: track.heightAt, spotIsClear: (() => { const isClear = spotChecker(); return (x, z, distance) => isClear(x, z, distance) && !isOverChasm(x, z); })(), isOpen: openCheck(layout),
     });
@@ -247,6 +261,14 @@ export function createWorldScene() {
 
   // Escuridão de 0 (dia do bioma) a 1 (breu do trecho escuro). `fog` é a neblina [perto, longe] lá dentro: tudo
   // que não brilha some no preto a essa distância do olho, como se só os faróis iluminassem.
+  // Tempestade de areia: tinge a neblina com a cor dela e a aperta até quase tapar a pista. Chame antes de setDarkness.
+  let stormLevel = 0, stormZone = null;
+  scene.setStorm = (level, zone) => {
+    stormLevel = level;
+    stormZone = zone;
+    atmosphere.setStorm(level, zone?.wind ?? 0);
+  };
+
   scene.setDarkness = (level, fog) => {
     if (!currentBiome) return;
     const [near, far] = currentBiome.fog;
@@ -255,6 +277,12 @@ export function createWorldScene() {
     scene.background.copy(scene.fog.color);
     scene.fog.near = level > 0 ? near + (fog[0] - near) * level : near;
     scene.fog.far = level > 0 ? far + (fog[1] - far) * level : far;
+    if (stormLevel > 0 && stormZone) {
+      scene.fog.color.lerp(stormColor.setHex(stormZone.color), stormLevel);
+      scene.background.copy(scene.fog.color);
+      scene.fog.near += (stormZone.fog[0] - scene.fog.near) * stormLevel;
+      scene.fog.far += (stormZone.fog[1] - scene.fog.far) * stormLevel;
+    }
     atmosphere.setWeatherVisible(level < 0.3);
   };
 

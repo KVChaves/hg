@@ -179,7 +179,37 @@ function placeDarkTunnel(plan, placer, layout) {
   layout.tunnels.push({ start, length, open: false, dark: plan });
   narrowWalls(placer, start, length);
   markEnclosed(start, length);
-  track.darkZones.push({ start, length, fog: plan.fog });
+  track.darkZones.push({ start, length, fog: plan.fog, pulse: Boolean(plan.pulse) });
+}
+
+// Clima pesado (`storm`): um trecho longo a céu aberto em que a neblina fecha a vista (ver stormAt): tempestade de
+// areia, temporal, nevasca. Tenta o comprimento pedido e, se a pista não tiver reta livre, encurta. `fog`: neblina
+// [perto, longe] lá dentro; `color`: cor dela; `wind`: o quanto empurra as partículas de lado; `grip`: aderência no
+// meio do trecho (1 = normal); `label`: texto da placa de aviso; `flooded`: a pista fica alagada.
+function placeStorm(plan, placer, layout) {
+  for (const length of [plan.length, plan.length * 0.8, plan.length * 0.6]) {
+    const start = placer.seek(STORM_MARGIN, length + STORM_MARGIN, 1);
+    if (start === null) continue;
+    placer.reserve(start - STORM_MARGIN, start + length + STORM_MARGIN);
+    const zone = { start, length, fog: plan.fog, color: plan.color, wind: plan.wind ?? 0, grip: plan.grip ?? 1, label: plan.label ?? 'CLIMA', flooded: Boolean(plan.flooded), waterColor: plan.waterColor ?? '#4a7a8a' };
+    track.stormZones.push(zone);
+    layout.storms.push(zone);
+    return;
+  }
+}
+const STORM_MARGIN = 60;
+
+// Esteiras rolantes (`belts`: { count, length, force }): retas em que cada metade da pista corre para um lado.
+const BELT_MARGIN = 40, BELT_MAX_CURVE = 1 / 110;
+function placeBelts(plan, placer, layout) {
+  for (let n = 0; n < plan.count; n++) {
+    const start = placer.seek(BELT_MARGIN, plan.length + BELT_MARGIN, BELT_MAX_CURVE);
+    if (start === null) return;
+    placer.reserve(start - BELT_MARGIN, start + plan.length + BELT_MARGIN);
+    const belt = { start, length: plan.length, force: plan.force, dir: placer.random() < 0.5 ? -1 : 1 };
+    track.belts.push(belt);
+    layout.belts.push(belt);
+  }
 }
 
 // Pontos de perigo (hazardKinds.js): retas livres, longe uns dos outros e dos trechos especiais. O de túnel fica
@@ -259,11 +289,13 @@ function recomputeSlope() {
 
 export function createMapLayout(plan, seed) {
   const random = createRandom(seed + 5), placer = createPlacer(random);
-  const layout = { tunnels: [], epics: [], hazards: [] };
+  const layout = { tunnels: [], epics: [], hazards: [], storms: [], belts: [] };
   if (plan.twist) placeTwist(placer, layout);        // os trechos épicos pedem retas longas: escolhem primeiro
   placeRiverJump(plan.jump ?? {}, placer, layout);
   if (plan.bridge) placeBridge(plan.bridge, placer, layout);
   if (plan.dark) placeDarkTunnel(plan.dark, placer, layout);
+  if (plan.storm) placeStorm(plan.storm, placer, layout);
+  if (plan.belts) placeBelts(plan.belts, placer, layout);
   placeTunnels(plan.tunnels, placer, random, layout);
   placeHazards(plan.hazards ?? [], placer, layout);
   if (plan.bumps) addBumps(plan.bumps);

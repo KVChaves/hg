@@ -44,6 +44,27 @@ const PLOTTERS = {
     r.line(ox, oy + 12, ox + 11, oy + 4, dim(0x9a7a50), 2);
     r.poly([[ox + 17, oy], [ox + 9, oy + 2], [ox + 12, oy + 3], [ox + 11, oy + 7], [ox + 14, oy + 5], [ox + 15, oy + 8]], dim(0xd0d4dc));
   },
+  shield(r, ox, oy, dim) {
+    r.poly([[ox + 2, oy + 1], [ox + 16, oy + 1], [ox + 16, oy + 7], [ox + 9, oy + 13], [ox + 2, oy + 7]], dim(0x4a8ad8));
+    r.poly([[ox + 4, oy + 3], [ox + 14, oy + 3], [ox + 14, oy + 7], [ox + 9, oy + 11], [ox + 4, oy + 7]], dim(0x8cc4f8));
+    r.rect(ox + 8, oy + 3, 2, 7, dim(0xe8f4ff));
+  },
+  emp(r, ox, oy, dim) {
+    r.ring(ox + 9, oy + 7, 6, 4.5, dim(0x4cc8ff));
+    r.disc(ox + 9, oy + 7, 2.5, dim(0xe8f8ff));
+    r.line(ox + 1, oy + 7, ox + 4, oy + 7, dim(0x4cc8ff), 1);
+    r.line(ox + 14, oy + 7, ox + 17, oy + 7, dim(0x4cc8ff), 1);
+    r.line(ox + 9, oy, ox + 9, oy + 3, dim(0x4cc8ff), 1);
+    r.line(ox + 9, oy + 11, ox + 9, oy + 14, dim(0x4cc8ff), 1);
+  },
+  mine(r, ox, oy, dim) {
+    r.disc(ox + 9, oy + 8, 5, dim(0x3a3c44));
+    r.disc(ox + 8, oy + 7, 2, dim(0x5a5e68));
+    r.rect(ox + 8, oy + 1, 2, 3, dim(0x8a8a90));
+    r.rect(ox + 8, oy, 2, 2, dim(0xff3020));
+    r.line(ox + 1, oy + 8, ox + 4, oy + 8, dim(0x8a8a90), 1);
+    r.line(ox + 14, oy + 8, ox + 17, oy + 8, dim(0x8a8a90), 1);
+  },
   smoke(r, ox, oy, dim) {
     r.disc(ox + 5, oy + 9, 4.5, dim(0x8a8682));
     r.disc(ox + 12, oy + 9, 5, dim(0x6e6a66));

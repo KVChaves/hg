@@ -81,8 +81,13 @@ function addSolidTunnel(group, tunnel, style) {
   if (style.spikes) addHangingSpikes(group, tunnel, style.spikes);
 }
 
+// Três estilos de arco aberto (`style.arch`): copa de folhas (padrão, selva), vigas de tronco com folhagem
+// (`timber`, floresta) e arcos naturais de pedra (`rock`, deserto).
 function addOpenTunnel(group, tunnel, style) {
   const { start, length } = tunnel;
+  if (style.arch === 'rock') return addRockArches(group, tunnel, style);
+  if (style.arch === 'timber') return addTimberArches(group, tunnel, style);
+  if (style.arch === 'palm') return addPalmArches(group, tunnel, style);
   const material = new THREE.MeshBasicMaterial({ color: style.rib, side: THREE.DoubleSide });
   const leaves = new THREE.MeshBasicMaterial({ color: style.leaves });
   const blob = new THREE.IcosahedronGeometry(2.6, 0);
@@ -93,6 +98,81 @@ function addOpenTunnel(group, tunnel, style) {
       const mesh = new THREE.Mesh(blob, leaves);
       mesh.position.set(t.x - t.tz * side, t.y + TUNNEL_HEIGHT - Math.abs(side) * 0.3 + 0.6, t.z + t.tx * side);
       mesh.scale.set(1.3, 0.8, 1.6);
+      group.add(mesh);
+    }
+  }
+}
+
+// Pórticos de pedra: blocos empilhados nos dois lados que se fecham no alto; a cada pórtico o topo ora fecha, ora deixa o céu aparecer.
+function addRockArches(group, { start, length }, style) {
+  const rock = new THREE.DodecahedronGeometry(1, 0), materials = [style.rib, style.leaves].map(color => new THREE.MeshBasicMaterial({ color }));
+  const ARCH_EVERY = 16, STEPS = 8;
+  let n = 0;
+  for (let d = ARCH_EVERY / 2; d < length; d += ARCH_EVERY, n++) {
+    const t = trackAt(start + d), yaw = Math.atan2(-t.tx, -t.tz);
+    for (let a = 0; a <= STEPS; a++) {
+      const theta = Math.PI * a / STEPS, topGap = a > 1 && a < STEPS - 1 && (n % 2 === 1 && a !== STEPS / 2);   // pórticos ímpares têm só a chave do arco
+      if (topGap) continue;
+      const side = Math.cos(theta) * (TUNNEL_HALF_WIDTH + 1.5), height = Math.sin(theta) * (TUNNEL_HEIGHT + 0.5);
+      const size = (a === 0 || a === STEPS) ? 2.6 : 2.0 + ((a * 7 + n * 3) % 5) * 0.2;
+      for (const lift of (a === 0 || a === STEPS) ? [0, 1.8] : [0]) {
+        const mesh = new THREE.Mesh(rock, materials[(a + n + lift) % 2]);
+        mesh.position.set(t.x - t.tz * side, t.y + height + lift + 0.5, t.z + t.tx * side);
+        mesh.rotation.set(0, yaw + a, 0);
+        mesh.scale.set(size * 1.1, size * 0.9, size * 1.5);
+        group.add(mesh);
+      }
+    }
+  }
+}
+
+// Pórticos de coqueiros: dois troncos inclinados que se encontram no alto, com as folhas se cruzando sobre a pista.
+function addPalmArches(group, { start, length }, style) {
+  const height = TUNNEL_HEIGHT + 2, lean = 0.8, base = TUNNEL_HALF_WIDTH + 0.8;
+  const trunk = new THREE.CylinderGeometry(0.3, 0.5, height, 6), frond = new THREE.BoxGeometry(8, 0.14, 1.2);
+  const bark = new THREE.MeshBasicMaterial({ color: style.rib }), leaves = [style.leaves, style.leaves + 0x081008].map(color => new THREE.MeshBasicMaterial({ color }));
+  for (let d = 0; d <= length; d += OPEN_RIB_EVERY * 1.5) {
+    const t = trackAt(start + d), arch = new THREE.Group();
+    arch.position.set(t.x, t.y, t.z);
+    arch.rotation.y = Math.atan2(-t.tx, -t.tz);       // o eixo x do grupo é o lado da pista
+    for (const side of [-1, 1]) {
+      const mesh = new THREE.Mesh(trunk, bark);
+      mesh.position.set(side * (base - Math.sin(lean) * height / 2), Math.cos(lean) * height / 2 - 0.4, 0);
+      mesh.rotation.z = side * lean;
+      arch.add(mesh);
+      const topX = side * (base - Math.sin(lean) * height), topY = Math.cos(lean) * height - 0.4;
+      for (let leaf = 0; leaf < 4; leaf++) {
+        const f = new THREE.Mesh(frond, leaves[leaf % 2]);
+        f.position.set(topX, topY - (leaf % 2) * 0.3, 0);
+        f.rotation.set(0, leaf * 0.8 + side * 0.4, side * 0.2);
+        arch.add(f);
+      }
+    }
+    group.add(arch);
+  }
+}
+
+// Pórticos de madeira: dois troncos de pé, viga de tronco por cima e folhagem de outono pendurada.
+function addTimberArches(group, { start, length }, style) {
+  const post = new THREE.CylinderGeometry(0.55, 0.65, TUNNEL_HEIGHT + 0.6, 7), beam = new THREE.CylinderGeometry(0.5, 0.5, TUNNEL_HALF_WIDTH * 2 + 3, 7);
+  const bark = new THREE.MeshBasicMaterial({ color: style.rib }), foliage = new THREE.MeshBasicMaterial({ color: style.leaves });
+  const tuft = new THREE.IcosahedronGeometry(1.1, 0);
+  for (let d = 0; d <= length; d += OPEN_RIB_EVERY * 1.5) {
+    const t = trackAt(start + d), yaw = Math.atan2(-t.tx, -t.tz);
+    for (const side of [-1, 1]) {
+      const x = side * (TUNNEL_HALF_WIDTH + 0.8);
+      const mesh = new THREE.Mesh(post, bark);
+      mesh.position.set(t.x - t.tz * x, t.y + (TUNNEL_HEIGHT + 0.6) / 2, t.z + t.tx * x);
+      group.add(mesh);
+    }
+    const top = new THREE.Mesh(beam, bark);
+    top.position.set(t.x, t.y + TUNNEL_HEIGHT + 0.6, t.z);
+    top.rotation.set(0, yaw, Math.PI / 2);
+    group.add(top);
+    for (let i = -2; i <= 2; i++) {
+      const lateral = i * 3.2, mesh = new THREE.Mesh(tuft, foliage);
+      mesh.position.set(t.x - t.tz * lateral, t.y + TUNNEL_HEIGHT - 0.3 - (i % 2) * 0.4, t.z + t.tx * lateral);
+      mesh.scale.set(1, 0.6, 1);
       group.add(mesh);
     }
   }

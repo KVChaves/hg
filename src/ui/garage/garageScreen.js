@@ -1,10 +1,10 @@
 import { ctxText, textWidth } from '../../art/font.js';
 import { PARTS } from '../../cabin/parts/index.js';
 import { PART_KEYS, partsCost } from '../../game/carUpgrades.js';
-import { saveEquipment, savedParts } from '../../game/equipment.js';
+import { saveEquipment, savedParts, savedTrunk } from '../../game/equipment.js';
 import { loadSavedCars, SAVED_CAR_SLOTS, storeSavedCars } from '../../game/savedCars.js';
-import { BUDGET, fitsBudget, loadoutCost, maxUpgradeLevel, UPGRADES, upgradeFactor, upgradePrice } from '../../game/shop.js';
-import { MAX_TRAP_SLOTS, TRAP_TYPES } from '../../game/trapTypes.js';
+import { BUDGET, fitsBudget, loadoutCost, maxUpgradeLevel, trunkUnits, UPGRADES, upgradeFactor, upgradePrice } from '../../game/shop.js';
+import { TRAP_TYPES } from '../../game/trapTypes.js';
 import { WEAPON_TYPES } from '../../game/weaponTypes.js';
 import { CAR_SLOTS, loadCarSelection, resolveCarSpec, saveCarSelection } from '../../world/car/carOptions.js';
 import { createNameField } from '../nameField.js';
@@ -13,7 +13,8 @@ import { COLOR, drawButton, drawSlotTile, drawTooltip, inside, markClickable, ou
 import { createGarageScene } from './garageScene.js';
 import { createReadyPanel } from './readyPanel.js';
 import { createSavedCarsPanel } from './savedCarsPanel.js';
-import { emptyTrunkThumb, exteriorThumb, interiorThumb, trunkItemThumb, weaponThumb } from './garageThumbs.js';
+import { exteriorThumb, interiorThumb, weaponThumb } from './garageThumbs.js';
+import { createTrunkPanel } from './trunkPanel.js';
 
 // Garagem antes da corrida: à esquerda o interior e o equipamento, à direita o exterior. Ao clicar numa
 // peça, a faixa mostra as opções dela e, quando houver, o seletor de cores.
@@ -24,7 +25,7 @@ const RIGHT = { x: 484, y: 40, width: 152, columns: 3 };
 const EQUIPMENT = { x: 6, y: 196, width: 106, columns: 2 };
 const UPGRADE_PANEL = { x: 6, y: 306, width: 106, height: 50 };
 const UPGRADE_ROW = 12, NO_FUNDS_TIME = 1.2;
-const QUANTITY_SIZE = { width: 220, height: 20 };
+const TRUNK_BUTTON = { x: 6, y: 266, width: 106, height: 34 };
 const NAME_BOX = { x: 528, y: 6, width: 106, height: 28 };
 const SAVED_CARS_BUTTON = { x: 528, y: 284, width: 106, height: 22 };
 const NEXT_BUTTON = { x: 240, y: 6, width: 160, height: 26 };
@@ -39,10 +40,6 @@ const ORIGINAL_SWATCH = { nitro: 0x8c251a, cabinColor: 0x4b2825 };   // amostra 
 const weaponOptions = () => Object.fromEntries(Object.values(WEAPON_TYPES).map(type => [type.id, {
   name: `${type.label}: ${type.summary}`, detail: `R$ ${type.price}  DANO ${type.damage}  ALCANCE ${type.range}  BALAS ${type.magazine + type.reserve}`,
 }]));
-const trunkOptions = () => ({
-  none: { name: 'VAZIO', detail: 'Sem item nesta vaga' },
-  ...Object.fromEntries(Object.values(TRAP_TYPES).map(type => [type.id, { name: `${type.label}: ${type.summary}`, detail: `R$ ${type.price} CADA  ATE ${type.maxCharges} UNIDADES` }])),
-});
 
 export function createGarageScreen({ stage, cabin, customs, equipment, getName, setName, getReadyRoster, getUpcomingBiome = () => null, onKickPlayer, onProceed, onBetweenRacesEnd, onBack, onOpenWorkshop }) {
   const carSelection = loadCarSelection();
@@ -72,10 +69,6 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
 
   const equipmentSlots = [
     { key: 'weapon', short: 'ARMA', label: 'Arma', options: weaponOptions(), thumbOf: id => weaponThumb(id, customs[id]) },
-    ...Array.from({ length: MAX_TRAP_SLOTS }, (_, i) => ({
-      key: `trunk${i}`, short: `ITEM ${i + 1}`, label: 'Bagageiro', trunkIndex: i, options: trunkOptions(),
-      thumbOf: id => (id === 'none' ? emptyTrunkThumb() : trunkItemThumb(id)),
-    })),
   ].map((slot, i) => ({
     ...slot, group: 'equipment', hasColor: false, thumbs: null,
     x: EQUIPMENT.x + 6 + (i % EQUIPMENT.columns) * TILE.gapX,
@@ -113,6 +106,7 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
   let active = slots.find(slot => slot.key === 'body');
   let browsing = false, browseDone = null;           // aberta só para personalizar (menu ou sala), sem corrida; `browseDone` diz para onde voltar
   let noFunds = 0, betweenRaces = 0;                 // segundos que restam do intervalo; 0 fora dele
+  let waitLabel = 'AGUARDANDO...';
   let waitsForHost = false, waiting = false;         // online: o intervalo termina quando o admin largar
   const nameField = createNameField({ box: NAME_BOX, getName, setName });
   const readyPanel = createReadyPanel({ getRoster: getReadyRoster, onKick: onKickPlayer });
@@ -122,7 +116,7 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
     slotCount: SAVED_CAR_SLOTS,
     describe: index => {
       const saved = savedCars[index];
-      return saved && `${WEAPON_TYPES[saved.equipment.weaponId].label}  R$ ${loadoutCost(saved.equipment)}`;
+      return saved && `${WEAPON_TYPES[saved.equipment.weaponId].label}  R$ ${loadoutCost({ ...saved.equipment, trunk: savedTrunk(saved.equipment) })}`;
     },
     nameOf: index => savedCars[index]?.name ?? '',
     isActive: () => screen.isOpen,
@@ -145,7 +139,7 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
       cabin.setPart(kind, saved.cabin[kind]);
       cabin.setPartColor(kind, saved.cabin.colors[kind]);
     }
-    const savedEquipment = { ...structuredClone(saved.equipment), parts: savedParts(saved.equipment.parts) };
+    const savedEquipment = { ...structuredClone(saved.equipment), trunk: savedTrunk(saved.equipment), parts: savedParts(saved.equipment.parts) };
     if (fitsBudget(savedEquipment)) {
       Object.assign(equipment, savedEquipment);
       saveEquipment(equipment);
@@ -162,7 +156,7 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
   function currentId(slot) {
     if (slot.group === 'interior') return cabin.loadout[slot.key];
     if (slot.group === 'exterior') return carSelection.options[slot.key];
-    return slot.key === 'weapon' ? equipment.weaponId : equipment.trapIds[slot.trunkIndex] ?? 'none';
+    return equipment.weaponId;
   }
   const currentColor = slot => (slot.group === 'interior' ? cabin.loadout.colors[slot.key] : carSelection.colors[slot.key]);
   const labelOf = slot => (slot.label ?? (slot.group === 'interior' ? PARTS[slot.key].label : CAR_SLOTS[slot.key].label));
@@ -172,25 +166,7 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
     saveCarSelection(carSelection);
   }
 
-  // Como ficaria a compra com essa escolha. Um item só cabe em uma vaga: escolher um que já está em outra troca os dois.
-  function withChoice(slot, id) {
-    if (slot.key === 'weapon') return { ...equipment, weaponId: id };
-    const trapIds = [...equipment.trapIds], trapCounts = [...equipment.trapCounts], here = slot.trunkIndex;
-    if (id === 'none') {
-      trapIds[here] = null;
-      trapCounts[here] = 0;
-    } else if (trapIds[here] !== id) {
-      const other = trapIds.indexOf(id);
-      if (other >= 0) {
-        [trapIds[other], trapIds[here]] = [trapIds[here], trapIds[other]];
-        [trapCounts[other], trapCounts[here]] = [trapCounts[here], trapCounts[other]];
-      } else {
-        trapIds[here] = id;
-        trapCounts[here] = 1;
-      }
-    }
-    return { ...equipment, trapIds, trapCounts };
-  }
+  const withChoice = (slot, id) => ({ ...equipment, weaponId: id });
 
   function purchase(next) {
     if (!fitsBudget(next)) { noFunds = NO_FUNDS_TIME; return false; }
@@ -207,46 +183,18 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
     purchase({ ...equipment, upgrades: { ...equipment.upgrades, [id]: level } });
   }
 
-  function changeQuantity(slotIndex, delta) {
-    const id = equipment.trapIds[slotIndex], count = equipment.trapCounts[slotIndex] + delta;
-    if (!id || count < 1 || count > TRAP_TYPES[id].maxCharges) return;
-    const trapCounts = [...equipment.trapCounts];
-    trapCounts[slotIndex] = count;
-    purchase({ ...equipment, trapCounts });
+  // Quantidade de um item do bagageiro; recusa se passar do limite do item ou do saldo.
+  const withTrunk = (id, count) => ({ ...equipment, trunk: { ...equipment.trunk, [id]: count } });
+  function setTrunkCount(id, count) {
+    if (!TRAP_TYPES[id] || !Number.isInteger(count) || count < 0 || count > TRAP_TYPES[id].maxCharges) return false;
+    return purchase(withTrunk(id, count));
   }
-
-  // Seletor de quantidade logo acima da faixa, quando a vaga ativa do bagageiro tem item.
-  function quantityControl() {
-    if (active.trunkIndex === undefined || !equipment.trapIds[active.trunkIndex]) return null;
-    const box = strip.box(), x = box.x + Math.floor((box.width - QUANTITY_SIZE.width) / 2), y = box.y - QUANTITY_SIZE.height - 3;
-    return { panel: { x, y, ...QUANTITY_SIZE }, minus: { x: x + 72, y: y + 5, width: 11, height: 10 }, plus: { x: x + 110, y: y + 5, width: 11, height: 10 }, slotIndex: active.trunkIndex };
-  }
-
-  function drawQuantity(ctx) {
-    const control = quantityControl();
-    if (!control) return;
-    const { panel, minus, plus, slotIndex } = control, id = equipment.trapIds[slotIndex], count = equipment.trapCounts[slotIndex], type = TRAP_TYPES[id];
-    const trapCounts = [...equipment.trapCounts];
-    trapCounts[slotIndex] = count + 1;
-    panelBox(ctx, panel);
-    ctxText(ctx, 'QUANTIDADE', panel.x + 8, panel.y + 7, COLOR.selected);
-    drawStepper(ctx, minus, '-', count > 1, inside(minus, pointer.x, pointer.y));
-    const number = String(count);
-    ctxText(ctx, number, minus.x + minus.width + Math.floor((plus.x - minus.x - minus.width - textWidth(number)) / 2), panel.y + 7, COLOR.text);
-    drawStepper(ctx, plus, '+', count < type.maxCharges && fitsBudget({ ...equipment, trapCounts }), inside(plus, pointer.x, pointer.y));
-    const total = `TOTAL R$ ${type.price * count}`;
-    ctxText(ctx, total, panel.x + panel.width - 8 - textWidth(total), panel.y + 7, COLOR.text);
-  }
-
-  // Quantas unidades a vaga leva, no canto da miniatura.
-  function drawTrunkCount(ctx, slot) {
-    const count = equipment.trapCounts[slot.trunkIndex];
-    if (!count) return;
-    const label = `x${count}`;
-    ctx.fillStyle = COLOR.tileDark;
-    ctx.fillRect(slot.x + slot.width - textWidth(label) - 3, slot.y + 2, textWidth(label) + 1, 9);
-    ctxText(ctx, label, slot.x + slot.width - textWidth(label) - 2, slot.y + 3, COLOR.selected);
-  }
+  const trunkPanel = createTrunkPanel({
+    getTrunk: () => equipment.trunk,
+    canSet: (id, count) => fitsBudget(withTrunk(id, count)),
+    setCount: setTrunkCount,
+    funds: () => BUDGET - loadoutCost(equipment),
+  });
 
   const isPartSlot = slot => slot.group === 'exterior' && PART_KEYS.includes(slot.key);
   const withPart = (slot, id) => ({ ...equipment, parts: { ...equipment.parts, [slot.key]: id } });
@@ -254,8 +202,7 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
   const priceOfEquipment = (slot, id) => {
     if (isPartSlot(slot)) return slot.options[id].price;
     if (slot.group !== 'equipment') return null;
-    if (slot.key === 'weapon') return WEAPON_TYPES[id].price;
-    return id === 'none' ? 0 : TRAP_TYPES[id].price;
+    return WEAPON_TYPES[id].price;
   };
 
   function choose(slot, id) {
@@ -300,8 +247,7 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
     onChoose: choose, onColor: setColor,
   });
 
-  const overQuantity = (x, y) => { const control = quantityControl(); return Boolean(control) && inside(control.panel, x, y); };
-  const overUi = (x, y) => savedCarsPanel.isOpen || readyPanel.contains(x, y) || inside(NAME_BOX, x, y) || inside(SAVED_CARS_BUTTON, x, y) || overQuantity(x, y) || inside(UPGRADE_PANEL, x, y) || inside(equipmentPanel, x, y) || inside(WORKSHOP_BUTTON, x, y) || inside(leftPanel, x, y) || inside(rightPanel, x, y) || strip.contains(x, y) || inside(NEXT_BUTTON, x, y) || inside(MENU_BUTTON, x, y);
+  const overUi = (x, y) => savedCarsPanel.isOpen || readyPanel.contains(x, y) || inside(NAME_BOX, x, y) || inside(SAVED_CARS_BUTTON, x, y) || trunkPanel.isOpen || inside(TRUNK_BUTTON, x, y) || inside(UPGRADE_PANEL, x, y) || inside(equipmentPanel, x, y) || inside(WORKSHOP_BUTTON, x, y) || inside(leftPanel, x, y) || inside(rightPanel, x, y) || strip.contains(x, y) || inside(NEXT_BUTTON, x, y) || inside(MENU_BUTTON, x, y);
 
   addEventListener('mousemove', e => {
     if (!screen.isOpen) return;
@@ -324,6 +270,7 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
     if (!screen.isOpen) return;
     const { x, y } = pointerOnStage(e, stage);
     if (savedCarsPanel.isOpen) { savedCarsPanel.click(x, y); return; }
+    if (trunkPanel.isOpen) { trunkPanel.click(x, y); return; }
     if (nameField.click(x, y)) return;
     if (readyPanel.click(x, y)) return;
     if (inside(SAVED_CARS_BUTTON, x, y)) { savedCarsPanel.isOpen = true; return; }
@@ -334,9 +281,7 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
     }
     if (betweenRaces <= 0 && !waiting && !browsing && inside(MENU_BUTTON, x, y)) { screen.isOpen = false; onBack(); return; }
     if (inside(WORKSHOP_BUTTON, x, y)) { screen.isOpen = false; onOpenWorkshop(equipment.weaponId); return; }
-    const control = quantityControl();
-    if (control && inside(control.minus, x, y)) { changeQuantity(control.slotIndex, -1); return; }
-    if (control && inside(control.plus, x, y)) { changeQuantity(control.slotIndex, 1); return; }
+    if (inside(TRUNK_BUTTON, x, y)) { trunkPanel.isOpen = true; return; }
     for (const row of upgradeRows) {
       if (inside(row.minus, x, y)) { changeUpgrade(row.id, -1); return; }
       if (inside(row.plus, x, y)) { changeUpgrade(row.id, 1); return; }
@@ -437,15 +382,16 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
         active: slot === active,
         hovered: inside(slot, pointer.x, pointer.y),
       });
-      if (slot.trunkIndex !== undefined) drawTrunkCount(ctx, slot);
     }
 
     if (rightTab === 'performance') drawPartsSummary(ctx);
     drawUpgrades(ctx);
     strip.draw(ctx, pointer);
-    drawQuantity(ctx);
+    const itemLabel = `${trunkUnits(equipment.trunk)} ITENS`;
+    drawButton(ctx, TRUNK_BUTTON, 'BAGAGEIRO', inside(TRUNK_BUTTON, pointer.x, pointer.y));
+    ctxText(ctx, itemLabel, TRUNK_BUTTON.x + Math.floor((TRUNK_BUTTON.width - textWidth(itemLabel)) / 2), TRUNK_BUTTON.y + 23, COLOR.selected);
     const timeLeft = Number.isFinite(betweenRaces) ? ` (${Math.ceil(betweenRaces)})` : '';
-    const nextLabel = waiting ? 'AGUARDANDO...' : betweenRaces > 0 ? `${waitsForHost ? 'PRONTO' : 'CORRER AGORA'}${timeLeft}` : browsing ? '< VOLTAR AO MENU' : 'CORRER >';
+    const nextLabel = waiting ? waitLabel : betweenRaces > 0 ? `${waitsForHost ? 'PRONTO' : 'CORRER AGORA'}${timeLeft}` : browsing ? '< VOLTAR AO MENU' : 'CORRER >';
     drawButton(ctx, NEXT_BUTTON, nextLabel, inside(NEXT_BUTTON, pointer.x, pointer.y));
     drawButton(ctx, WORKSHOP_BUTTON, 'OFICINA >', inside(WORKSHOP_BUTTON, pointer.x, pointer.y));
     if (betweenRaces <= 0 && !waiting && !browsing) drawButton(ctx, MENU_BUTTON, '< MENU', inside(MENU_BUTTON, pointer.x, pointer.y));
@@ -460,6 +406,7 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
     const stripBox = strip.box();
     readyPanel.draw(ctx, pointer, stripPlacement(active) === 'top' ? stripBox.y + stripBox.height + 4 : stripTop() + 2);
     if (savedCarsPanel.isOpen) { savedCarsPanel.draw(ctx, pointer); return; }
+    if (trunkPanel.isOpen) { trunkPanel.draw(ctx, pointer); return; }
 
     const info = hoveredInfo();
     if (info) {
@@ -477,6 +424,7 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
   screen.renderCar = renderer => carScene.render(renderer);
   screen.open = () => {
     savedCarsPanel.cancelNaming();
+    trunkPanel.isOpen = false;
     screen.isOpen = true;
     refreshEquipmentThumbs();
   };
@@ -507,7 +455,8 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
     browsing = false;
     betweenRaces = seconds;
     waitsForHost = Boolean(options.waitsForHost);
-    waiting = false;
+    waiting = Boolean(options.waiting);              // online: abriu antes de a corrida acabar; o botão só libera depois da votação
+    waitLabel = options.waitLabel ?? 'AGUARDANDO...';
     screen.open();
   };
   screen.isBetweenRaces = () => betweenRaces > 0 || waiting;
@@ -524,7 +473,8 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
   screen.changeUpgrade = changeUpgrade;
   screen.savedCarsPanel = savedCarsPanel;
   screen.readyPanel = readyPanel;
-  screen.changeQuantity = changeQuantity;
+  screen.setTrunkCount = setTrunkCount;
+  screen.trunkPanel = trunkPanel;
   screen.funds = () => BUDGET - loadoutCost(equipment);
   screen.selectSlot = key => {
     active = slots.find(slot => slot.key === key);

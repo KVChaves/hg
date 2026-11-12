@@ -5,7 +5,7 @@ import { Sprite } from './sprite.js';
 
 // Placar preso à cabine, pendurado no teto por uma haste.
 
-const WIDTH = 90, BOARD_HEIGHT = 91, STEM_HEIGHT = 20;
+const WIDTH = 90, BOARD_HEIGHT = 105, STEM_HEIGHT = 20;
 const STEM = { x: 34, width: 24 };
 const VISIBLE_RACERS = 5;
 const FIRST_ROW = STEM_HEIGHT + 11, ROW_HEIGHT = 11, FOOTER_Y = STEM_HEIGHT + BOARD_HEIGHT - 13, MARGIN = 7;
@@ -47,6 +47,27 @@ function paintRows(ctx, race) {
     ctxText(ctx, text, MARGIN, FIRST_ROW + row++ * ROW_HEIGHT, entry.isPlayer ? '#f01818' : '#e8e8e8');
     previous = i;
   }
+  return row;                                        // quantas linhas ficaram ocupadas (com os "----" entre elas)
+}
+
+const AHEAD_COLOR = '#f0a040', BEHIND_COLOR = '#60c0f0', DIM = '#4a463c', MAX_METERS = 999;
+
+// Faixa (cuja altura `top` o placar calcula conforme as linhas usadas) com a distância em metros até o piloto logo à frente (seta para cima) e o logo atrás (seta para baixo).
+function paintRivals(ctx, rivals, top) {
+  ctx.fillStyle = '#2a2822';
+  ctx.fillRect(MARGIN, top - 2, WIDTH - MARGIN * 2, 1);
+  [[MARGIN, 'ahead', AHEAD_COLOR, true], [WIDTH / 2 + 3, 'behind', BEHIND_COLOR, false]].forEach(([x, key, color, up]) => {
+    const rival = rivals?.[key];
+    ctx.fillStyle = rival ? color : DIM;
+    // Seta de 7x7 pixels: triângulo para cima ou para baixo.
+    for (let row = 0; row < 4; row++) {
+      const width = 1 + row * 2, y = up ? top + 1 + row : top + 7 - 1 - row;
+      ctx.fillRect(x + 3 - row, y, width, 1);
+    }
+    ctx.fillRect(x + 2, up ? top + 5 : top + 1, 3, 3);
+    const text = rival ? `${Math.min(MAX_METERS, Math.round(Math.abs(rival.meters)))}M` : '--';
+    ctxText(ctx, text, x + 10, top + 1, rival ? color : DIM);
+  });
 }
 
 export function createScoreboard(parent) {
@@ -58,13 +79,15 @@ export function createScoreboard(parent) {
   const sprite = new Sprite(parent, canvas, { ...LAYOUT.scoreboard, depth: DEPTH.gauges, legibleWhenReduced: true });
 
   let lastKey = '';
-  return (race, kills) => {
-    const key = `${race.order.map(entry => entry.name).join()}|${race.lap}|${kills}`;
+  return (race, kills, rivals) => {
+    const meters = rival => (rival ? Math.min(MAX_METERS, Math.round(Math.abs(rival.meters))) : '-');
+    const key = `${race.order.map(entry => entry.name).join()}|${race.lap}|${kills}|${meters(rivals?.ahead)}|${meters(rivals?.behind)}`;
     if (key === lastKey) return;
     lastKey = key;
 
     paintFrame(ctx);
-    paintRows(ctx, race);
+    const rows = paintRows(ctx, race);
+    paintRivals(ctx, rivals, FIRST_ROW + rows * ROW_HEIGHT + 3);   // sempre logo abaixo da última linha, sem cobrir nenhum nome
     ctxText(ctx, `K ${kills}`, MARGIN, FOOTER_Y, '#e8e8e8');
     const laps = `${race.lap} / ${LAPS}`;
     ctxText(ctx, laps, WIDTH - MARGIN - textWidth(laps), FOOTER_Y, '#e8e8e8');

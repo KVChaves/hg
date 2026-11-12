@@ -74,7 +74,7 @@ export function createWeapon({ scene, camera, targets, extraTargets = () => [], 
   }
 
   weapon.fire = () => {
-    if (weapon.cooldown > 0 || weapon.isReloading) return;
+    if (weapon.cooldown > 0 || weapon.isReloading || shooter.effects.emp > 0) return;
     if (weapon.ammo <= 0) {
       if (weapon.reserve <= 0) {
         weapon.dryFires++;

@@ -5,6 +5,7 @@ import { pixelTexture } from '../textures.js';
 import { glyphTexture } from './neonGlyphs.js';
 import { acrossRoad, alongRoad, archFrame, EDGE, nearRoad, pickFrom, scatter, solid } from './propKit.js';
 import { partsOf } from './originalModels.js';
+import { neonGate } from './finishGates.js';
 
 const NIGHT = 0x9690d4;                  // luz fria da noite sobre as texturas do original
 
@@ -30,13 +31,15 @@ function windowTexture() {
 export const NEON_TOKYO = {
   id: 'neonTokyo', name: 'NEON TOKYO', music: 'neonTokyo',
   sky: 0x16102e, fog: [16, 220], cabinTint: 0xb4a0e8,
-  shape: { wiggle: 0.26, targetLength: 2000, relief: 5, hillScale: 140, sharpCurves: 3 },
+  // Quarteirões: muitas retas e esquinas fechadas, asfalto molhado de aderência alta e um túnel que pisca no ritmo.
+  shape: { wiggle: 0.16, targetLength: 2000, relief: 5, hillScale: 140, sharpCurves: 4, harmonics: [[4, 0.6], [2, 0.5]] },
+  surface: { grip: 1.12, side: 1.15, accel: 1.05, offroad: 1.5 },
   layout: {
     jump: { fallLabel: 'CAIU NO ABISMO', below: 9 },        // o fundo luminoso fica bem abaixo da rampa
     hazards: [{ kind: 'kaijuCrossing', count: 3 }],           // o kaiju atravessa nos cruzamentos
     // Túnel apagado: no breu só brilham as bordas da pista (e os faróis dos carros).
     dark: {
-      length: [160, 220], fog: [0, 3], glowEdges: [0x20e0f0, 0xf030b0],
+      length: [160, 220], fog: [0, 3], pulse: true, glowEdges: [0x20e0f0, 0xf030b0],
       style: { wall: '#06050c', speckle: ['#0c0a16', '#040308'], rib: 0x08070e, portal: 0x20e0f0, lines: [] },
     },
     tunnels: { count: 2, length: [90, 140] },
@@ -50,7 +53,7 @@ export const NEON_TOKYO = {
     paint(ctx) { ctx.fillStyle = 'rgba(32,224,240,.35)'; for (let y = 0; y < 64; y += 8) ctx.fillRect(4, y, 56, 1); },
   },
   kerb: ['#f030b0', '#20d0f0'],
-  gantry: [0x18142a, 0xf030b0, 0x20e0f0],
+  gantry: neonGate,
   tunnel: { wall: '#16122c', speckle: ['#241c44', '#100c20', '#2e2458'], rib: 0xf030b0, portal: 0x20e0f0, lines: [{ angle: 0.45, width: 0.035, color: 0x20e0f0 }, { angle: Math.PI - 0.45, width: 0.035, color: 0xf030b0 }, { angle: Math.PI / 2, width: 0.03, color: 0xf0e020 }] },
   // Barreira de concreto com faixas de neon.
   wall: {

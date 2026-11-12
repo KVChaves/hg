@@ -2,12 +2,61 @@ import * as THREE from 'three';
 import { paintGradient } from '../atmosphere.js';
 import { ctxText } from '../../art/font.js';
 import { acrossRoad, alongRoad, archFrame, EDGE, pickFrom, scatter, solid } from './propKit.js';
+import { stadiumGate } from './finishGates.js';
+import { track, trackAt } from '../track.js';
+
+// Grande arquibancada de degraus dos dois lados de uma reta longa, com a torcida fazendo a ola: uma onda de gente
+// em pé que corre pela reta, do lado de quem larga para o outro.
+function addWaveStands(ctx) {
+  const LENGTH = 240, COLUMN = 3, TIERS = 4, STEP = 12;
+  const spots = [];
+  for (let start = 140; start < track.length - LENGTH - 140; start += STEP) {
+    let straight = true;
+    for (let d = start; d <= start + LENGTH && straight; d += STEP) straight = ctx.isOpen(d) && track.curvature[Math.round(d / track.step) % track.count] < 1 / 300;
+    if (straight) spots.push(start);
+  }
+  if (!spots.length) return;
+  const first = spots[Math.floor(ctx.random() * spots.length)];
+  const columns = Math.floor(LENGTH / COLUMN), seats = columns * TIERS * 2, tint = new THREE.Color();
+  const steps = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), solid(0x6a6c78), TIERS * 2 * columns);
+  const crowd = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), solid(0xffffff), seats);
+  steps.frustumCulled = crowd.frustumCulled = false;
+  const matrix = new THREE.Matrix4(), rotation = new THREE.Quaternion(), euler = new THREE.Euler(), scale = new THREE.Vector3(), place = new THREE.Vector3();
+  const seat = [];
+  let stepIndex = 0;
+  const colors = [0xc04030, 0x3060b0, 0xe0c040, 0x40a060, 0xe8e0d0];
+  for (let c = 0; c < columns; c++) {
+    const t = trackAt(first + c * COLUMN), yaw = Math.atan2(-t.tx, -t.tz);
+    euler.set(0, yaw, 0);
+    rotation.setFromEuler(euler);
+    for (const side of [-1, 1]) {
+      for (let tier = 0; tier < TIERS; tier++) {
+        const lateral = side * (EDGE + 6 + tier * 2.2), x = t.x - t.tz * lateral, z = t.z + t.tx * lateral, h = 1.4 * (tier + 1);
+        matrix.compose(place.set(x, t.y + (h - 3) / 2, z), rotation, scale.set(COLUMN + 0.1, h + 3, 2.2));
+        steps.setMatrixAt(stepIndex++, matrix);
+        seat.push({ x, y: t.y + h + 0.5, z, rotation: rotation.clone(), phase: c * COLUMN });
+        crowd.setColorAt(seat.length - 1, tint.setHex(colors[Math.floor(ctx.random() * colors.length)]));
+      }
+    }
+  }
+  ctx.group.add(steps, crowd);
+  ctx.onUpdate(time => {
+    seat.forEach((s, i) => {
+      const wave = Math.max(0, Math.sin(s.phase * 0.09 - time * 3.2)) ** 3;   // a onda corre pela reta
+      matrix.compose(place.set(s.x, s.y + wave * 1.1, s.z), s.rotation, scale.set(2.1, 0.9 + wave * 0.9, 1.5));
+      crowd.setMatrixAt(i, matrix);
+    });
+    crowd.instanceMatrix.needsUpdate = true;
+  });
+}
 
 // Dia claro de competição: grama listrada, arquibancadas, refletores, bandeiras e confete.
 export const STADIUM = {
   id: 'stadium', name: 'ESTADIO', music: 'stadium',
   sky: 0xbcdcf0, fog: [40, 340], cabinTint: 0xfff4e4,
-  shape: { wiggle: 0.14, targetLength: 2100, relief: 3.5, hillScale: 220, sharpCurves: 2 },
+  // Oval de corrida: duas retas compridas e curvas largas; asfalto novo, o de melhor aderência.
+  shape: { wiggle: 0.05, targetLength: 2200, relief: 3.5, hillScale: 220, sharpCurves: 0, harmonics: [[2, 0.5], [3, 0.2]], stretch: [1.45, 0.62] },
+  surface: { grip: 1.15, side: 1.2, accel: 1.05, offroad: 1.8 },
   layout: {
     jump: { fallLabel: 'CAIU NA PISCINA' },
     hazards: [{ kind: 'roadworks', count: 2 }, { kind: 'pitTires', count: 2 }],   // obras sinalizadas e pneus soltos do box
@@ -23,7 +72,7 @@ export const STADIUM = {
     paint(ctx) { ctx.fillStyle = 'rgba(255,255,255,.1)'; ctx.fillRect(10, 0, 6, 64); ctx.fillRect(48, 0, 6, 64); },
   },
   kerb: ['#d82020', '#f0ece4'],
-  gantry: [0x2a2a30, 0x2060c0, 0xe8e4dc],
+  gantry: stadiumGate,
   tunnel: { wall: '#6e6e74', speckle: ['#828288', '#5a5a60', '#909096'], rib: 0xe8e4dc, portal: 0x2060c0, lines: [{ angle: Math.PI / 2, width: 0.06, color: 0xfff4c8 }] },
   // Barreira de corrida com patrocinadores inventados.
   wall: {
@@ -55,6 +104,7 @@ export const STADIUM = {
   },
 
   addProps(ctx) {
+    addWaveStands(ctx);
     const stand = new THREE.BoxGeometry(1, 1, 1);
     stand.translate(0, 0.5, 0);
     const crowd = new THREE.BoxGeometry(1, 0.55, 0.8);

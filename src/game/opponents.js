@@ -7,6 +7,7 @@ import { BRIDGE_HALF } from './mapLayout.js';
 import { createFlip, lifeAfterDestruction, poseFlippingCar, RESPAWN_PROTECTION } from './carFlip.js';
 import { createRig, poseRig, resetRig, rigLean } from './carRoll.js';
 import { createEffects, tickEffects } from './effects.js';
+import { absorbShield } from './shield.js';
 import { OPPONENT_PROFILES } from './opponentProfiles.js';
 import { TRAP_TYPES } from './trapTypes.js';
 import { upgradeFactor } from './shop.js';
@@ -122,7 +123,7 @@ export function damageOpponent(op, amount, attacker) {
     return false;
   }
   if (op.protectedFor > 0 || op.dead > 0) return false;
-  op.hp -= amount;
+  op.hp -= absorbShield(op, amount);
   if (attacker && attacker !== op) {
     op.grudge = GRUDGE_TIME;
     op.grudgeTarget = attacker;
@@ -261,7 +262,7 @@ function updateNitro(op, dt, field) {
     op.nitroBurst = between(NITRO_BURST);
     op.nitroWait = between(NITRO_PAUSE);
   }
-  op.nitroActive = op.nitroBurst > 0 && op.nitro > 0;
+  op.nitroActive = op.nitroBurst > 0 && op.nitro > 0 && op.effects.emp <= 0;
   if (op.nitroActive) op.nitro = Math.max(0, op.nitro - dt * NITRO_DRAIN / op.nitroCapacity);
 }
 

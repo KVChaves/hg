@@ -172,6 +172,143 @@ const BUILDERS = {
     addSign(group, dist - SIGN_AHEAD + 18, diamondSign(ctx => { ctx.beginPath(); ctx.arc(16, 17, 7, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#f0c020'; ctx.beginPath(); ctx.arc(16, 17, 3, 0, Math.PI * 2); ctx.fill(); }));
   },
 
+  // Mato seco rolando de um lado: placa de vento e moitas secas na beira, de onde vêm as bolas.
+  tumbleweeds(group, { dist, side }) {
+    const brush = new THREE.IcosahedronGeometry(1, 0);
+    for (let i = 0; i < 9; i++) {
+      const mesh = put(group, brush, solid(i % 2 ? 0xa08448 : 0xb89a5a), spot(dist - 12 + Math.random() * 24, side * (HALF + 3 + Math.random() * 10), 0.6));
+      mesh.scale.set(0.8 + Math.random(), 0.6 + Math.random() * 0.6, 0.8 + Math.random());
+    }
+    addSign(group, dist - SIGN_AHEAD, diamondSign(ctx => { ctx.beginPath(); ctx.arc(16, 17, 6, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#f0c020'; ctx.fillRect(8, 16, 16, 2); }));
+  },
+
+  // Rota de caravana cruzando a estrada, com palmeiras de oásis na beira e placa de camelos.
+  camelCrossing(group, { dist }) {
+    const trail = new THREE.PlaneGeometry(TRACK_WIDTH + 6, 3.5);
+    trail.rotateX(-Math.PI / 2);
+    put(group, trail, solid(0xb88c4a, { polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }), spot(dist, 0, 0.03, true), { y: Math.PI / 2 });
+    for (const side of [-1, 1]) {
+      const at = spot(dist + 5, side * (HALF + 5));
+      put(group, new THREE.CylinderGeometry(0.25, 0.4, 7, 6), solid(0x6a4a28), { ...at, y: at.y + 3.5 }, { z: side * 0.12 });
+      for (let leaf = 0; leaf < 5; leaf++) put(group, new THREE.BoxGeometry(4, 0.12, 0.7), solid(0x3a8a3a), { ...at, y: at.y + 7 }, { y: leaf * 1.26, z: -0.35 });
+    }
+    addSign(group, dist - SIGN_AHEAD, diamondSign(ctx => { ctx.fillRect(8, 14, 14, 5); ctx.fillRect(18, 8, 4, 8); ctx.fillRect(22, 8, 3, 3); for (const x of [9, 12, 18, 21]) ctx.fillRect(x, 19, 2, 6); ctx.fillRect(12, 11, 3, 3); }));
+  },
+
+  // Cactos na faixa interditada, com cerca de estacas e placa de aviso. Os cactos grandes são os obstáculos.
+  cactusPatch(group, { dist, side }) {
+    addSign(group, dist - SIGN_AHEAD, textSign('CACTOS', '#3a8a3a', '#f0f0f0'));
+    const post = new THREE.BoxGeometry(0.25, 1.4, 0.25), bar = new THREE.BoxGeometry(0.15, 0.2, 3);
+    for (let along = -9; along <= 9; along += 3) {
+      const at = spot(dist + along, side * (HALF - 0.5), 0, true);
+      put(group, post, solid(0x6a4a28), { ...at, y: at.y + 0.7 });
+      put(group, bar, solid(0x8a6a3a), { ...at, y: at.y + 1.1 }, { y: Math.PI / 2 });
+    }
+    const small = new THREE.CylinderGeometry(0.22, 0.26, 1.2, 6);
+    for (let i = 0; i < 6; i++) put(group, small, solid(0x4a9a3a), spot(dist - 8 + i * 3.2, side * (HALF + 3 + Math.random() * 4), 0.6));
+  },
+
+  // Mesa de arenito na beira com a coluna rachada: ela é o obstáculo; aqui ficam o entulho e a placa.
+  sandPillar(group, { dist, side }) {
+    const chunk = new THREE.DodecahedronGeometry(1, 0), colors = [0xc88a50, 0xa86a38, 0xe0b078];
+    for (let i = 0; i < 8; i++) {
+      const mesh = put(group, chunk, solid(colors[i % 3]), spot(dist - 5 + Math.random() * 10, side * (HALF + 1 + Math.random() * 5), 0.5));
+      mesh.scale.setScalar(0.5 + Math.random() * 0.9);
+    }
+    addSign(group, dist - SIGN_AHEAD, diamondSign(ctx => { ctx.fillRect(14, 6, 5, 16); ctx.fillRect(10, 22, 13, 3); }));
+  },
+
+  // Trilha de siris na areia cruzando a pista e placa de aviso.
+  crabCrossing(group, { dist }) {
+    const trail = new THREE.PlaneGeometry(TRACK_WIDTH + 6, 3);
+    trail.rotateX(-Math.PI / 2);
+    put(group, trail, solid(0xc8a870, { polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }), spot(dist, 0, 0.03, true), { y: Math.PI / 2 });
+    const rock = new THREE.DodecahedronGeometry(0.7, 0);
+    for (const side of [-1, 1]) for (let i = 0; i < 3; i++) put(group, rock, solid(0x8a7a68), spot(dist - 3 + i * 3, side * (HALF + 2 + Math.random() * 2), 0.3));
+    addSign(group, dist - SIGN_AHEAD, diamondSign(ctx => { ctx.fillRect(10, 14, 12, 5); ctx.fillRect(8, 11, 3, 4); ctx.fillRect(21, 11, 3, 4); for (const x of [10, 13, 18, 21]) ctx.fillRect(x, 19, 2, 4); }));
+  },
+
+  // Rede de vôlei na beira de onde as bolas escapam e rolam atravessando a pista.
+  beachBalls(group, { dist, side }) {
+    const net = spot(dist, side * (HALF + 6));
+    for (const along of [-3, 3]) put(group, new THREE.CylinderGeometry(0.1, 0.1, 3, 5), solid(0xe8e4dc), { ...net, x: net.x + Math.cos(net.yaw) * along, z: net.z - Math.sin(net.yaw) * along, y: net.y + 1.5 });
+    put(group, new THREE.BoxGeometry(6, 1, 0.05), solid(0xf0f0f0), { ...net, y: net.y + 2.4 });
+    const ball = new THREE.IcosahedronGeometry(0.5, 0);
+    for (let i = 0; i < 4; i++) put(group, ball, solid([0xe83a3a, 0xf0d030, 0x3a7ae8, 0xffffff][i]), spot(dist - 8 + i * 5, side * (HALF + 4 + Math.random() * 3), 0.5));
+    addSign(group, dist - SIGN_AHEAD, diamondSign(ctx => { ctx.beginPath(); ctx.arc(16, 17, 6, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#f0c020'; ctx.fillRect(10, 16, 12, 2); }));
+  },
+
+  // Guarda-sóis e toalhas na faixa interditada; o grande é o obstáculo.
+  umbrellaPatch(group, { dist, side }) {
+    addSign(group, dist - SIGN_AHEAD, textSign('PRAIA', '#2a9ab8', '#ffffff'));
+    const towel = new THREE.BoxGeometry(1.4, 0.05, 2.4);
+    [0xe83a3a, 0x3a7ae8, 0xf0d030, 0x3aa860].forEach((color, i) => put(group, towel, solid(color), spot(dist - 9 + i * 6, side * (HALF + 2.5 + (i % 2) * 2), 0.04), { y: i }));
+    const pole = new THREE.CylinderGeometry(0.05, 0.05, 2.4, 5), canopy = new THREE.ConeGeometry(1.6, 0.7, 8);
+    for (let i = 0; i < 3; i++) {
+      const at = spot(dist - 6 + i * 6, side * (HALF + 5), 0);
+      put(group, pole, solid(0xd8d8d0), { ...at, y: at.y + 1.2 });
+      put(group, canopy, solid([0x3a7ae8, 0xf0d030, 0xe83a3a][i]), { ...at, y: at.y + 2.6 });
+    }
+  },
+
+  // Coqueiro torto sobre a pista com cocos pendurados: é de lá que eles caem.
+  coconutFall(group, { dist, side }) {
+    const base = spot(dist, side * (HALF + 2.5)), lean = -side * 0.5;
+    put(group, new THREE.CylinderGeometry(0.3, 0.5, 11, 6), solid(0x7a5a38), { ...base, y: base.y + 5.5 }, { z: lean });
+    const top = spot(dist, side * (HALF + 2.5 - Math.sin(-lean) * 5.4), 0);
+    for (let leaf = 0; leaf < 6; leaf++) put(group, new THREE.BoxGeometry(5, 0.15, 1.1), solid(leaf % 2 ? 0x2f8a3a : 0x3aa048), { ...top, y: top.y + 10.6 }, { y: leaf * 1.05, z: -0.3 });
+    const coconut = new THREE.IcosahedronGeometry(0.45, 0);
+    for (let i = 0; i < 4; i++) put(group, coconut, solid(0x6a4a28), spot(dist - 1.2 + i * 0.8, side * (HALF + 0.4), 10.2));
+    addSign(group, dist - SIGN_AHEAD, diamondSign(ctx => { ctx.beginPath(); ctx.arc(16, 20, 5, 0, Math.PI * 2); ctx.fill(); ctx.fillRect(15, 7, 2, 8); }));
+  },
+
+  // Borda de cratera com rochas incandescentes no alto: de lá caem os meteoros.
+  meteorShower(group, { dist, side }) {
+    const rock = new THREE.DodecahedronGeometry(1, 0), glow = new THREE.DodecahedronGeometry(1, 0);
+    for (let along = -14; along <= 14; along += 3.5) for (let level = 0; level < 3; level++) {
+      const size = 2 + Math.random() * 1.6, mesh = put(group, rock, solid(level % 2 ? 0x4a4650 : 0x5a5660), spot(dist + along + Math.random() * 2, side * (12 - level * 0.6 + Math.random() * 3), level * 3.2));
+      mesh.scale.set(size, size * 0.9, size);
+    }
+    for (let i = 0; i < 3; i++) put(group, glow, solid(0xff8a30, { fog: false }), spot(dist - 5 + i * 5, side * (HALF + 2.5), 19)).scale.setScalar(0.9 + Math.random() * 0.4);
+    addSign(group, dist - SIGN_AHEAD, diamondSign(ctx => { ctx.beginPath(); ctx.arc(13, 20, 5, 0, Math.PI * 2); ctx.fill(); ctx.fillRect(16, 8, 3, 3); ctx.fillRect(19, 5, 3, 3); ctx.fillRect(22, 2, 3, 3); }));
+  },
+
+  // Marcas de esteira de rover cruzando a pista, balizas luminosas e placa.
+  roverCrossing(group, { dist }) {
+    const trail = new THREE.PlaneGeometry(TRACK_WIDTH + 6, 3.2);
+    trail.rotateX(-Math.PI / 2);
+    put(group, trail, solid(0x5a5e6a, { polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }), spot(dist, 0, 0.03, true), { y: Math.PI / 2 });
+    const beacon = new THREE.BoxGeometry(0.3, 0.3, 0.3);
+    for (const side of [-1, 1]) {
+      const at = spot(dist, side * (HALF + 1.6));
+      put(group, new THREE.CylinderGeometry(0.08, 0.08, 2.4, 5), solid(0xb8bcc8), { ...at, y: at.y + 1.2 });
+      put(group, beacon, solid(0xffb020, { fog: false }), { ...at, y: at.y + 2.5 });
+    }
+    addSign(group, dist - SIGN_AHEAD, diamondSign(ctx => { ctx.fillRect(8, 15, 16, 5); ctx.fillRect(12, 11, 7, 4); for (const x of [10, 15, 20]) ctx.fillRect(x, 20, 3, 3); }));
+  },
+
+  // Base e escombros da antena que tomba.
+  brokenAntenna(group, { dist, side }) {
+    const base = spot(dist, side * (HALF - 0.8), 0.2);
+    put(group, new THREE.CylinderGeometry(1, 1.3, 0.6, 7), solid(0x6a6e7a), { ...base, y: base.y + 0.1 });
+    const chunk = new THREE.DodecahedronGeometry(0.5, 0);
+    for (let i = 0; i < 5; i++) put(group, chunk, solid(i % 2 ? 0xb8bcc8 : 0x8a8e9a), spot(dist - 3 + i * 1.5, side * (HALF + 1 + Math.random() * 2.5), 0.4));
+    addSign(group, dist - SIGN_AHEAD, diamondSign(ctx => { ctx.fillRect(15, 6, 2, 16); ctx.fillRect(11, 9, 10, 2); ctx.fillRect(12, 22, 8, 2); }));
+  },
+
+  // Cristais luminosos na faixa interditada, com cerca de balizas.
+  crystalPatch(group, { dist, side }) {
+    addSign(group, dist - SIGN_AHEAD, textSign('GEMAS', '#2a90c0', '#ffffff'));
+    const post = new THREE.CylinderGeometry(0.08, 0.08, 1.4, 5), lamp = new THREE.BoxGeometry(0.25, 0.25, 0.25);
+    for (let along = -9; along <= 9; along += 3) {
+      const at = spot(dist + along, side * (HALF - 0.5), 0, true);
+      put(group, post, solid(0xb8bcc8), { ...at, y: at.y + 0.7 });
+      put(group, lamp, solid(0x40e0f0, { fog: false }), { ...at, y: at.y + 1.5 });
+    }
+    const small = new THREE.ConeGeometry(0.3, 1.2, 5);
+    for (let i = 0; i < 6; i++) put(group, small, solid(0x40e0f0, { fog: false }), spot(dist - 8 + i * 3.2, side * (HALF + 3 + Math.random() * 4), 0.6));
+  },
+
   // Cruzamento: faixa de pedestres e semáforos piscando no amarelo dos dois lados.
   kaijuCrossing(group, { dist }, onUpdate) {
     const stripe = new THREE.PlaneGeometry(0.9, 4);
@@ -192,6 +329,103 @@ const BUILDERS = {
 
 export function buildHazardSites(group, layout, onUpdate) {
   for (const site of layout.hazards) BUILDERS[site.kind]?.(group, site, onUpdate);
+}
+
+// Placa larga (64x32) para textos maiores, como NEVE ou ESTEIRA.
+function wideSign(text, background, color) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 64; canvas.height = 32;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = background;
+  ctx.fillRect(0, 6, 64, 20);
+  ctxText(ctx, text, Math.round(32 - textWidth(text) / 2), 13, color);
+  return pixelTexture(canvas);
+}
+function addWideSign(group, dist, texture, side = 1) {
+  const at = spot(dist, side * (HALF + 3));
+  put(group, new THREE.BoxGeometry(0.15, 2.6, 0.15), solid(0x4a4a4a), { ...at, y: at.y + 1.3 });
+  put(group, new THREE.PlaneGeometry(3.6, 1.8), new THREE.MeshBasicMaterial({ map: texture, transparent: true, alphaTest: 0.5, side: THREE.DoubleSide }), { ...at, y: at.y + 2.9 });
+}
+
+// Faixa sobre a pista entre duas distâncias e duas posições laterais, um tico acima do asfalto. `tile`: metros por repetição da imagem.
+function roadStrip(from, to, lateralA, lateralB, tile, lift = 0.03) {
+  const rows = Math.max(1, Math.round((to - from) / track.step)), pos = [], uv = [], index = [];
+  for (let i = 0; i <= rows; i++) {
+    const d = from + (to - from) * i / rows;
+    for (const [lateral, u] of [[lateralA, 0], [lateralB, 1]]) {
+      const p = spot(d, lateral, lift, true);
+      pos.push(p.x, p.y, p.z);
+      uv.push(u, (d - from) / tile);
+    }
+    if (i < rows) index.push(i * 2, i * 2 + 1, i * 2 + 2, i * 2 + 1, i * 2 + 3, i * 2 + 2);
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geometry.setIndex(index);
+  return geometry;
+}
+const overRoadMaterial = (extra = {}) => ({ side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -5, polygonOffsetUnits: -5, ...extra });
+
+// Aviso do clima pesado (areia, temporal, nevasca): placas e bandeirolas balançando antes da entrada, e, se a pista
+// alaga, uma lâmina d'água ondulando por cima dela. A neblina e as partículas ficam em scenery.js e main.js.
+export function buildStormSites(group, layout, onUpdate) {
+  for (const { start, length, label, flooded, waterColor } of layout.storms ?? []) {
+    addWideSign(group, start - 110, wideSign(label, '#d89040', '#1a1a1a'));
+    addSign(group, start - 60, diamondSign(ctx => { for (const y of [11, 16, 21]) ctx.fillRect(7, y, 18 - (y % 2) * 4, 2); }));
+    const flags = [];
+    for (const side of [-1, 1]) {
+      const at = spot(start - 20, side * (HALF + 2.5));
+      put(group, new THREE.BoxGeometry(0.15, 5, 0.15), solid(0x4a3a28), { ...at, y: at.y + 2.5 });
+      flags.push(put(group, new THREE.BoxGeometry(0.1, 0.9, 1.8), solid(0xc83a2a), { ...at, y: at.y + 4.4 }));
+    }
+    onUpdate?.(time => flags.forEach((flag, i) => { flag.rotation.y = Math.sin(time * 6 + i) * 0.5 + 0.4; }));
+    if (flooded) {
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = 32;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = waterColor; ctx.fillRect(0, 0, 32, 32);
+      ctx.fillStyle = '#8ac0d0'; for (let i = 0; i < 14; i++) ctx.fillRect(Math.random() * 28, Math.random() * 32, 3 + Math.random() * 4, 1);
+      const texture = pixelTexture(canvas);
+      texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+      const water = new THREE.Mesh(roadStrip(start, start + length, -HALF - 0.2, HALF + 0.2, 8, 0.05), new THREE.MeshBasicMaterial({ map: texture, transparent: true, opacity: 0.5, depthWrite: false, ...overRoadMaterial() }));
+      group.add(water);
+      onUpdate?.(time => { texture.offset.y = time * 0.15; texture.offset.x = Math.sin(time * 0.7) * 0.1; water.material.opacity = 0.45 + Math.sin(time * 2) * 0.06; });
+    }
+  }
+}
+
+// Esteiras rolantes: duas faixas de setas em movimento, uma em cada metade da pista, correndo em sentidos opostos.
+export function buildBeltSites(group, layout, onUpdate) {
+  const make = forward => {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 16;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = forward ? '#3a3226' : '#2a2c3a'; ctx.fillRect(0, 0, 16, 16);
+    ctx.fillStyle = forward ? '#f0b020' : '#d84020';
+    for (let k = 0; k < 5; k++) {                    // seta em V; v cresce no sentido da corrida
+      const y = forward ? 4 + k : 11 - k;
+      ctx.fillRect(7 - k, y, 2, 1); ctx.fillRect(7 + k, y, 2, 1);
+    }
+    const texture = pixelTexture(canvas);
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+    return texture;
+  };
+  for (const { start, length, dir } of layout.belts ?? []) {
+    const textures = [];
+    // Metade esquerda (lateral < 0) vai no sentido `dir`, a direita no contrário.
+    for (const [a, b, direction] of [[-HALF, -0.15, dir], [0.15, HALF, -dir]]) {
+      const texture = make(direction > 0);
+      textures.push([texture, direction]);
+      group.add(new THREE.Mesh(roadStrip(start, start + length, a, b, 4, 0.04), new THREE.MeshBasicMaterial({ map: texture, ...overRoadMaterial() })));
+    }
+    onUpdate?.(time => { for (const [texture, direction] of textures) texture.offset.y = -time * 1.4 * direction; });
+    addWideSign(group, start - 55, wideSign('ESTEIRA', '#e8b018', '#1a1a1a'), 1);
+    addWideSign(group, start - 55, wideSign('ESTEIRA', '#e8b018', '#1a1a1a'), -1);
+    const lampMaterial = solid(0xff5010, { fog: false });
+    for (const along of [0, length]) for (const side of [-1, 1]) put(group, new THREE.BoxGeometry(0.5, 0.5, 0.5), lampMaterial, spot(start + along, side * (HALF + 1.2), 1.2));
+    onUpdate?.(time => { lampMaterial.visible = Math.floor(time * 3) % 2 === 0; });
+  }
 }
 
 // Trecho de muro aberto para a travessia (o que atravessa vem de fora da pista). `side` -1 ou 1.

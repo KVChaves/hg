@@ -1,9 +1,10 @@
+import { cutByShot } from '../game/tether.js';
 import { CAR_MAX_HP } from '../config.js';
 import { bearingFrom, damagePlayer } from '../game/car.js';
 import { createMatch } from '../game/championship.js';
 import { damageOpponent } from '../game/opponents.js';
 import { hazardType } from '../game/trapTypes.js';
-import { BIOMES, pickMatchBiome } from '../world/biomes/index.js';
+import { BIOMES, pickMatchBiome, voteCandidates } from '../world/biomes/index.js';
 import { createHarpoonVisual } from '../world/harpoonVisual.js';
 
 // Partida online. Cada navegador simula o próprio carro e o admin simula os bots; todos enviam a posição
@@ -11,6 +12,7 @@ import { createHarpoonVisual } from '../world/harpoonVisual.js';
 // garagem, largada, fim da corrida e próxima rodada.
 
 const SNAPSHOT_INTERVAL = 1 / 15;
+const VOTE_TIME = 10, VOTE_RESULT_TIME = 1.8, VOTE_CHOICES = 3;
 const GARAGE_TIME = 45, GARAGE_GRACE = 1, RESULTS_TIME = 12, FINISH_GRACE = 30;
 const HIT_FLASH_TIME = 0.3, HARPOON_HEIGHT = 0.62, NOSE_FORWARD = 2.3;
 const BOT_PREFIX = 'bot';
@@ -18,11 +20,12 @@ const BOT_PREFIX = 'bot';
 const round = value => Math.round(value * 100) / 100;
 const isBotId = id => id.startsWith(BOT_PREFIX);
 
-export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = () => {}, net, scene, race, car, opponents, combat, traps, burning, foam, harpoon, pulls, weapon, look, garage, results, podium, getSpec, setRacerCount, setMatch, getMatch, getMatchKills, beginRace, getBiome, playAt, creditKill, rewardKillFor, announceTrapCatch, obstacles, onLateJoin }) {
+export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = () => {}, net, scene, race, car, opponents, combat, traps, mines, emp, burning, foam, harpoon, pulls, weapon, look, garage, results, podium, voteScreen, getSpec, setRacerCount, setMatch, getMatch, getMatchKills, beginRace, getBiome, playAt, creditKill, rewardKillFor, announceTrapCatch, obstacles, onLateJoin }) {
   const byId = new Map(), harpoonVisuals = new Map(), ready = new Set(), pool = [...opponents], killsOf = new Map();
   let isHost = false, phase = 'idle', phaseTimer = 0, snapshotTimer = 0, finishGrace = 0;
+  let vote = null;                                   // votação em andamento: { candidates, played, number, timeLeft, votes }
 
-  const online = { active: false, start, update, markReady, readyRoster, returnToLobby, onRoomChange, sendKill, sendCaught, sendShot, sendTrap, sendTrapBoom, sendExtinguisher, sendPull, sendObstacle, sendObstacleBreak };
+  const online = { active: false, start, update, markReady, castVote, readyRoster, returnToLobby, onRoomChange, sendKill, sendCaught, sendShot, sendTrap, sendTrapBoom, sendExtinguisher, sendPull, sendMine, sendEmp, sendPullEnd, sendObstacle, sendObstacleBreak };
   const me = () => race.field[0];
   const humanIds = () => race.field.filter(racer => !isBotId(racer.netId)).map(racer => racer.netId);
   const ownerOf = racer => (isBotId(racer.netId) ? net.room.hostId : racer.netId);
@@ -74,12 +77,31 @@ export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = 
     race.setOnline(true);
     setUpRacers(room);
     setMatch(createMatch({ racerNames: race.field.map(racer => racer.name), raceCount: room.config.races }));
-    if (isHost) {                                    // o mapa da primeira corrida já vale na garagem
-      const match = getMatch();
-      match.upcomingBiome = pickMatchBiome(match.biomesPlayed).id;
-      net.relay({ k: 'nb', b: match.upcomingBiome });
-    }
-    openGarage(Infinity);                            // a partida só começa com todos prontos
+    phase = 'waiting';
+    if (isHost) startVote();                         // o mapa se vota antes da garagem; a partida só larga com todos prontos
+  }
+
+  // O admin abre a votação com opções sorteadas entre os biomas ainda não jogados. Com uma só opção não há o que votar.
+  function startVote() {
+    const match = getMatch(), played = [...match.biomesPlayed], candidates = voteCandidates(played, VOTE_CHOICES);
+    if (candidates.length === 1) { broadcast({ k: 'vr', b: candidates[0].id, p: played, auto: true }); return; }
+    broadcast({ k: 'vt', c: candidates.map(biome => biome.id), p: played, n: match.racesDone + 1, tot: match.raceCount, s: VOTE_TIME });
+  }
+
+  const voteNames = () => new Map(race.field.filter(racer => !isBotId(racer.netId)).map(racer => [racer.netId, racer.name]));
+  const showVotes = () => voteScreen.setVotes(vote.votes, voteNames());
+
+  // Maioria vence; empate (ou ninguém votou) o admin sorteia entre os empatados e avisa todos.
+  function resolveVote() {
+    const tally = new Map(vote.candidates.map(id => [id, 0]));
+    for (const choice of vote.votes.values()) tally.set(choice, (tally.get(choice) ?? 0) + 1);
+    const top = Math.max(...tally.values()), tied = [...tally].filter(([, count]) => count === top).map(([id]) => id);
+    broadcast({ k: 'vr', b: tied[Math.floor(Math.random() * tied.length)], p: vote.played });
+  }
+
+  // O jogador clicou num mapa: vale o último clique até a votação acabar.
+  function castVote(biomeId) {
+    if (phase === 'vote') broadcast({ k: 'vv', b: biomeId });
   }
 
   // O jogador terminou a garagem: avisa todos e espera a largada.
@@ -116,7 +138,6 @@ export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = 
     } else if (phase === 'results' && (phaseTimer -= dt) <= 0) {
       phase = 'waiting';
       const match = getMatch();
-      if (!match.isOver && !match.upcomingBiome) match.upcomingBiome = pickMatchBiome(match.biomesPlayed).id;   // todos veem o próximo mapa na garagem
       broadcast({ k: match.isOver ? 'podium' : 'inter', m: match.snapshot() });
     } else if (phase === 'podium' && humanIds().every(id => ready.has(id))) {
       phase = 'waiting';
@@ -146,6 +167,7 @@ export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = 
       state.overturned ? 1 : 0, (isMe ? car.nitroActive : racer.nitroActive) ? 1 : 0,
       state.rig.active ? 1 : 0, round(state.rig.angle), round(state.rig.y), tip ? tip.map(round) : 0,
       (isMe ? car.effects : racer.effects).burning > 0 ? 1 : 0,
+      (isMe ? car.effects : racer.effects).shield > 0 ? 1 : 0,
     ];
   }
 
@@ -159,11 +181,12 @@ export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = 
   function receiveSnapshot(values) {
     const racer = byId.get(values[0]);
     if (!racer || !racer.remote) return;
-    const [, dist, lane, x, y, z, yaw, pitch, v, vx, vz, health, dead, protectedFor, overturned, nitro, rigActive, rigAngle, rigY, tip, burningNow] = values;
+    const [, dist, lane, x, y, z, yaw, pitch, v, vx, vz, health, dead, protectedFor, overturned, nitro, rigActive, rigAngle, rigY, tip, burningNow, shieldNow] = values;
     racer.snapshot = {
       dist, lane, x, y, z, yaw, pitch, v, vx, vz, health, dead, protectedFor, age: 0,
       overturned: Boolean(overturned), nitro: Boolean(nitro), rigActive: Boolean(rigActive), rigAngle, rigY, tip: tip || null,
     };
+    racer.effects.shield = shieldNow ? 1 : 0;        // idem: só desenha a bolha
     racer.effects.burning = burningNow ? 1 : 0;      // só para mostrar as chamas; quem queima é o navegador dele
   }
 
@@ -179,8 +202,21 @@ export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = 
     }
   }
 
+  // Contagem da votação (em todos os navegadores) e a pausa curta para ver o mapa escolhido antes da garagem.
+  function tickVote(dt) {
+    if (phase === 'vote' && vote) {
+      vote.timeLeft = Math.max(0, vote.timeLeft - dt);
+      voteScreen.setTime(vote.timeLeft);
+      if (isHost && (vote.timeLeft <= 0 || humanIds().every(id => vote.votes.has(id)))) resolveVote();
+    } else if (phase === 'voteResult' && (phaseTimer -= dt) <= 0) {
+      voteScreen.close();
+      openGarage(getMatch().racesDone === 0 ? Infinity : GARAGE_TIME);
+    }
+  }
+
   function update(frameTime) {
     if (!online.active) return;
+    tickVote(frameTime);
     if (isHost) stepHost(frameTime);
     if (phase === 'race') {
       sendSnapshots(frameTime);
@@ -194,7 +230,7 @@ export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = 
     let destroyed = false;
     if (target === me()) {
       const before = car.wrecked;
-      damagePlayer(car, a / CAR_MAX_HP);
+      damagePlayer(car, a * car.parts.bullet / CAR_MAX_HP);
       destroyed = car.health <= 0 && before <= 0;
       if (destroyed) onPlayerKilledBy(attacker);
       if (attacker) {
@@ -210,7 +246,32 @@ export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = 
 
   const HANDLERS = {
     s: data => data.r.forEach(receiveSnapshot),
-    nb: data => { if (getMatch()) getMatch().upcomingBiome = data.b; },
+    vt: data => {
+      const match = getMatch();
+      if (!match) return;
+      results.close();
+      ready.clear();
+      match.upcomingBiome = null;
+      phase = 'vote';
+      vote = { candidates: data.c, played: data.p, timeLeft: data.s, votes: new Map() };
+      voteScreen.open({ candidates: data.c.map(id => BIOMES.find(biome => biome.id === id)), played: data.p, number: data.n, total: data.tot, seconds: VOTE_TIME, myId: net.id });
+      voteScreen.setTime(data.s);
+      showVotes();
+    },
+    vv: (data, from) => {                            // `by`: o admin repassa os votos já dados a quem entrou no meio
+      if (phase !== 'vote' || !vote.candidates.includes(data.b)) return;
+      vote.votes.set(data.by ?? from, data.b);
+      showVotes();
+    },
+    vr: data => {
+      const match = getMatch();
+      if (!match) return;
+      match.biomesPlayed = [...data.p, data.b];
+      match.upcomingBiome = data.b;
+      if (!data.auto && voteScreen.isOpen) voteScreen.showResult(data.b);
+      phase = 'voteResult';
+      phaseTimer = data.auto ? 0.1 : VOTE_RESULT_TIME;
+    },
     hit: receiveHit,
     kill: data => {
       if (data.b) { rewardKillFor(byId.get(data.b)); return; }
@@ -225,7 +286,7 @@ export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = 
       const target = byId.get(data.t);
       if (target && !target.remote) burning.ignite(target, byId.get(data.by) ?? null, data.s);
     },
-    shot: data => combat.showRemoteShot(data.w, data.f, data.e),
+    shot: data => { combat.showRemoteShot(data.w, data.f, data.e); cutByShot(data.f, data.e); },
     ob: data => obstacles.spawnFromNetwork(data),
     obx: data => obstacles.removeFromNetwork(data.n),
     trap: data => traps.placeFromNetwork(data.i, data.d, data.l, byId.get(data.by), data.n),
@@ -235,6 +296,18 @@ export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = 
       if (!racer) return;
       foam.spray(racer);
       playAt('extinguisher', racer.x, racer.z);
+    },
+    mine: data => {                                  // outro navegador grudou uma mina: aqui só o aviso e a explosão
+      const owner = byId.get(data.o), target = byId.get(data.t);
+      if (owner && target) mines.addGhost(owner, target, data.f);
+    },
+    emp: data => {
+      const owner = byId.get(data.r);
+      if (owner) emp.receive(owner);
+    },
+    pend: data => {                                  // o dono soltou o cabo do arpão
+      const owner = byId.get(data.by);
+      if (owner) pulls.endFrom(owner);
     },
     pull: data => {
       const target = byId.get(data.t);
@@ -267,9 +340,11 @@ export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = 
     },
     inter: data => {
       if (!online.active) { joinLate(data.m); return; }
-      getMatch().upcomingBiome = data.m.upcomingBiome ?? null;
+      getMatch().upcomingBiome = null;
       resyncRoster(data.m);
-      openGarage(GARAGE_TIME);
+      results.close();
+      phase = 'waiting';
+      if (isHost) startVote();                       // o próximo mapa se vota antes de voltar à garagem
     },
     podium: () => {
       results.close();
@@ -293,6 +368,8 @@ export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = 
     }
     podium.close();
     results.close();
+    voteScreen.close();
+    vote = null;
     setMatch(null);
   }
 
@@ -308,7 +385,8 @@ export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = 
     created.restore(matchData, names);
     setMatch(created);
     onLateJoin();
-    openGarage(GARAGE_TIME);
+    if (matchData.upcomingBiome) openGarage(GARAGE_TIME);   // mapa já escolhido: entra na garagem; senão espera a votação em andamento
+    else { results.close(); phase = 'waiting'; }
   }
 
   // Quem entrou (ou saiu) durante a corrida passa a valer na garagem seguinte: a vaga livre vira um carro novo.
@@ -356,13 +434,21 @@ export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = 
     }
     // Quem entra enquanto todos ainda estão na garagem não espera a corrida: todos o encaixam na pista agora
     // e o admin manda a ele o placar para entrar na garagem junto.
-    if (phase === 'garage') {
+    if (phase === 'vote') for (const id of [...vote.votes.keys()]) if (!room.players.some(player => player.id === id)) vote.votes.delete(id);
+    if (phase === 'garage' || phase === 'vote' || phase === 'voteResult') {
       const joined = room.players.filter(player => !byId.has(player.id));
       if (joined.length) {
         resyncRoster(getMatch().snapshot());
-        if (isHost) for (const player of joined) net.relay({ k: 'inter', m: getMatch().snapshot() }, player.id);
+        if (isHost) for (const player of joined) {
+          net.relay({ k: 'inter', m: getMatch().snapshot() }, player.id);
+          if (phase === 'vote') {
+            net.relay({ k: 'vt', c: vote.candidates, p: vote.played, n: getMatch().racesDone + 1, tot: getMatch().raceCount, s: vote.timeLeft }, player.id);
+            for (const [by, b] of vote.votes) net.relay({ k: 'vv', b, by }, player.id);
+          }
+        }
       }
     }
+    if (phase === 'vote' && vote) showVotes();
   }
 
   // Avisa o piloto humano que destruiu ou pegou numa armadilha um carro simulado aqui.
@@ -394,6 +480,15 @@ export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = 
   }
   function sendExtinguisher(racer) {
     if (online.active) net.relay({ k: 'ext', r: racer.netId });
+  }
+  function sendMine(mine) {
+    if (online.active) net.relay({ k: 'mine', o: mine.owner.netId, t: mine.target.netId, f: round(mine.fuse) });
+  }
+  function sendEmp(racer) {
+    if (online.active) net.relay({ k: 'emp', r: racer.netId });
+  }
+  function sendPullEnd(target, shooter) {
+    if (online.active) net.relay({ k: 'pend', by: shooter.netId }, ownerOf(target));
   }
   function sendPull(target, shooter) {
     if (online.active) net.relay({ k: 'pull', t: target.netId, by: shooter.netId }, ownerOf(target));

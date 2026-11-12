@@ -5,7 +5,7 @@ import { fbm } from '../art/shade.js';
 // Pista gerada por semente: uma curva fechada em volta do centro, reamostrada em passos iguais, apoiada
 // num relevo. `track` é sempre o mesmo objeto; gerar outra pista troca o conteúdo dele.
 
-export const track = { length: 1, count: 0, step: 1, px: null, py: null, pz: null, tx: null, tz: null, slope: null, curvature: null, turn: null, wall: null, roll: null, gap: null, epic: null, drop: null, bed: null, enclosed: null, lift: null, flight: null, bridge: null, jumps: [], bridges: [], darkZones: [], hazards: [], valley: null, openWall: 0, chasmRange: null, heightAt: () => 0, meshHeightAt: () => 0 };
+export const track = { length: 1, count: 0, step: 1, px: null, py: null, pz: null, tx: null, tz: null, slope: null, curvature: null, turn: null, wall: null, roll: null, gap: null, epic: null, drop: null, bed: null, enclosed: null, lift: null, flight: null, bridge: null, jumps: [], bridges: [], darkZones: [], stormZones: [], belts: [], hazards: [], valley: null, openWall: 0, chasmRange: null, heightAt: () => 0, meshHeightAt: () => 0 };
 
 const CONTROL_COUNT = 18, HARMONICS = [[2, 0.8], [3, 0.55], [4, 0.3]];
 export const OPEN_WALL = TRACK_WIDTH / 2 + 3;         // até onde o centro do carro pode sair da pista, onde ficam os muros
@@ -62,10 +62,12 @@ export function createRandom(seed) {
 }
 
 // Ao redor de um centro os ângulos só aumentam, então a curva nunca se cruza.
-function controlPoints(random, { wiggle, targetLength, sharpCurves = 0 }) {
+// `harmonics` ([[ondas, peso]]) escolhe o feitio do traçado (poucas ondas = curvas largas, muitas = sinuoso) e
+// `stretch` ([x, z]) achata ou alonga a volta toda: oval comprido, por exemplo.
+function controlPoints(random, { wiggle, targetLength, sharpCurves = 0, harmonics = HARMONICS, stretch = [1, 1] }) {
   const baseRadius = targetLength / (Math.PI * 2 * 1.1);
   // Ondas longas dão curvas amplas, feitas sem frear; as fechadas vêm só de addNotches.
-  const waves = HARMONICS.map(([k, weight]) => ({ k, amplitude: wiggle * weight * (0.6 + random() * 0.4), phase: random() * Math.PI * 2 }));
+  const waves = harmonics.map(([k, weight]) => ({ k, amplitude: wiggle * weight * (0.6 + random() * 0.4), phase: random() * Math.PI * 2 }));
   const radii = Array.from({ length: CONTROL_COUNT }, (_, i) => {
     const angle = i / CONTROL_COUNT * Math.PI * 2;
     return 1 + waves.reduce((sum, { k, amplitude, phase }) => sum + amplitude * Math.sin(k * angle + phase), 0);
@@ -73,7 +75,7 @@ function controlPoints(random, { wiggle, targetLength, sharpCurves = 0 }) {
   addNotches(radii, random, sharpCurves);
   return radii.map((r, i) => {
     const angle = i / CONTROL_COUNT * Math.PI * 2;
-    return new THREE.Vector3(Math.cos(angle) * r * baseRadius, 0, Math.sin(angle) * r * baseRadius);
+    return new THREE.Vector3(Math.cos(angle) * r * baseRadius * stretch[0], 0, Math.sin(angle) * r * baseRadius * stretch[1]);
   });
 }
 
@@ -225,7 +227,7 @@ export function generateTrack(seed, shape) {
     py: road.py, slope: road.slope, wall: new Float32Array(geometry.count).fill(openWall), openWall, valley: shape.valley ?? null, chasmRange: shape.chasmRange ?? [RIVER_FROM, RIVER_TO],
     roll: new Float32Array(geometry.count), gap: new Uint8Array(geometry.count), epic: new Uint8Array(geometry.count),
     drop: new Float32Array(geometry.count), bed: new Float32Array(geometry.count), enclosed: new Uint8Array(geometry.count),
-    lift: new Float32Array(geometry.count), flight: new Uint8Array(geometry.count), bridge: new Uint8Array(geometry.count), jumps: [], bridges: [], darkZones: [], hazards: [],
+    lift: new Float32Array(geometry.count), flight: new Uint8Array(geometry.count), bridge: new Uint8Array(geometry.count), jumps: [], bridges: [], darkZones: [], stormZones: [], belts: [], hazards: [],
     heightAt: groundAt, meshHeightAt: meshAt,
   });
 }
@@ -315,6 +317,27 @@ export function darkZoneAt(distance) {
     return { zone, level: Math.min(1, offset / DARK_FADE, (zone.length + DARK_FADE * 2 - offset) / DARK_FADE) };
   }
   return null;
+}
+
+// Tempestade de areia: igual ao trecho escuro, mas a céu aberto. 0 fora, 1 no meio dela, com transição de 40 m.
+const STORM_FADE = 40;
+export function stormAt(distance) {
+  for (const zone of track.stormZones) {
+    const offset = offsetInto(distance, zone.start - STORM_FADE);
+    if (offset >= zone.length + STORM_FADE * 2) continue;
+    return { zone, level: Math.min(1, offset / STORM_FADE, (zone.length + STORM_FADE * 2 - offset) / STORM_FADE) };
+  }
+  return null;
+}
+
+// Esteira rolante: a metade esquerda da pista (offset < 0) corre num sentido e a direita no outro (`dir` +1 ou -1
+// para a esquerda). Devolve a aceleração (m/s², com sinal, positiva = no sentido da corrida) em (distance, offset).
+export function beltPush(distance, offset) {
+  for (const belt of track.belts) {
+    const along = offsetInto(distance, belt.start);
+    if (along < belt.length) return belt.force * belt.dir * (offset < 0 ? 1 : -1);
+  }
+  return 0;
 }
 
 const surface = { x: 0, y: 0, z: 0, roll: 0, heading: 0, twistYaw: 0, twistPitch: 0 };

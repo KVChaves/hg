@@ -69,7 +69,7 @@ function paintDamageBand(width, height, edgeAt) {
   return band;
 }
 
-export function createHud(canvas, { killFeed, pause, scope, featFeed, mainMenu, multiplayer, podium, matchSetup, results, matchLabel, biomeName, race, weapon, hands, garage, workshop, externalView, spectator, canSkipSpectate, isLocked, combat, car, activeCamera, opponents, isBehindCabin, isInSmoke, roadsideHelp, traps }) {
+export function createHud(canvas, { killFeed, pause, scope, featFeed, mainMenu, multiplayer, podium, matchSetup, results, voteScreen, matchLabel, biomeName, race, weapon, hands, garage, workshop, externalView, spectator, spectatorExit, isLocked, combat, car, activeCamera, opponents, isBehindCabin, isInSmoke, roadsideHelp, traps, powerStatus = () => [] }) {
   canvas.width = VIEW.width;
   canvas.height = VIEW.height;
   const ctx = canvas.getContext('2d');
@@ -101,6 +101,11 @@ export function createHud(canvas, { killFeed, pause, scope, featFeed, mainMenu, 
     else if (Math.abs(angle) > Math.PI - SECTOR) drawBand.back();
     else if (angle > 0) drawBand.left();
     else drawBand.right();
+  }
+
+  // Escudo, EMP e mina grudada: uma linha de estado para cada, logo abaixo do topo.
+  function drawPowerStatus() {
+    powerStatus().forEach(({ text, color }, i) => centered(ctx, text, 40 + i * 14, color, 1));
   }
 
   // Carro em chamas: línguas de fogo em pixel subindo do pé da tela, mais altas quanto mais fogo resta.
@@ -148,6 +153,21 @@ export function createHud(canvas, { killFeed, pause, scope, featFeed, mainMenu, 
     ctx.fillRect(CENTER_X + 2, CENTER_Y - 1, 5, 2);
     ctx.fillRect(CENTER_X - 1, CENTER_Y - 7, 2, 5);
     ctx.fillRect(CENTER_X - 1, CENTER_Y + 2, 2, 5);
+  }
+
+  // Mira de arremesso (arpão e mina): anel com cantos, bem diferente da mira da arma.
+  function drawThrowReticle() {
+    const pulse = 0.65 + 0.35 * Math.sin(performance.now() / 120), color = traps.current?.type.id === 'mine' ? '#ff6a50' : '#ffd060';
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = color;
+    const r = 14;
+    for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      ctx.fillRect(CENTER_X + sx * r - (sx > 0 ? 6 : 0), CENTER_Y + sy * r - (sy > 0 ? 2 : 0), 6, 2);
+      ctx.fillRect(CENTER_X + sx * r - (sx > 0 ? 2 : 0), CENTER_Y + sy * r - (sy > 0 ? 6 : 0), 2, 6);
+    }
+    ctx.fillRect(CENTER_X - 1, CENTER_Y - 1, 2, 2);
+    ctx.globalAlpha = 1;
+    centered(ctx, 'CLIQUE: ARREMESSAR  E: CANCELAR', CENTER_Y + 34, color);
   }
 
   // Riscos de vento na direção do centro e o ganho atual; a força acompanha o vácuo.
@@ -228,7 +248,7 @@ export function createHud(canvas, { killFeed, pause, scope, featFeed, mainMenu, 
     }
     if (spectator.active) {
       centered(ctx, `ESPECTANDO ${spectator.targetName}`, 20, '#ffe9a0', 2);
-      centered(ctx, canSkipSpectate() ? '< > TROCA DE PILOTO    ENTER VER RESULTADOS' : '< > TROCA DE PILOTO', 336, '#e8d8c0');
+      centered(ctx, `< > TROCA DE PILOTO    ${spectatorExit()}`, 336, '#e8d8c0');
     }
     if (race.finished) {
       centered(ctx, `CHEGOU EM ${race.finalRank} DE ${race.field.length}`, 118, '#ffe9a0', 2);
@@ -242,6 +262,7 @@ export function createHud(canvas, { killFeed, pause, scope, featFeed, mainMenu, 
     if (multiplayer.isOpen) { multiplayer.draw(ctx); return; }
     if (podium.isOpen) { podium.draw(ctx); return; }
     if (matchSetup.isOpen) { matchSetup.draw(ctx); return; }
+    if (voteScreen.isOpen) { voteScreen.draw(ctx); return; }
     if (results.isOpen) { results.draw(ctx); return; }
     if (garage.isOpen) {
       if (garage.view === 'cabin') hands.draw(ctx);
@@ -252,11 +273,13 @@ export function createHud(canvas, { killFeed, pause, scope, featFeed, mainMenu, 
     const scoped = scope.active && !externalView.active && !spectator.active;
     if (!externalView.active && !spectator.active && !scoped) {
       hands.draw(ctx);
-      if (hands.isHoldingGun()) drawCrosshair();
+      if (traps.aiming) drawThrowReticle();
+      else if (hands.isHoldingGun()) drawCrosshair();
     }
     if (race.started) drawRacerNames(ctx, activeCamera(), opponents, (x, y, z) => isInSmoke(x, z) || (!externalView.active && !scoped && isBehindCabin(x, y, z)));
     if (scoped) scope.draw(ctx);
     if (!externalView.active && !spectator.active) drawBurning();
+    drawPowerStatus();
     drawDamage();
     drawMessages();
     if (pause.isOpen) pause.draw(ctx);

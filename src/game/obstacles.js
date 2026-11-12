@@ -16,7 +16,7 @@ const COOLDOWN = [20, 35], FIRST_COOLDOWN = [6, 14], MAX_ACTIVE = 2;   // segund
 const LEAD_FOR_DOUBLE = 60, MAX_PRESSURE = 2;        // metros de vantagem do líder que dobram o ritmo da recarga
 const RESPAWN_CLEAR = 150;                           // o que fica esperando (árvore, obras) só volta sem ninguém a essa distância
 const FALL_TIME = 0.55, TOPPLE_TIME = 0.9, TOPPLE_SOLID_AT = 0.65, TOPPLE_LEAN = 0.12, WOBBLE = 0.06, WOBBLE_RATE = 18;
-const SHAKE = 0.25, SHAKE_RATE = 30, DUST_COLORS = { rock: [0x8a867e, 0x6a665e], stalactite: [0xd8f4ff, 0x9ad8f0], barrels: [0xe8c020, 0x5a5a5a], crates: [0x9a7038, 0x5a5a5a] };
+const SHAKE = 0.25, SHAKE_RATE = 30, DUST_COLORS = { rock: [0x8a867e, 0x6a665e], stalactite: [0xd8f4ff, 0x9ad8f0], barrels: [0xe8c020, 0x5a5a5a], crates: [0x9a7038, 0x5a5a5a], pillar: [0xe0b078, 0xc88a50], meteor: [0x8a8480, 0x5a5450], coconut: [0xd8c090, 0xa89a70], cactus: [0xd8c090, 0x9a8a60] };
 const LEAF_COLORS = [0x2f7a2a, 0x3a8c30, 0x5a3a20];
 const CAR_HALF_WIDTH = 0.95, CAR_HALF_LENGTH = 1.8, HIT_SLOWDOWN = 0.55, LEADER_HIT_SLOWDOWN = 0.2, LEADER_SPIN = 2.5;   // fração da velocidade que sobra
 const PASSED_MARGIN = 35, LINGER = 8, CLEAR_VIEW = 120;   // caído na pista sem ninguém por perto, some depois de LINGER s
@@ -213,6 +213,8 @@ export function createObstacles({ scene, race, car, isAuthority, onSound, onPlay
         if (k >= 1) {
           ob.phase = 'solid';
           ob.solid = true;
+          // Quem já está embaixo quando ela pousa não bate: a rocha só vale para quem a vê no chão.
+          ob.spared = new Set(race.field.filter(racer => touches(racer, ob)));
           ob.body.position.y = 0;
           ob.group.remove(ob.shadow);
           ob.group.getWorldPosition(position);
@@ -285,7 +287,8 @@ export function createObstacles({ scene, race, car, isAuthority, onSound, onPlay
       animate(ob, dt);
       steerBots(ob);
       if (ob.solid) {
-        const hitter = race.field.find(racer => !racer.remote && racer.dead <= 0 && !racer.airborne && !(racer.isPlayer && (car.wrecked > 0 || car.overturned || car.airborne)) && touches(racer, ob));
+        if (ob.spared) { for (const racer of ob.spared) if (!touches(racer, ob)) ob.spared.delete(racer); }
+        const hitter = race.field.find(racer => !ob.spared?.has(racer) && !racer.remote && racer.dead <= 0 && !racer.airborne && !(racer.isPlayer && (car.wrecked > 0 || car.overturned || car.airborne)) && touches(racer, ob));
         if (hitter) { crash(hitter, ob); continue; }
       }
       // Pedra caída, árvore tombada: saem quando todos passaram, ou depois de um tempo longe de todo mundo.

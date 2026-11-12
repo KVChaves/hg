@@ -19,9 +19,12 @@ export const maxUpgradeLevel = id => UPGRADES[id].levels.length - 1;
 export const upgradeFactor = (id, level) => UPGRADES[id].levels[level].factor;
 export const upgradePrice = (id, level) => UPGRADES[id].levels[level].price;
 
-// `loadout` é { weaponId, trapIds, trapCounts, upgrades, parts }; vagas vazias do bagageiro são null.
-export function loadoutCost({ weaponId, trapIds, trapCounts, upgrades, parts: carParts }) {
-  const items = trapIds.reduce((sum, id, slot) => sum + (id ? TRAP_TYPES[id].price * trapCounts[slot] : 0), 0);
+// `loadout` é { weaponId, trunk, upgrades, parts }; `trunk` é { idDoItem: quantidade } e itens ausentes valem 0.
+export const trunkCost = trunk => Object.entries(trunk).reduce((sum, [id, count]) => sum + (TRAP_TYPES[id] ? TRAP_TYPES[id].price * count : 0), 0);
+export const trunkUnits = trunk => Object.values(trunk).reduce((sum, count) => sum + count, 0);
+
+export function loadoutCost({ weaponId, trunk, upgrades, parts: carParts }) {
+  const items = trunkCost(trunk);
   const upgradesCost = Object.keys(UPGRADES).reduce((sum, id) => sum + upgradePrice(id, upgrades[id]), 0);
   return WEAPON_TYPES[weaponId].price + items + upgradesCost + partsCost(carParts);
 }

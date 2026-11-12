@@ -3,6 +3,7 @@ import { paintGradient, paintSilhouette } from '../atmosphere.js';
 import { speckle } from './wallPaint.js';
 import { pixelTexture } from '../textures.js';
 import { billboard, EDGE, nearRoad, overRoad, pickFrom, scatter, solid } from './propKit.js';
+import { jungleGate } from './finishGates.js';
 
 // Selva fechada sob chuva: árvores gigantes, copas que escondem o céu e lama na estrada.
 
@@ -103,12 +104,15 @@ export const JUNGLE = {
   sky: 0x3e5c3e, fog: [6, 120], cabinTint: 0x96c48c,
   // Estrada de terra no fundo de um vale côncavo, sem acostamento: as encostas começam na beira da estrada.
   // O rio sob a rampa corta o vale de lado a lado (chasmRange: até onde o leito dele vai, a partir da pista).
-  shape: { wiggle: 0.26, targetLength: 2050, relief: 11, hillScale: 150, valley: VALLEY, chasmRange: [140, 190], sharpCurves: 2 },
+  // Traçado sinuoso, de muitas curvas seguidas; piso de lama, que segura pouco e arrasta; um temporal alaga um trecho.
+  shape: { wiggle: 0.3, targetLength: 2000, relief: 11, hillScale: 150, valley: VALLEY, chasmRange: [140, 190], sharpCurves: 3, harmonics: [[3, 0.7], [4, 0.6], [5, 0.4]] },
+  surface: { grip: 0.9, side: 0.8, drag: 0.08, top: 0.97, offroad: 1.8 },
   layout: {
     jump: { fallLabel: 'CAIU NO RIO' },
     hazards: [{ kind: 'leaningTree', count: 2 }, { kind: 'animalCrossing', count: 2 }],
     tunnels: { count: 3, length: [80, 140], open: true },
     bumps: { height: 1.2, length: 60 },
+    storm: { length: 300, label: 'CHUVA', color: 0x3a5446, fog: [5, 42], wind: 8, grip: 0.62, flooded: true },
   },
   ground: {
     base: [46, 66, 34], variation: 22,
@@ -124,8 +128,15 @@ export const JUNGLE = {
       for (let i = 0; i < 14; i++) ctx.fillRect(Math.random() * 64, Math.random() * 64, 2 + Math.random() * 8, 1);
     },
   },
-  kerb: ['#4a5a30', '#3a3020'],
-  gantry: [0x2a1c10, 0x3a6a2a, 0xc8b070],
+  // Beira de lama com raízes e musgo.
+  kerb: {
+    paint(ctx, n) {
+      ctx.fillStyle = '#3a2c1a'; ctx.fillRect(0, 0, n, n);
+      for (let i = 0; i < 40; i++) { ctx.fillStyle = ['#2a1e10', '#4a3a22', '#4a5a30'][i % 3]; ctx.fillRect(Math.random() * n, Math.random() * n, 1 + Math.random() * 3, 1 + Math.random() * 2); }
+      ctx.fillStyle = '#5a4026'; ctx.fillRect(0, 3, n, 2); ctx.fillRect(0, 10, n, 2);
+    },
+  },
+  gantry: jungleGate,
   tunnel: { rib: 0x2a1c10, leaves: 0x24561f },
   // Sem muro: os barrancos do vale fecham a pista (o limite de colisão continua no mesmo lugar).
   wall: null,

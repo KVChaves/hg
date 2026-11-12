@@ -3,6 +3,7 @@
 // nem no nitro: elas trocam resistência, controle e utilidade.
 //
 // Os efeitos são multiplicadores: 1 não muda nada. Quem aplica cada um:
+//   bullet   dano de bala (tiros de bots e de outros jogadores); limitado por BULLET_LIMIT
 //   crash    dano que o carro leva em batida (parede, obstáculo, outro carro)
 //   ram      dano que o outro carro leva ao bater neste
 //   grip     aderência em curva (soma das peças, limitada por GRIP_LIMIT)
@@ -17,6 +18,7 @@
 
 export const PART_KEYS = ['bumper', 'tire', 'glass', 'height'];
 export const DEFAULT_PARTS = { bumper: 'stock', tire: 'street', glass: 'clear', height: 'stock' };
+export const BULLET_LIMIT = 0.5;                    // as peças juntas cortam no máximo 50% do dano de bala (a melhoria de vida vem por cima)
 export const GRIP_LIMIT = 0.2;                       // as peças juntas mudam a aderência em no máximo 20%
 
 export const CAR_PARTS = {
@@ -25,9 +27,9 @@ export const CAR_PARTS = {
     variants: {
       stock: { name: 'Original', price: 0, summary: 'SEM EFEITO', stats: {} },
       sport: { name: 'Esportivo', price: 40, summary: '-10% DANO DE BATIDA', stats: { crash: 0.9 } },
-      steel: { name: 'Aco', price: 90, summary: '-30% DANO DE BATIDA, -5% ADERENCIA', stats: { crash: 0.7, grip: 0.95 } },
+      steel: { name: 'Aco', price: 110, summary: '-30% DANO DE BATIDA, -10% DANO DE BALA, -5% ADERENCIA', stats: { crash: 0.7, bullet: 0.9, grip: 0.95 } },
       ram: { name: 'Ariete', price: 70, summary: '-15% DANO DE BATIDA, QUEM VOCE BATE LEVA +50%', stats: { crash: 0.85, ram: 1.5, grip: 0.95 } },
-      absorber: { name: 'Absorvedor', price: 150, summary: '-45% DANO DE BATIDA', stats: { crash: 0.55 } },
+      absorber: { name: 'Absorvedor', price: 160, summary: '-45% DANO DE BATIDA, -10% DANO DE BALA', stats: { crash: 0.55, bullet: 0.9 } },
     },
   },
   tire: {
@@ -36,7 +38,7 @@ export const CAR_PARTS = {
       street: { name: 'Rua', price: 0, summary: 'SEM EFEITO', stats: {} },
       wide: { name: 'Largo', price: 130, summary: '+12% ADERENCIA, OLEO MENOS TRAICOEIRO, FORA DA PISTA FREIA +30%', stats: { grip: 1.12, oil: 1.5, offroad: 1.3 } },
       offroad: { name: 'Off-road', price: 80, summary: 'FORA DA PISTA FREIA 60% MENOS, -8% ADERENCIA', stats: { offroad: 0.4, grip: 0.92 } },
-      big: { name: 'Gigante run-flat', price: 70, summary: 'PNEU FURADO DURA E ATRAPALHA METADE, -5% ADERENCIA', stats: { punctureTime: 0.5, punctureEffect: 0.5, grip: 0.95 } },
+      big: { name: 'Gigante run-flat', price: 90, summary: 'PNEU FURADO DURA E ATRAPALHA METADE, -10% DANO DE BALA, -5% ADERENCIA', stats: { punctureTime: 0.5, punctureEffect: 0.5, bullet: 0.9, grip: 0.95 } },
       slim: { name: 'Fino', price: 60, summary: 'ADERE NO GELO E NO OLEO, -10% ADERENCIA NO SECO', stats: { ice: 2.2, oil: 1.8, grip: 0.9 } },
     },
   },
@@ -46,7 +48,7 @@ export const CAR_PARTS = {
       clear: { name: 'Comum', price: 0, summary: 'SEM EFEITO', stats: {} },
       light: { name: 'Anti-tinta', price: 60, summary: 'TINTA DURA 35% MENOS', stats: { paint: 0.65 } },
       medium: { name: 'Fume', price: 40, summary: 'FUMACA DURA 35% MENOS', stats: { smoke: 0.65 } },
-      dark: { name: 'Blindado', price: 90, summary: '-70% RACHADURAS, TINTA -20%, ESCURECE A VISAO', stats: { crack: 0.3, paint: 0.8 } },
+      dark: { name: 'Blindado', price: 140, summary: '-25% DANO DE BALA, -70% RACHADURAS, TINTA -20%, ESCURECE A VISAO', stats: { bullet: 0.75, crack: 0.3, paint: 0.8 } },
       black: { name: 'Preto total', price: 90, summary: 'TINTA E FUMACA -50%, VISAO MUITO RUIM', stats: { paint: 0.5, smoke: 0.5 } },
     },
   },
@@ -57,12 +59,12 @@ export const CAR_PARTS = {
       low: { name: 'Rebaixada', price: 40, summary: '+5% ADERENCIA, FORA DA PISTA FREIA +20%, POUSO +15% DANO', stats: { grip: 1.05, offroad: 1.2, landing: 1.15 } },
       stock: { name: 'Original', price: 0, summary: 'SEM EFEITO', stats: {} },
       high: { name: 'Elevada', price: 60, summary: 'FORA DA PISTA FREIA 35% MENOS, POUSO -30% DANO, TOMBA MAIS FACIL', stats: { offroad: 0.65, landing: 0.7, grip: 0.95, tip: 1.25 } },
-      lifted: { name: 'Rally', price: 110, summary: 'FORA DA PISTA FREIA 60% MENOS, POUSO -50% DANO, TOMBA BEM MAIS FACIL', stats: { offroad: 0.4, landing: 0.5, grip: 0.9, tip: 1.5 } },
+      lifted: { name: 'Rally', price: 130, summary: 'FORA DA PISTA FREIA 60% MENOS, POUSO -50% DANO, -10% DANO DE BALA (PROTECAO DE CARTER), TOMBA BEM MAIS FACIL', stats: { offroad: 0.4, landing: 0.5, bullet: 0.9, grip: 0.9, tip: 1.5 } },
     },
   },
 };
 
-const NEUTRAL = { crash: 1, ram: 1, grip: 1, offroad: 1, punctureTime: 1, punctureEffect: 1, oil: 1, ice: 1, landing: 1, tip: 1, paint: 1, smoke: 1, crack: 1 };
+const NEUTRAL = { bullet: 1, crash: 1, ram: 1, grip: 1, offroad: 1, punctureTime: 1, punctureEffect: 1, oil: 1, ice: 1, landing: 1, tip: 1, paint: 1, smoke: 1, crack: 1 };
 
 export const partPrice = (key, id) => CAR_PARTS[key].variants[id]?.price ?? 0;
 export const partsCost = parts => PART_KEYS.reduce((sum, key) => sum + partPrice(key, parts?.[key] ?? DEFAULT_PARTS[key]), 0);
@@ -75,6 +77,7 @@ export function partStats(parts = DEFAULT_PARTS) {
     const variant = CAR_PARTS[key].variants[parts[key]] ?? CAR_PARTS[key].variants[DEFAULT_PARTS[key]];
     for (const [name, value] of Object.entries(variant.stats)) stats[name] *= value;
   }
+  stats.bullet = Math.max(1 - BULLET_LIMIT, stats.bullet);
   stats.grip = Math.max(1 - GRIP_LIMIT, Math.min(1 + GRIP_LIMIT, stats.grip));
   return stats;
 }
