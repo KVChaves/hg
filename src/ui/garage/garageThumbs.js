@@ -310,7 +310,28 @@ const EXTERIOR = {
   glass: option => glassThumb(option),
 };
 
-const resolveImage = option => (typeof option.image === 'function' ? option.image() : option.image);
+// Peças feitas de PNG viram um canvas que se preenche quando a imagem carrega (1x1 até lá).
+const pngCanvases = new Map();
+function canvasFromPng(path) {
+  if (!pngCanvases.has(path)) {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 1;
+    const image = new Image();
+    image.onload = () => {
+      canvas.width = image.width;
+      canvas.height = image.height;
+      canvas.getContext('2d').drawImage(image, 0, 0);
+    };
+    image.src = path;
+    pngCanvases.set(path, canvas);
+  }
+  return pngCanvases.get(path);
+}
+
+const resolveImage = option => {
+  const image = typeof option.image === 'function' ? option.image() : option.image;
+  return typeof image === 'string' ? canvasFromPng(image) : image;
+};
 
 const INTERIOR = {
   wheel: resolveImage,

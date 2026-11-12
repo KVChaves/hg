@@ -7,7 +7,7 @@ import { WHEELS } from './wheels.js';
 
 // Catálogo de peças trocáveis. Para adicionar uma opção, basta uma entrada no arquivo da peça.
 export const PARTS = {
-  wheel: { label: 'Volante', options: WHEELS, default: 'bone' },
+  wheel: { label: 'Volante', options: WHEELS, default: 'bullSkull' },
   health: { label: 'Indicador de vida', options: HEALTH_METERS, default: 'bar' },
   shifter: { label: 'Câmbio', options: SHIFTERS, default: 'classic' },
   nitro: { label: 'Cilindro de nitro', options: NITROS, default: 'standard' },

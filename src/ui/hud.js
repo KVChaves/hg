@@ -2,6 +2,7 @@ import { SLIPSTREAM_KMH, VIEW } from '../config.js';
 import { ctxText, textWidth } from '../art/font.js';
 import { bayer, hash } from '../art/shade.js';
 import { clearClickable } from './panelKit.js';
+import { loadPng, pngNow } from '../cabin/pngPixels.js';
 import { drawRacerNames } from './racerNames.js';
 
 // Elementos de tela: mãos e arma (ver hands.js), mira e avisos.
@@ -14,6 +15,9 @@ const SUPPLY_BIG_TEXT = 26;                          // mensagens maiores usam a
 const WRONG_WAY_BLINK = 5;                           // meias-piscadas por segundo do aviso de contramão
 const BURN_FLAMES = 34, BURN_FLAME_HEIGHT = 46, BURN_FRAMES = 12;   // chamas no pé da tela com o carro pegando fogo
 const BURN_COLORS = ['#7a1808', '#d83a10', '#ff8a20', '#ffd060'];
+const FIRE_SPRITE = 'assets/fx/fire.png', SPEED_LINE_SPRITE = 'assets/fx/speed-line.png';
+loadPng(FIRE_SPRITE).catch(() => {});
+loadPng(SPEED_LINE_SPRITE).catch(() => {});
 
 function centered(ctx, text, y, color, scale = 1) {
   const x = Math.round(CENTER_X - textWidth(text, scale) / 2);
@@ -104,6 +108,21 @@ export function createHud(canvas, { killFeed, pause, scope, featFeed, mainMenu, 
     const left = car.effects.burning;
     if (left <= 0 || car.wrecked > 0) return;
     const frame = Math.floor(performance.now() / 1000 * BURN_FRAMES), strength = Math.min(1, left / 1.5);
+    const fireArt = pngNow(FIRE_SPRITE);
+    if (fireArt) {
+      const count = 16, step = VIEW.width / count;
+      for (let i = 0; i < count; i++) {
+        const edge = Math.abs(i / (count - 1) - 0.5) * 2;
+        const h = Math.round(80 * strength * (0.4 + 0.6 * edge) * (0.65 + 0.35 * hash(i, frame))), w = Math.round(h * 0.9);
+        if (h < 4) continue;
+        ctx.save();
+        if ((frame + i) & 1) { ctx.translate(Math.round(i * step + step / 2 + w / 2), 0); ctx.scale(-1, 1); } else ctx.translate(Math.round(i * step + step / 2 - w / 2), 0);
+        ctx.drawImage(fireArt, 0, VIEW.height - h, w, h);
+        ctx.restore();
+      }
+      if (Math.floor(performance.now() / 250) % 2 === 0) centered(ctx, 'PEGANDO FOGO', 290, '#ffb040', 2);
+      return;
+    }
     const width = VIEW.width / BURN_FLAMES;
     for (let i = 0; i < BURN_FLAMES; i++) {
       const edge = Math.abs(i / (BURN_FLAMES - 1) - 0.5) * 2;           // mais alto nos cantos, para não tapar a pista
@@ -136,6 +155,23 @@ export function createHud(canvas, { killFeed, pause, scope, featFeed, mainMenu, 
     const strength = car.slipstream;
     if (strength < SLIPSTREAM_MIN_SHOWN || !race.started || race.finished) return;
     const time = performance.now() / 1000;
+    const lineArt = pngNow(SPEED_LINE_SPRITE);
+    if (lineArt) {
+      ctx.globalAlpha = Math.min(0.85, strength * 0.85);
+      for (let i = 0; i < SLIPSTREAM_STREAKS / 2; i++) {
+        const angle = i * 2.399 * 2, phase = (time * 2.4 + i * 0.37) % 1, dx = Math.cos(angle), dy = Math.sin(angle) * 0.55;
+        const reach = 60 + phase * 190, y = SLIPSTREAM_CENTER_Y + dy * reach;
+        if (y < SLIPSTREAM_TOP || y > SLIPSTREAM_BOTTOM) continue;
+        ctx.save();
+        ctx.translate(Math.round(CENTER_X + dx * reach), Math.round(y));
+        ctx.rotate(Math.atan2(dy, dx));
+        ctx.drawImage(lineArt, 0, -2, Math.round(24 + phase * 60), 4);
+        ctx.restore();
+      }
+      ctx.globalAlpha = 1;
+      centered(ctx, `VACUO +${Math.ceil(strength * SLIPSTREAM_KMH)} KM/H`, 63, '#80e0ff');
+      return;
+    }
     ctx.fillStyle = '#d8f0ff';
     ctx.globalAlpha = Math.min(0.75, strength * 0.75);
     for (let i = 0; i < SLIPSTREAM_STREAKS; i++) {

@@ -6,8 +6,8 @@ import { dither, fbm, hash, vnoise } from '../../art/shade.js';
 
 export const WALL_SIZE = { width: 640, height: 640 };
 
-const ROOF = [0x0a0705, 0x0e0a07, 0x120d09, 0x17110c];
-const POST = [0x070302, 0x0c0503, 0x120805, 0x190e09];
+const ROOF = [0x120d09, 0x19130e, 0x211a14, 0x2b2219];
+const POST = [0x0e0807, 0x160d0a, 0x20130e, 0x2a1a13];
 const SILL = [0x170d09, 0x26170f, 0x352217, 0x452e21];
 const DOOR = [0x0b0504, 0x130806, 0x1c0d0a, 0x27130e, 0x331a13];
 const VINYL = [0x1a0d0a, 0x281410, 0x371d17, 0x47271f];
@@ -113,8 +113,56 @@ export function paintRightWall() {
   return r.commit();
 }
 
+// Forro do teto. O topo da imagem é a traseira; a base encosta no para-brisa.
+const LINER_EDGE = 0x3a2e22;
+
 export function paintCeiling() {
-  const r = new Raster(320, 256);
-  r.rect(0, 0, 320, 256, roof);
+  const W = 320, H = 256;
+  const r = new Raster(W, H);
+  r.rect(0, 0, W, H, (x, y) => dither(x, y, 0.3 + 0.5 * fbm(x / 40, y / 18) + (vnoise(x / 3, y / 3) - 0.5) * 0.12, ROOF, 0.9));
+
+  // trilhos laterais (a moldura em cima das janelas)
+  for (const side of [0, 1]) {
+    const x0 = side ? W - 16 : 0;
+    r.rect(x0, 0, 16, H, (x, y) => dither(x, y, 0.35 + (vnoise(x / 2, y / 14) - 0.5) * 0.5, [0x0a0604, 0x140c08, 0x1e130d, 0x2a1c14], 0.8));
+    r.rect(side ? x0 : x0 + 15, 0, 1, H, LINER_EDGE);
+  }
+
+  // costuras do forro com pontos de linha
+  for (const x of [106, 214]) {
+    r.rect(x, 0, 2, 226, 0x070403);
+    for (let y = 2; y < 226; y += 4) r.put(x - 1, y, 0x3a2c20);
+  }
+  for (const y of [70, 140]) {
+    r.rect(16, y, W - 32, 2, 0x070403);
+    for (let x = 18; x < W - 18; x += 4) r.put(x, y - 1, 0x3a2c20);
+  }
+
+  // manchas de uso
+  for (let i = 0; i < 9; i++) {
+    const cx = 30 + hash(i, 1) * 260, cy = 10 + hash(i, 2) * 200, rad = 6 + hash(i, 3) * 12;
+    r.disc(cx, cy, rad, (x, y) => dither(x, y, 0.35 + (vnoise(x / 4, y / 4) - 0.5) * 0.5, [0x0b0805, 0x120d09, 0x1a130d], 0.6));
+  }
+
+  // luz de teto
+  r.rect(143, 100, 34, 22, 0x070403);
+  r.rect(145, 102, 30, 18, 0x4a3b2c);
+  r.rect(147, 104, 26, 14, (x, y) => dither(x, y, 0.65 - (y - 104) / 18, [0x3a3024, 0x5a4c38, 0x7a6a50, 0x9a8a68], 0.7));
+  r.rect(158, 102, 2, 18, 0x2a2018);
+
+  // faixa acolchoada acima do para-brisa
+  r.rect(16, 226, W - 32, 30, (x, y) => dither(x, y, 0.28 + (vnoise(x / 10, y / 5) - 0.5) * 0.3, [0x070403, 0x0c0705, 0x140c08, 0x1e140d], 0.9));
+  r.rect(16, 226, W - 32, 1, 0x050302);
+  r.rect(16, 254, W - 32, 2, LINER_EDGE);
+
+  // quebra-sóis recolhidos
+  for (const [x0, x1] of [[24, 148], [172, 296]]) {
+    r.poly([[x0, 232], [x1, 232], [x1 - 3, 250], [x0 + 3, 250]], (x, y) => dither(x, y, 0.5 - (y - 232) / 40, [0x1c130d, 0x2a1d15, 0x3c2b1f, 0x544030], 0.8));
+    r.rect(x0 + 3, 250, x1 - x0 - 6, 2, 0x6a523c);
+    r.rect(x0, 232, x1 - x0, 1, 0x050302);
+  }
+  r.rect(148, 232, 24, 18, 0x050302);      // vão onde o retrovisor se prende
+  r.disc(160, 244, 5, 0x1a110c);
+  r.disc(160, 244, 3, 0x3a2c20);
   return r.commit();
 }

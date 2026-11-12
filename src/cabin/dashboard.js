@@ -6,21 +6,12 @@ import { createAmmoRack } from './ammoRack.js';
 import { createNitroFlame } from './nitroFlame.js';
 import { createTrapButton, createTrapDisplay } from './trapDisplay.js';
 import { Sprite } from './sprite.js';
+import { loadPng } from './pngPixels.js';
 
 // Mostradores do painel. Cada um guarda a arte fixa e só redesenha quando o valor muda.
 
 const SWEEP_START = Math.PI * 0.75, SWEEP = Math.PI * 1.5;
 const SPEEDOMETER_MAX_KMH = 180;
-
-function plotDial(r, cx, cy, radius, redFrom = 2) {
-  r.disc(cx, cy, radius, 0x050404);
-  r.ring(cx, cy, radius + 0.5, radius - 0.6, 0x4a4a4a);
-  for (let i = 0; i <= 8; i++) {
-    const t = i / 8, a = SWEEP_START + SWEEP * t, c = Math.cos(a), s = Math.sin(a);
-    const color = t >= redFrom ? 0xe02018 : 0x9a9a9a;
-    r.line(cx + c * (radius - 3), cy + s * (radius - 3), cx + c * (radius - 1.5), cy + s * (radius - 1.5), color);
-  }
-}
 
 function plotNeedle(r, cx, cy, radius, value) {
   const a = SWEEP_START + SWEEP * value;
@@ -28,18 +19,19 @@ function plotNeedle(r, cx, cy, radius, value) {
   r.rect(Math.floor(cx) - 1, Math.floor(cy) - 1, 3, 3, 0x6a6a6a);
 }
 
+// Mostradores do jogo original (Dial.png, 32x32) com os ponteiros e o visor digital desenhados por cima.
+const DIAL = 'assets/cabin/dial.png';
+const SHIFT_LIGHTS = 'assets/cabin/shift-lights.png', LIGHTS_W = 53, LIGHTS_H = 17;
+
 function createInstruments(parent) {
-  const W = 80, H = 28, LEFT = [18.5, 13.5], RIGHT = [61.5, 13.5], DIAL_R = 11;
+  const W = 144, H = 34, LEFT = [16, 16], RIGHT = [128, 16], DIAL_R = 13;   // um mostrador de cada lado do volante
   const r = new Raster(W, H);
 
-  r.poly([[6, 2], [74, 2], [79, 8], [79, 26], [1, 26], [1, 8]], (x, y) => dither(x, y, 0.5 + (vnoise(x / 8, y / 8) - 0.5) * 0.4, [0x0e0e0e, 0x161616, 0x202020], 1));
-  plotDial(r, ...LEFT, DIAL_R, 0.72);
-  plotDial(r, ...RIGHT, DIAL_R);
-  r.rect(32, 3, 16, 21, 0x5a5a5a);
-  r.rect(33, 4, 14, 19, 0x2a2a2a);
-  r.rect(34, 5, 12, 17, 0x000000);
   const base = r.snapshot();
-  const sprite = new Sprite(parent, r.commit(), { ...LAYOUT.instruments, depth: DEPTH.gauges });
+  const { x, y } = LAYOUT.instruments;
+  const sprite = new Sprite(parent, r.commit(), { x, y, depth: DEPTH.gauges });
+  new Sprite(parent, DIAL, { x: x + LEFT[0] - 16, y: y + LEFT[1] - 16, depth: DEPTH.gaugeFace });
+  new Sprite(parent, DIAL, { x: x + RIGHT[0] - 16, y: y + RIGHT[1] - 16, depth: DEPTH.gaugeFace });
 
   let last = '';
   return (kmh, rpm) => {
@@ -50,9 +42,32 @@ function createInstruments(parent) {
     r.restore(base);
     plotNeedle(r, ...LEFT, DIAL_R, rpm);
     plotNeedle(r, ...RIGHT, DIAL_R, Math.min(kmh / SPEEDOMETER_MAX_KMH, 1));
-    rasterTiny(r, shown, 40 - (shown.length * 4 - 1) / 2 | 0, 11, 0xc8c8c8);
+    rasterTiny(r, shown, RIGHT[0] - (shown.length * 4 - 1) / 2 | 0, 22, 0xc8c8c8);   // km/h no fundo do velocímetro
     r.commit();
     sprite.refresh();
+  };
+}
+
+// Luzes de troca de marcha: 6 quadros acendem das pontas para o centro conforme o giro; o 7º é o nitro aberto.
+function createShiftLights(parent) {
+  const canvas = document.createElement('canvas');
+  canvas.width = LIGHTS_W; canvas.height = LIGHTS_H;
+  const ctx = canvas.getContext('2d');
+  const sprite = new Sprite(parent, canvas, { ...LAYOUT.shiftLights, depth: DEPTH.gauges });
+  let sheet = null, last = -1, wanted = 0;
+
+  const show = () => {
+    if (!sheet) return;
+    ctx.clearRect(0, 0, LIGHTS_W, LIGHTS_H);
+    ctx.drawImage(sheet, 0, wanted * LIGHTS_H, LIGHTS_W, LIGHTS_H, 0, 0, LIGHTS_W, LIGHTS_H);
+    sprite.refresh();
+    last = wanted;
+  };
+  loadPng(SHIFT_LIGHTS).then(image => { sheet = image; show(); });
+
+  return (rpm, nitroOpen) => {
+    wanted = nitroOpen ? 6 : rpm < 0.55 ? 0 : Math.min(5, 1 + Math.floor((rpm - 0.55) / 0.09));
+    if (wanted !== last) show();
   };
 }
 
@@ -155,6 +170,7 @@ function rasterRotated(r, text, x, y) {
 
 export function createDashboard(parent) {
   const instruments = createInstruments(parent);
+  const shiftLights = createShiftLights(parent);
   const updateTrapDisplay = createTrapDisplay(parent);
   const trapButton = createTrapButton(parent);
   const nitro = createNitro(parent);
@@ -162,6 +178,7 @@ export function createDashboard(parent) {
 
   function update({ gear, nitroLevel, nitroOpen, reserveAmmo, trapSlot, trapReady, dt }) {
     instruments(gear.kmh, gear.rpm);
+    shiftLights(gear.rpm, nitroOpen);
     updateTrapDisplay(trapSlot);
     trapButton.setLit(trapReady);
     nitro.update(nitroLevel, nitroOpen, dt);

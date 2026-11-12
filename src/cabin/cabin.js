@@ -87,8 +87,9 @@ export function createCabin({ camera, car, loadout }) {
     health(option, color) {
       const meter = option.create(color);
       meter.draw(1);
-      const sprite = new Sprite(cockpit, meter.canvas, { ...LAYOUT.health, depth: DEPTH.gauges });
+      const sprite = new Sprite(cockpit, meter.canvas, { ...LAYOUT[option.layout ?? 'health'], depth: DEPTH.gauges });
       sprite.draw = value => { meter.draw(value); sprite.refresh(); };
+      meter.ready?.then(() => { lastHealth = -1; });   // quando as imagens chegam, desenha de novo
       return sprite;
     },
   };
@@ -114,6 +115,7 @@ export function createCabin({ camera, car, loadout }) {
     saveLoadout(loadout);
   }
 
+  const gatePlate = new Sprite(cockpit, 'assets/cabin/gate.png', { ...LAYOUT.gatePlate, depth: DEPTH.plate });
   for (const kind in PARTS) mount(kind, loadout[kind]);
 
   function swingCharm(dt, frameTime) {

@@ -209,7 +209,7 @@ const lapSupplies = createLapSupplies({
     audio.playWorldSound('itemCollected', 0, 0);
   },
 });
-const damageEffects = createCarDamageEffects(world, MAX_RACERS);
+const damageEffects = createCarDamageEffects(world, MAX_RACERS, () => (spectator.active ? spectator.camera : externalView.active ? externalView.camera : camera));
 const racerConditions = Array.from({ length: MAX_RACERS }, () => ({}));
 let activeConditions = racerConditions;
 const cabin = createCabin({ camera, car, loadout: loadLoadout() });

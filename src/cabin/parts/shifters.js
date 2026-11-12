@@ -76,4 +76,8 @@ export const SHIFTERS = {
   ball: { name: 'Bola oito', image: paintBallKnob, anchor: [16, 57], grip: [16, 16] },
   skull: { name: 'Caveira', image: paintSkullKnob, anchor: [17, 59], grip: [17, 18] },
   thandle: { name: 'Punho em T', image: paintTHandle, anchor: [22, 57], grip: [22, 10] },
+  // PNGs do jogo original (Half Grip).
+  blockKnob: { name: 'Manopla preta', image: 'assets/cabin/shifters/knob-a.png', anchor: [13, 31], grip: [13, 14] },
+  slimKnob: { name: 'Manopla fina', image: 'assets/cabin/shifters/knob-b.png', anchor: [13, 31], grip: [13, 14] },
+  redKnob: { name: 'Manopla com botão', image: 'assets/cabin/shifters/knob-c.png', anchor: [13, 27], grip: [13, 14] },
 };

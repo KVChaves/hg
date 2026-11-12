@@ -1,5 +1,6 @@
 import { VIEW } from '../config.js';
 import { ctxText, textWidth } from '../art/font.js';
+import { loadPng, pngNow } from '../cabin/pngPixels.js';
 
 // Peças visuais compartilhadas pelas telas de menu.
 
@@ -8,6 +9,31 @@ export const COLOR = {
   selected: '#e0a040', text: '#e8e4dc', button: '#7a1414', buttonHover: '#a42020',
   tooltip: '#3e3218', tooltipEdge: '#d8b048', muted: '#b0a080', backdrop: '#14141a', danger: '#f06050',
 };
+
+// Arte de interface do jogo original. Enquanto o PNG não carrega, as telas usam o desenho antigo.
+const UI = {
+  panel: 'assets/ui/panel.png', button: 'assets/ui/button.png', buttonPressed: 'assets/ui/button-pressed.png',
+  cell: 'assets/ui/cell.png', cellHover: 'assets/ui/cell-hover.png', sliderThumb: 'assets/ui/slider-thumb.png',
+};
+for (const path of Object.values(UI)) loadPng(path).catch(() => {});
+export const uiImage = name => pngNow(UI[name]);
+
+// Preenche `box` com a imagem: bordas de `edge` pixels intactas e o miolo repetido (nine-slice).
+export function nineSlice(ctx, image, box, edge) {
+  const { width: iw, height: ih } = image;
+  const e = Math.min(edge, Math.floor(box.width / 2), Math.floor(box.height / 2));
+  const xs = [0, e, iw - e, iw], ys = [0, e, ih - e, ih];
+  const dx = [box.x, box.x + e, box.x + box.width - e, box.x + box.width], dy = [box.y, box.y + e, box.y + box.height - e, box.y + box.height];
+  for (let j = 0; j < 3; j++) for (let i = 0; i < 3; i++) {
+    const w = dx[i + 1] - dx[i], h = dy[j + 1] - dy[j], sw = xs[i + 1] - xs[i], sh = ys[j + 1] - ys[j];
+    if (w <= 0 || h <= 0 || sw <= 0 || sh <= 0) continue;
+    // repete o miolo em vez de esticar, para as manchas da textura não alongarem
+    for (let ty = 0; ty < h; ty += sh) for (let tx = 0; tx < w; tx += sw) {
+      const cw = Math.min(sw, w - tx), ch = Math.min(sh, h - ty);
+      ctx.drawImage(image, xs[i], ys[j], cw, ch, dx[i] + tx, dy[j] + ty, cw, ch);
+    }
+  }
+}
 
 export const MEDALS = ['#f0c840', '#c8d4e4', '#cc8448'];     // ouro, prata e bronze
 
@@ -30,6 +56,11 @@ export function outline(ctx, { x, y, width, height }, color) {
 }
 
 export function panelBox(ctx, box) {
+  const art = uiImage('panel');
+  if (art) {
+    nineSlice(ctx, art, box, 5);
+    return;
+  }
   ctx.fillStyle = COLOR.panel;
   ctx.fillRect(box.x, box.y, box.width, box.height);
   outline(ctx, box, COLOR.edge);
@@ -52,22 +83,36 @@ export function drawColorChip(ctx, x, y, width, height, color) {
 
 export function drawButton(ctx, box, label, hovered) {
   markClickable(box);
-  ctx.fillStyle = hovered ? COLOR.buttonHover : COLOR.button;
-  ctx.fillRect(box.x, box.y, box.width, box.height);
-  outline(ctx, box, COLOR.edge);
+  const art = uiImage(hovered ? 'buttonPressed' : 'button');
+  if (art) {
+    nineSlice(ctx, art, box, 5);
+    if (hovered) outline(ctx, { x: box.x + 1, y: box.y + 1, width: box.width - 2, height: box.height - 2 }, COLOR.selected);
+  } else {
+    ctx.fillStyle = hovered ? COLOR.buttonHover : COLOR.button;
+    ctx.fillRect(box.x, box.y, box.width, box.height);
+    outline(ctx, box, COLOR.edge);
+  }
   ctxText(ctx, label, box.x + Math.floor((box.width - textWidth(label)) / 2), box.y + Math.floor((box.height - 7) / 2), COLOR.text);
 }
 
 // Peça com miniatura (ou só a cor) e o nome embaixo.
 export function drawSlotTile(ctx, slot, { image, color, chipColor, active, hovered }) {
   markClickable(slot);
-  ctx.fillStyle = hovered ? COLOR.tileHover : COLOR.tile;
-  ctx.fillRect(slot.x, slot.y, slot.width, slot.height);
-  ctx.fillStyle = COLOR.tileBevel;
-  ctx.fillRect(slot.x, slot.y, slot.width, 1);
-  ctx.fillStyle = COLOR.tileDark;
-  ctx.fillRect(slot.x, slot.y + slot.height - 11, slot.width, 11);
-  outline(ctx, slot, active ? COLOR.selected : COLOR.tileDark);
+  const art = uiImage(hovered ? 'cellHover' : 'cell');
+  if (art) {
+    nineSlice(ctx, art, slot, 4);
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.fillRect(slot.x + 2, slot.y + slot.height - 11, slot.width - 4, 9);
+    if (active) outline(ctx, slot, COLOR.selected);
+  } else {
+    ctx.fillStyle = hovered ? COLOR.tileHover : COLOR.tile;
+    ctx.fillRect(slot.x, slot.y, slot.width, slot.height);
+    ctx.fillStyle = COLOR.tileBevel;
+    ctx.fillRect(slot.x, slot.y, slot.width, 1);
+    ctx.fillStyle = COLOR.tileDark;
+    ctx.fillRect(slot.x, slot.y + slot.height - 11, slot.width, 11);
+    outline(ctx, slot, active ? COLOR.selected : COLOR.tileDark);
+  }
 
   if (image) {
     fitImage(ctx, image, { x: slot.x + 3, y: slot.y + 3, width: slot.width - 6, height: slot.height - 16 });

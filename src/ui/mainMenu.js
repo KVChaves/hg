@@ -2,7 +2,7 @@ import { MAX_RACERS, VIEW } from '../config.js';
 import { ctxText, textWidth } from '../art/font.js';
 import { loadRaceResults } from '../game/raceResults.js';
 import { saveSettings, SETTINGS_RANGE } from '../game/settings.js';
-import { COLOR, drawButton, inside, markClickable, outline, panelBox, pointerOnStage } from './panelKit.js';
+import { COLOR, drawButton, inside, markClickable, outline, panelBox, pointerOnStage, uiImage } from './panelKit.js';
 
 // Menu inicial: Singleplayer, Multiplayer, Garagem, Ranking, Configurações e Sair.
 
@@ -124,8 +124,12 @@ export function createMainMenu({ stage, settings, net, onSingleplayer, onMultipl
       ctx.fillStyle = COLOR.button;
       ctx.fillRect(box.x, box.y, Math.round(box.width * t), box.height);
       outline(ctx, box, COLOR.edge);
-      ctx.fillStyle = COLOR.selected;
-      ctx.fillRect(box.x + Math.round((box.width - 6) * t), box.y - 3, 6, box.height + 6);
+      const thumb = uiImage('sliderThumb');
+      if (thumb) ctx.drawImage(thumb, box.x + Math.round((box.width - thumb.width) * t), box.y + Math.floor((box.height - thumb.height) / 2));
+      else {
+        ctx.fillStyle = COLOR.selected;
+        ctx.fillRect(box.x + Math.round((box.width - 6) * t), box.y - 3, 6, box.height + 6);
+      }
     });
     drawBack(ctx);
   }

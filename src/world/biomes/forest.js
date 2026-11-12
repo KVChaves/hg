@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { paintGradient, paintSilhouette } from '../atmosphere.js';
 import { cutTop, speckle } from './wallPaint.js';
 import { alongRoad, EDGE, nearRoad, pickFrom, scatter, solid } from './propKit.js';
+import { useImage } from '../textures.js';
 
 // Pôr do sol de outono, estrada de terra batida, árvores vermelhas e cogumelos gigantes.
 export const FOREST = {
@@ -19,11 +20,11 @@ export const FOREST = {
     tunnels: { count: 2, length: [90, 150], open: true },
   },
   ground: {
-    base: [92, 54, 24], variation: 26,
+    base: [92, 54, 24], variation: 26, image: useImage('assets/tex/autumn-leaves.png'), shade: 0.9,
     paint(ctx) { for (const color of ['#c85a14', '#e0902c', '#8a2c10']) { ctx.fillStyle = color; for (let i = 0; i < 20; i++) ctx.fillRect(Math.random() * 64, Math.random() * 64, 2, 1); } },
   },
   road: {
-    base: [122, 84, 48], variation: 22, edge: '#5a3a1c', center: '#7c5630',
+    base: [122, 84, 48], variation: 22, image: useImage('assets/tex/dirt.png'), shade: 1.15, edge: '#5a3a1c', center: '#7c5630',
     paint(ctx) { ctx.fillStyle = 'rgba(70,44,20,.55)'; ctx.fillRect(16, 0, 4, 64); ctx.fillRect(44, 0, 4, 64); },
   },
   kerb: ['#5a3a1c', '#a87a40'],

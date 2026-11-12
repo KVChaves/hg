@@ -2,6 +2,10 @@ import * as THREE from 'three';
 import { paintGradient, paintSilhouette } from '../atmosphere.js';
 import { speckle } from './wallPaint.js';
 import { acrossRoad, alongRoad, archFrame, EDGE, nearRoad, pickFrom, scatter, solid } from './propKit.js';
+import { useImage } from '../textures.js';
+import { partsOf } from './originalModels.js';
+
+const EMBER = 0xc8a090;                // calor sobre as texturas do original
 
 // Céu em brasa, piso de chapas de aço, escória com rachaduras de fogo, chaminés e tanques.
 export const FIRE_FACTORY = {
@@ -14,7 +18,7 @@ export const FIRE_FACTORY = {
     tunnels: { count: 2, length: [80, 130] },
   },
   ground: {
-    base: [30, 24, 24], variation: 16,
+    base: [30, 24, 24], variation: 16, image: useImage('assets/tex/factory-grass.png'), shade: 0.4,
     paint(ctx) { ctx.fillStyle = '#ff6a10'; for (let i = 0; i < 8; i++) { let x = Math.random() * 64, y = Math.random() * 64; for (let k = 0; k < 10; k++) { ctx.fillRect(x, y, 1, 1); x += Math.random() * 3 - 1; y += Math.random() * 2; } } },
   },
   road: {
@@ -87,6 +91,19 @@ export const FIRE_FACTORY = {
       count: 150, clearance: 22, sizeOf: random => [12 + random() * 22, 7 + random() * 12, 10 + random() * 20],
       parts: [{ geometry: shed, material: solid(0xffffff), colorOf: pickFrom([0x3e3430, 0x4a2c20, 0x2e2c30, 0x5c3a24]) }],
     });
+
+    // Fábrica, chaminés, caixa-d'água, contêineres e barris do jogo original.
+    const variety = random => 0.85 + random() * 0.3;
+    for (const [id, count, height, clearance] of [['factory', 14, 20, 30], ['chimneys', 18, 46, 24], ['waterTower', 12, 24, 22], ['block', 10, 30, 22]]) {
+      const parts = partsOf(id, height, EMBER);
+      if (parts.length) scatter(ctx, { count, clearance, sizeOf: variety, parts });
+    }
+    for (const id of ['container1', 'container2', 'container3']) {
+      const parts = partsOf(id, 3.2, EMBER);
+      if (parts.length) nearRoad(ctx, { count: 15, from: EDGE + 3, to: EDGE + 13, parts });
+    }
+    const barrels = partsOf('barrel', 2.2, 0xe0c0b0);
+    if (barrels.length) nearRoad(ctx, { count: 70, from: EDGE + 2, to: EDGE + 10, sizeOf: variety, parts: barrels });
 
     const flame = new THREE.ConeGeometry(1.2, 5, 5);
     flame.translate(0, 2.5, 0);

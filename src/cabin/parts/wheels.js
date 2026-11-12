@@ -143,5 +143,11 @@ export const WHEELS = {
   sport: { name: 'Esportivo', image: paintSportWheel, gripRadius: 61 },
   wood: { name: 'Madeira classica', image: paintWoodClassicWheel, gripRadius: 62 },
   racing: { name: 'Corrida', image: paintRacingWheel, gripRadius: 60 },
+  // PNGs do jogo original (Half Grip), usados 1:1.
+  bullSkull: { name: 'Crânio de touro', image: 'assets/cabin/wheels/bull-skull.png', gripRadius: 52 },
+  bullSkullB: { name: 'Crânio de touro (aro liso)', image: 'assets/cabin/wheels/bull-skull-b.png', gripRadius: 52 },
+  rustyT: { name: 'Enferrujado', image: 'assets/cabin/wheels/rusty-t.png', gripRadius: 52 },
+  wiredT: { name: 'Fiação exposta', image: 'assets/cabin/wheels/wired-t.png', gripRadius: 52 },
+  thinBlack: { name: 'Fino preto', image: 'assets/cabin/wheels/thin-black.png', gripRadius: 28 },
 };
 

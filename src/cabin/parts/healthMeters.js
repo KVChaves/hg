@@ -1,6 +1,7 @@
 import { Raster } from '../../art/raster.js';
 import { mix } from '../../art/shade.js';
 import { rasterText } from '../../art/font.js';
+import { loadPng } from '../pngPixels.js';
 
 // Indicadores de vida. Área de 76x67 px sobre a moldura da coluna A.
 // `create(cor)` devolve { canvas, draw(health) }; cor nula usa a original. `draw` é chamado só quando a vida muda.
@@ -119,10 +120,51 @@ function createGaugeMeter(color) {
   return { canvas: r.canvas, draw };
 }
 
+// Placa enferrujada do jogo original: a máscara tem um valor de cinza por segmento (mais claro = mais embaixo).
+const PLATE = 'assets/cabin/hp-plate.png', PLATE_MASK = 'assets/cabin/hp-plate-mask.png';
+
+function createPlateMeter(color) {
+  const lit = '#' + (color ?? 0xa6e022).toString(16).padStart(6, '0');
+  const canvas = document.createElement('canvas');
+  canvas.width = 55; canvas.height = 127;
+  const ctx = canvas.getContext('2d');
+  let plate = null, segments = [], last = 1;
+
+  function draw(health) {
+    last = health;
+    if (!plate) return canvas;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(plate, 0, 0);
+    const on = Math.ceil(health * segments.length - 0.001);
+    ctx.fillStyle = lit;
+    segments.forEach((pixels, i) => { if (i < on) for (const [x, y] of pixels) ctx.fillRect(x, y, 1, 1); });
+    if (health > 0) for (const [x, y] of heart) ctx.fillRect(x, y, 1, 1);
+    return canvas;
+  }
+
+  let heart = [];
+  const ready = Promise.all([loadPng(PLATE), loadPng(PLATE_MASK)]).then(([plateImage, mask]) => {
+    plate = plateImage;
+    const data = mask.getContext('2d').getImageData(0, 0, mask.width, mask.height).data;
+    const byValue = new Map();
+    for (let y = 0; y < mask.height; y++) for (let x = 0; x < mask.width; x++) {
+      const i = (y * mask.width + x) * 4;
+      if (data[i + 3] === 0 || data[i] === 0) continue;
+      if (data[i] === 255) { heart.push([x, y]); continue; }
+      if (!byValue.has(data[i])) byValue.set(data[i], []);
+      byValue.get(data[i]).push([x, y]);
+    }
+    segments = [...byValue.entries()].sort((a, b) => b[0] - a[0]).map(([, pixels]) => pixels);   // de baixo para cima
+    draw(last);
+  });
+  return { canvas, draw, ready };
+}
+
 export const HEALTH_METERS = {
   bar: { name: 'Barra', create: createBarMeter },
   hearts: { name: 'Corações', create: createHeartMeter },
   pips: { name: 'Pontos', create: createPipMeter },
   number: { name: 'Numero', create: createNumberMeter },
   gauge: { name: 'Ponteiro', create: createGaugeMeter },
+  plate: { name: 'Placa enferrujada', create: createPlateMeter, layout: 'healthPlate' },
 };

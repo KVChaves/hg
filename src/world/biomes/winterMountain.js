@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { paintGradient, paintSilhouette } from '../atmosphere.js';
 import { cutTop, paintBlocks, speckle } from './wallPaint.js';
 import { acrossRoad, archFrame, EDGE, nearRoad, pickFrom, scatter, solid } from './propKit.js';
+import { useImage } from '../textures.js';
 
 // Céu frio com aurora, estrada de neve batida, pinheiros e cristais de gelo.
 export const WINTER_MOUNTAIN = {
@@ -16,7 +17,7 @@ export const WINTER_MOUNTAIN = {
     tunnels: { count: 2, length: [110, 170] },
   },
   ground: {
-    base: [226, 232, 240], variation: 12,
+    base: [226, 232, 240], variation: 12, image: useImage('assets/tex/snow-stone.png'), size: 128,
     paint(ctx) { ctx.fillStyle = 'rgba(150,180,215,.35)'; for (let i = 0; i < 24; i++) ctx.fillRect(Math.random() * 64, Math.random() * 64, 2 + Math.random() * 8, 1); },
   },
   road: {

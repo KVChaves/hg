@@ -7,7 +7,10 @@ import { buildWalls } from './walls.js';
 import { buildEpicSections } from './epicVisuals.js';
 import { buildHazardSites } from './hazardSites.js';
 import { createRandom, generateTrack, isOverChasm, surfaceAt, track, trackAt, valleyReach } from './track.js';
-import { noiseTexture, pixelTexture } from './textures.js';
+import { noiseTexture, pixelTexture, surfaceTexture } from './textures.js';
+import { pngNow } from '../cabin/pngPixels.js';
+
+const pngReady = path => Boolean(pngNow(path));
 
 // Cenário de cada corrida: terreno, estrada, largada e objetos do bioma, refeitos a cada mapa novo.
 
@@ -69,10 +72,10 @@ function addGround(group, biome, bounds, groundMaterial) {
   group.add(new THREE.Mesh(geometry, groundMaterial));
 }
 
-function roadTexture({ base, variation, edge, center, paint }) {
-  const asphalt = noiseTexture(base, variation);
+function roadTexture({ base, variation, edge, center, paint, image, shade }) {
+  const asphalt = surfaceTexture({ base, variation, image, shade });
   const ctx = asphalt.image.getContext('2d');
-  paint?.(ctx);
+  if (!image || !pngReady(image)) paint?.(ctx);
   ctx.fillStyle = edge; ctx.fillRect(2, 0, 2, 64); ctx.fillRect(60, 0, 2, 64);
   ctx.fillStyle = center; ctx.fillRect(31, 0, 2, 32);
   asphalt.needsUpdate = true;
@@ -223,8 +226,8 @@ export function createWorldScene() {
     [scene.fog.near, scene.fog.far] = biome.fog;
 
     atmosphere.setBiome(biome);
-    const texture = noiseTexture(biome.ground.base, biome.ground.variation);
-    biome.ground.paint?.(texture.image.getContext('2d'));
+    const texture = surfaceTexture(biome.ground);
+    if (!biome.ground.image || !pngReady(biome.ground.image)) biome.ground.paint?.(texture.image.getContext('2d'));
     const groundMaterial = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide });
     const bounds = trackBounds();
     addGround(content, biome, bounds, groundMaterial);

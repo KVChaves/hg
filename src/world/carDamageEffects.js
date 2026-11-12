@@ -1,9 +1,13 @@
 import * as THREE from 'three';
 
+// Fumaça e chamas são quadrados virados para a câmera com as texturas do jogo original.
+
 // Fumaça e fogo que mostram a vida de cada carro. É só visual: lê o estado dos carros a cada quadro.
 // Cada `racer` é { x, z, yaw, vx, vz, health (0 a 1), burning (em chamas pela besta), elevation (metros, ao capotar), visible }.
 
 const SMOKE_POOL = 280, FIRE_POOL = 260;
+const QUAD_PER_SIZE = 2.2;                                        // lado do quadrado em relação ao tamanho da partícula
+const FIRE_TINTS = [0xff6a50, 0xffc080, 0xffffff];               // do fim para o começo da chama; a textura já é laranja
 
 // Faixas de vida, da mais saudável para a pior; `above` é o limite inferior da faixa.
 const STAGES = [
@@ -25,12 +29,18 @@ const INHERITED_SPEED = 0.35;                                     // a fumaça f
 
 const SMOKE_LIFE = [0.9, 1.5], SMOKE_RISE = [1.5, 2.6], SMOKE_START_SIZE = 0.2, SMOKE_GROWTH = 0.5, SMOKE_SPREAD = 0.5;
 const FIRE_LIFE = [0.22, 0.42], FIRE_RISE = [2.4, 3.8], FIRE_START_SIZE = 0.3, FIRE_SPREAD = 0.2;
-const FIRE_COLORS = [0xd83a10, 0xff8a20, 0xffd860];              // do fim para o começo da chama
 
 const random = ([low, high]) => low + Math.random() * (high - low);
 
+function spriteMaterial(path, extra = {}) {
+  const map = new THREE.TextureLoader().load(path);
+  map.magFilter = map.minFilter = THREE.NearestFilter;
+  map.generateMipmaps = false;
+  return new THREE.MeshBasicMaterial({ map, transparent: true, alphaTest: 0.1, depthWrite: false, ...extra });
+}
+
 function createPool(scene, size, material) {
-  const mesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), material, size);
+  const mesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), material, size);
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   mesh.frustumCulled = false;
   const color = new THREE.Color(0);
@@ -42,15 +52,17 @@ function createPool(scene, size, material) {
   scene.add(mesh);
   return {
     mesh, color, hidden,
-    particles: Array.from({ length: size }, () => ({ life: 0, age: 0, size: 0, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 })),
+    particles: Array.from({ length: size }, () => ({ life: 0, age: 0, size: 0, roll: 0, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 })),
     next: 0,
     alive: 0,
   };
 }
 
-export function createCarDamageEffects(scene, racerCount) {
-  const smoke = createPool(scene, SMOKE_POOL, new THREE.MeshBasicMaterial());
-  const fire = createPool(scene, FIRE_POOL, new THREE.MeshBasicMaterial({ fog: false }));
+export function createCarDamageEffects(scene, racerCount, getCamera) {
+  const smoke = createPool(scene, SMOKE_POOL, spriteMaterial('assets/fx/smoke.png'));
+  const fire = createPool(scene, FIRE_POOL, spriteMaterial('assets/fx/fire.png', { fog: false }));
+  const unit0 = new THREE.Quaternion(), facing = new THREE.Quaternion(), spin = new THREE.Quaternion(), unit = new THREE.Vector3(), place = new THREE.Vector3(), scaleVec = new THREE.Vector3();
+  const Z_AXIS = new THREE.Vector3(0, 0, 1);
   const matrix = new THREE.Matrix4();
   const emitters = Array.from({ length: racerCount }, (_, index) => ({
     smoke: 0, fire: 0,
@@ -71,6 +83,7 @@ export function createCarDamageEffects(scene, racerCount) {
     particle.life = random(life);
     particle.age = 0;
     particle.size = size;
+    particle.roll = Math.random() * Math.PI * 2;
     return pool.next === 0 ? pool.particles.length - 1 : pool.next - 1;
   }
 
@@ -106,8 +119,9 @@ export function createCarDamageEffects(scene, racerCount) {
       particle.x += particle.vx * dt;
       particle.y += particle.vy * dt;
       particle.z += particle.vz * dt;
-      const size = sizeOf(particle);
-      matrix.makeScale(size, size, size).setPosition(particle.x, particle.y, particle.z);
+      const size = sizeOf(particle) * QUAD_PER_SIZE;
+      spin.setFromAxisAngle(Z_AXIS, particle.roll);
+      matrix.compose(place.set(particle.x, particle.y, particle.z), unit0.copy(facing).multiply(spin), scaleVec.set(size, size, size));
       pool.mesh.setMatrixAt(i, matrix);
       colorOf?.(particle, i);
     });
@@ -115,10 +129,11 @@ export function createCarDamageEffects(scene, racerCount) {
     pool.alive = alive;
   }
 
-  const smokeSize = p => p.size + p.age * SMOKE_GROWTH;
+  const fadeOut = p => Math.min(1, (1 - p.age / p.life) * 3);   // encolhe no fim da vida: sem transparência por instância
+  const smokeSize = p => (p.size + p.age * SMOKE_GROWTH) * fadeOut(p);
   const fireSize = p => p.size * (1 - p.age / p.life * 0.7);
   const fireColor = (p, i) => {
-    fire.mesh.setColorAt(i, fire.color.setHex(FIRE_COLORS[Math.min(FIRE_COLORS.length - 1, Math.floor((1 - p.age / p.life) * FIRE_COLORS.length))]));
+    fire.mesh.setColorAt(i, fire.color.setHex(FIRE_TINTS[Math.min(FIRE_TINTS.length - 1, Math.floor((1 - p.age / p.life) * FIRE_TINTS.length))]));
     fire.mesh.instanceColor.needsUpdate = true;
   };
 
@@ -138,6 +153,7 @@ export function createCarDamageEffects(scene, racerCount) {
     },
     update(dt, racers) {
       if (dt <= 0) return;
+      getCamera().getWorldQuaternion(facing);
       racers.forEach((racer, i) => { if (racer.visible) emit(racer, emitters[i], dt); });
       step(smoke, dt, smokeSize);
       step(fire, dt, fireSize, fireColor);

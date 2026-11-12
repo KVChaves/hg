@@ -4,14 +4,13 @@ import { rasterTiny } from '../../art/font.js';
 
 // Parede frontal da cabine: exatamente o enquadramento da tela (640x360), com o vidro transparente.
 
-const ROOF = [0x0a0705, 0x0e0a07, 0x120d09, 0x17110c];
-const PILLAR = [0x070302, 0x0c0503, 0x120805, 0x190e09];
+const ROOF = [0x120d09, 0x19130e, 0x211a14, 0x2b2219];
+const PILLAR = [0x0e0807, 0x160d0a, 0x20130e, 0x2a1a13];
 const TRIM = [0x120907, 0x1e130e, 0x2a1d15, 0x382a1e, 0x4a3b2b, 0x5c4c38];
 const COWL = [0x130908, 0x221410, 0x33231c, 0x46342a, 0x5a4538];
 const DASH_TOP = [0x1a0c0b, 0x2a1513, 0x3a1e1b, 0x4b2825, 0x5c3530, 0x6e443d];
 const FACE = [0x020100, 0x070302, 0x0e0504, 0x160908, 0x1f0e0b];
 const SILL = [0x170d09, 0x26170f, 0x352217, 0x452e21, 0x553a2b];
-const GATE = [0x170e0a, 0x241611, 0x302018, 0x3e2b22];
 const RPILLAR = [0x17100b, 0x2a2115, 0x3b3020, 0x4d412d, 0x60533a];
 
 const RIDGE_LEFT = [188, 247], RIDGE_PEAK = [370, 227], RIDGE_RIGHT = [549, 246];
@@ -120,19 +119,6 @@ function paintConsole(r) {
 
   // tapete
   r.poly([[386, 332], [456, 332], [470, 360], [376, 360]], (x, y) => ((x + (y >> 1)) % 3 === 0 ? 0x0c0604 : 0x20110c));
-
-  // placa da grade em H
-  const outer = [[390, 279], [438, 278], [446, 332], [394, 332]];
-  r.poly(outer, 0x46322a);
-  r.poly(subQuad(outer, 0.03, 0.02, 0.97, 0.98), (x, y) => dither(x, y, 0.35 + 0.65 * fbm(x / 9, y / 9), GATE, 0.9));
-  r.poly([[397, 289], [404, 289], [406, 321], [399, 321]], 0x020100);
-  r.poly([[413, 289], [421, 289], [422, 321], [415, 321]], 0x020100);
-  r.poly([[429, 289], [436, 289], [440, 321], [433, 321]], 0x020100);
-  r.poly([[399, 304], [438, 304], [438, 311], [399, 311]], 0x020100);
-
-  const digit = 0x75594c;
-  rasterTiny(r, '1', 398, 282, digit); rasterTiny(r, '3', 414, 282, digit); rasterTiny(r, '5', 430, 282, digit);
-  rasterTiny(r, '2', 401, 324, digit); rasterTiny(r, '4', 416, 324, digit); rasterTiny(r, 'R', 433, 324, digit);
 }
 
 // Continuação da frente abaixo da tela, visível ao olhar um pouco para baixo.

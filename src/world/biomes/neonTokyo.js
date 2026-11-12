@@ -4,6 +4,9 @@ import { speckle } from './wallPaint.js';
 import { pixelTexture } from '../textures.js';
 import { glyphTexture } from './neonGlyphs.js';
 import { acrossRoad, alongRoad, archFrame, EDGE, nearRoad, pickFrom, scatter, solid } from './propKit.js';
+import { partsOf } from './originalModels.js';
+
+const NIGHT = 0x9690d4;                  // luz fria da noite sobre as texturas do original
 
 function windowTexture() {
   const canvas = document.createElement('canvas');
@@ -83,9 +86,27 @@ export const NEON_TOKYO = {
     const tower = new THREE.BoxGeometry(1, 1, 1);
     tower.translate(0, 0.5, 0);
     scatter(ctx, {
-      count: 380, clearance: 22, sizeOf: random => [10 + random() * 18, 16 + random() * 70, 10 + random() * 18],
+      count: 200, clearance: 22, sizeOf: random => [10 + random() * 18, 16 + random() * 70, 10 + random() * 18],
       parts: [{ geometry: tower, material: new THREE.MeshBasicMaterial({ map: windowTexture() }), colorOf: pickFrom([0x5040a0, 0x402870, 0x304a90, 0x60306a]) }],
     });
+
+    // Prédios, templos e árvores do jogo original, atrás dos de caixa.
+    const variety = random => 0.85 + random() * 0.3;
+    for (const [id, count, height, clearance] of [
+      ['whiteTower', 22, 78, 24], ['glassTower', 22, 64, 24], ['block', 26, 46, 22], ['apartment', 34, 34, 20],
+      ['warehouse', 20, 15, 20], ['templeTall', 8, 40, 26], ['temple', 14, 15, 22], ['pagoda', 10, 14, 22], ['waterTower', 8, 26, 20],
+    ]) {
+      const parts = partsOf(id, height, NIGHT);
+      if (parts.length) scatter(ctx, { count, clearance, sizeOf: variety, parts });
+    }
+    for (const id of ['sakura1', 'sakura2']) {
+      const parts = partsOf(id, 9, 0xd8c8ff);
+      if (parts.length) nearRoad(ctx, { count: 55, from: EDGE + 2, to: EDGE + 16, sizeOf: variety, parts });
+    }
+    for (const id of ['container1', 'container2', 'container3']) {
+      const parts = partsOf(id, 3.2, NIGHT);
+      if (parts.length) nearRoad(ctx, { count: 12, from: EDGE + 3, to: EDGE + 12, parts });
+    }
 
     const sign = new THREE.BoxGeometry(1, 1, 0.4);
     sign.translate(0, 3.5, 0);
