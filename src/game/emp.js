@@ -1,7 +1,7 @@
 import { cutInvolving } from './tether.js';
 import { EMP_RADIUS, EMP_TIME } from './trapTypes.js';
 
-// Pulso EMP: quem está a EMP_RADIUS metros de quem pulsa fica sem nitro e sem atirar por EMP_TIME segundos
+// Pulso EMP: quem está a EMP_RADIUS metros de quem pulsa fica sem nitro, sem atirar e sem usar itens por EMP_TIME segundos
 // (game/car.js, game/opponents.js, game/weapon.js e opponentCombat.js leem `effects.emp`). Também desarma as minas
 // grudadas em quem pulsou. Cada navegador aplica o efeito nos carros que simula; `pulse` avisa os outros.
 export function createEmp({ race, mines, visuals, onSound, onPulse = () => {} }) {

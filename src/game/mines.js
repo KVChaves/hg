@@ -9,6 +9,7 @@ import { MINE_CONE, MINE_DAMAGE, MINE_FLIGHT_MAX, MINE_FUSE, MINE_RANGE, MINE_SP
 // recebem só uma cópia "fantasma" ao grudar (aviso e explosão, sem dano). O pulso EMP de quem está com a mina a desarma.
 const NOSE_FORWARD = 2.3, LAUNCH_HEIGHT = 0.8, HIT_RADIUS = 1.6, STICK_HEIGHT = 1.0, STICK_FORWARD = 0.6;
 const TARGET_HEIGHT = 0.8;
+const MINE_LOCK_CONE = 0.5, MINE_TURN = 6;   // cosseno do cone de trava (~60°) e quão rápido ela curva (1/s)
 const HIT_SPEED_LOSS = 0.65, HIT_SPIN = 2.5, BOT_HIT_KNOCK = 8;
 
 // `onExplode(x, y, z)`: desenha a explosão. `onAttach(mine)`: avisa a rede. `onKill(vítima, dono)`: derrubou um carro.
@@ -60,7 +61,7 @@ export function createMines({ scene, race, car, onSound, onExplode, onAttach = (
       return true;
     },
 
-    // Arremesso do jogador: a mina sai reta para onde ele mira (`yaw`) e só gruda se acertar um carro no caminho. Errou, errou.
+    // Arremesso do jogador: a mina sai para onde ele mira (`yaw`), trava o carro mais perto do cone e o persegue; sem alvo, segue reta.
     throwStraight(owner, yaw) {
       const { group, light } = makeMesh();
       const dirX = -Math.sin(yaw), dirZ = -Math.cos(yaw);
@@ -134,15 +135,41 @@ export function createMines({ scene, race, car, onSound, onExplode, onAttach = (
     mine.light.material = onMaterial;
   }
 
-  // Voa reto em passos curtos (não atravessa carro); gruda no primeiro que encostar.
+  // Teleguiada: trava o carro mais perto dentro do cone da direção atual e curva a mina até ele (3D). Sem alvo, segue reta.
+  function steer(mine, dt) {
+    const { owner } = mine;
+    const len = Math.hypot(mine.dirX, mine.dirY ?? 0, mine.dirZ) || 1;
+    const dir = [mine.dirX / len, (mine.dirY ?? 0) / len, mine.dirZ / len];
+    const alive = racer => racer && racer.dead <= 0 && racer.protectedFor <= 0;
+    if (!alive(mine.lock)) {
+      mine.lock = null;
+      let best = Infinity;
+      for (const racer of race.field) {
+        if (racer === owner || !alive(racer)) continue;
+        const dx = racer.wx - mine.x, dy = racer.wy + TARGET_HEIGHT - mine.y, dz = racer.wz - mine.z, d = Math.hypot(dx, dy, dz) || 1;
+        if (d > MINE_RANGE || (dx * dir[0] + dy * dir[1] + dz * dir[2]) / d < MINE_LOCK_CONE || d >= best) continue;
+        best = d;
+        mine.lock = racer;
+      }
+    }
+    if (!mine.lock) return;
+    const dx = mine.lock.wx - mine.x, dy = mine.lock.wy + TARGET_HEIGHT - mine.y, dz = mine.lock.wz - mine.z, d = Math.hypot(dx, dy, dz) || 1;
+    const k = Math.min(1, MINE_TURN * dt);
+    const nx = dir[0] + (dx / d - dir[0]) * k, ny = dir[1] + (dy / d - dir[1]) * k, nz = dir[2] + (dz / d - dir[2]) * k, n = Math.hypot(nx, ny, nz) || 1;
+    mine.dirX = nx / n; mine.dirY = ny / n; mine.dirZ = nz / n;
+  }
+
+  // Voa em passos curtos (não atravessa carro); gruda no primeiro que encostar.
   function flyStraight(mine, dt, index) {
     const { owner } = mine;
     let travel = (MINE_SPEED + Math.max(0, owner.v)) * dt;
     mine.light.material = onMaterial;
+    steer(mine, dt);
     while (travel > 0) {
       const step = Math.min(0.5, travel);
       travel -= step;
       mine.x += mine.dirX * step;
+      mine.y += (mine.dirY ?? 0) * step;
       mine.z += mine.dirZ * step;
       mine.travelled += step;
       for (const racer of race.field) {
@@ -154,7 +181,7 @@ export function createMines({ scene, race, car, onSound, onExplode, onAttach = (
         onAttach(mine);
         return;
       }
-      if (mine.travelled >= MINE_RANGE || mine.age > MINE_FLIGHT_MAX) { remove(index); return; }
+      if (mine.travelled >= MINE_RANGE * 1.5 || mine.age > MINE_FLIGHT_MAX) { remove(index); return; }
     }
   }
 

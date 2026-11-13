@@ -11,10 +11,10 @@ export const TRAP_TYPES = {
   dynamite: { id: 'dynamite', label: 'DINAMITE', caughtText: 'NA DINAMITE', price: 65, maxCharges: 4, summary: 'EXPLODE AO PISAR E JOGA O CARRO PARA TRAS', charges: 2, halfLength: 1.0, halfWidth: 1.3, life: 90, radius: 8 },
   smoke: { id: 'smoke', label: 'FUMACA', caughtText: 'NA FUMACA', price: 35, maxCharges: 3, summary: 'ESCONDE A PISTA', charges: 1, halfLength: 8, halfWidth: 6.5, life: 9, effect: 'smoke', duration: 3 },
   extinguisher: { id: 'extinguisher', label: 'EXTINTOR', price: 70, maxCharges: 3, summary: 'RECUPERA 20% DA VIDA', charges: 1, powerup: true },
-  shield: { id: 'shield', label: 'ESCUDO', price: 100, maxCharges: 2, summary: 'ABSORVE 40% DA VIDA POR 8 S', charges: 1, powerup: true },
-  emp: { id: 'emp', label: 'PULSO EMP', price: 70, maxCharges: 3, summary: 'SEM NITRO E SEM TIRO POR 3 S, A 32 M', charges: 1, powerup: true },
+  shield: { id: 'shield', label: 'ESCUDO', price: 100, maxCharges: 2, summary: 'ABSORVE 80% DA VIDA POR 8 S', charges: 1, powerup: true },
+  emp: { id: 'emp', label: 'PULSO EMP', price: 70, maxCharges: 3, summary: 'SEM NITRO, TIRO E ITENS POR 8 S, A 50 M', charges: 1, powerup: true },
   mine: { id: 'mine', label: 'MINA TELEGUIADA', price: 110, maxCharges: 3, summary: 'PERSEGUE O CARRO A FRENTE, GRUDA E EXPLODE', charges: 1, powerup: true },
-  harpoon: { id: 'harpoon', label: 'ARPAO', price: 75, maxCharges: 3, summary: 'FISGA ATE 30 M E PRENDE POR 6 S. E SOLTA', charges: 1, powerup: true },
+  harpoon: { id: 'harpoon', label: 'ARPAO', price: 75, maxCharges: 3, summary: 'FISGA ATE 50 M E PRENDE POR 6 S. E SOLTA OU CANCELA', charges: 1, powerup: true },
 };
 
 // Chão queimando onde a flecha incendiária caiu. Não se compra: só a besta cria. Quem passa por cima pega fogo
@@ -24,8 +24,8 @@ export const hazardType = id => TRAP_TYPES[id] ?? (id === GROUND_FIRE.id ? GROUN
 
 // Escudo: absorve `SHIELD_ABSORB` da vida total (ou até acabar o tempo). EMP: raio em metros, duração em segundos.
 // Mina: alcance para travar o alvo, tempo até explodir depois de grudar, dano (fração da vida padrão).
-export const SHIELD_TIME = 8, SHIELD_ABSORB = 0.4;
-export const EMP_RADIUS = 32, EMP_TIME = 3.5;
+export const SHIELD_TIME = 8, SHIELD_ABSORB = 0.8;
+export const EMP_RADIUS = 50, EMP_TIME = 8;
 export const MINE_RANGE = 70, MINE_CONE = 0.8, MINE_SPEED = 45, MINE_FUSE = 3, MINE_DAMAGE = 0.3, MINE_FLIGHT_MAX = 3;
 
 export const EXTINGUISHER_LIFE = 0.2;                // fração da vida total que o extintor devolve

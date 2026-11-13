@@ -1,12 +1,12 @@
 import { damageOpponent } from './opponents.js';
 import { createTether } from './tether.js';
 
-// Arpão: sai da frente do carro e vai reto, na direção em que o jogador olha (os bots, para a frente). Se encostar em outro carro até 30 m, fisga: os dois ficam presos por um
+// Arpão: sai da frente do carro e vai reto, na direção em que o jogador olha (os bots, para a frente). Se encostar em outro carro até 50 m, fisga: os dois ficam presos por um
 // cabo por alguns segundos (game/tether.js). O dono solta apertando E de novo; o cabo também se solta sozinho.
 // O do jogador (`holdToExtend`) segue esticando enquanto o E estiver apertado; soltou, recolhe. O dos bots voa
 // de uma vez até o alcance. Errou, volta sozinho. O cabo sempre liga a ponta à frente do carro. Cada piloto tem o seu.
 
-const RANGE = 30, FLIGHT_SPEED = 75;                 // metros e m/s a mais que o carro
+const RANGE = 50, FLIGHT_SPEED = 75;                 // metros e m/s a mais que o carro
 const EXTEND_SPEED = 38, MIN_HOLD = 0.15, HOLD_AT_MAX = 0.4;   // modo segurar: velocidade do cabo, tempo mínimo e espera no alcance máximo
 const NOSE_FORWARD = 2.3, HEIGHT = 0.62;
 const HOOK_SPEED_LOSS = 0.8, RETRACT_TIME = 0.15;   // o tranco da fisgada; depois a corda toma conta (tether.js)
@@ -193,6 +193,8 @@ export function createHarpoon({ owner, car, race, visual, onSound, onRemotePull 
         if (!value) armedRelease = true;
         else if (armedRelease) releaseRequested = true;
       }
+      // Lançamento em voo: um novo aperto do E (soltou e apertou de novo) cancela e recolhe o cabo.
+      if (phase === 'flying' && value && !held && flightTime > 0.05) retract();
       held = value;
     },
   };

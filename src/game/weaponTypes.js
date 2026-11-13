@@ -36,7 +36,7 @@ export const WEAPON_TYPES = {
   // `burn`: segundos em chamas para o carro atingido; errando, a flecha deixa o chão queimando (game/burning.js).
   crossbow: {
     id: 'crossbow', family: 'rifle', style: 'crossbow', label: 'BESTA INCENDIARIA', price: 280, summary: 'FLECHA QUE INCENDEIA CARRO E CHAO',
-    damage: 60, burn: 6, tracer: 0xff7a20, interval: 1.25, range: 140, magazine: 1, reserve: 8, roundTime: 1, recoil: 1.4,
+    damage: 100, burn: 8, tracer: 0xff7a20, interval: 1.25, range: 140, magazine: 1, reserve: 8, roundTime: 1, recoil: 1.4,
   },
   // `splash`: explode onde acerta (ou no chão, se errar) e machuca quem estiver em volta, menos quanto mais longe.
   grenade: {

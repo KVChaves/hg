@@ -48,6 +48,7 @@ export function createTraps({ scene, car, race, harpoon, burning, mines, emp, on
     if (!traps.isUnlocked()) return `BAGAGEIRO EM ${Math.ceil(traps.unlockIn())}`;
     if (type.id === 'extinguisher' && car.health >= lifeCap()) return 'VIDA CHEIA';
     if (type.id === 'harpoon' && harpoon.busy) return 'ARPAO EM USO';
+    if (car.effects.emp > 0) return 'EMP: SEM ITENS';
     if (type.id === 'shield' && car.effects.shield > 0) return 'ESCUDO ATIVO';
     return null;
   }
@@ -80,6 +81,7 @@ export function createTraps({ scene, car, race, harpoon, burning, mines, emp, on
 
   // Power-ups de efeito imediato, para o jogador ou um bot. Devolve se foi usado.
   traps.usePower = (id, racer) => {
+    if (racer.effects.emp > 0) return false;         // atingido por EMP: nenhum item funciona
     if (id === 'shield') {
       traps.raiseShield(racer);
       if (racer.isPlayer) showNotice('ESCUDO ATIVO', true);
