@@ -3,7 +3,7 @@ import { TRACK_WIDTH } from '../config.js';
 import { ctxText, textWidth } from '../art/font.js';
 import { HAZARD_KINDS } from '../game/hazardKinds.js';
 import { TUNNEL_HEIGHT } from '../game/mapLayout.js';
-import { track, trackAt } from './track.js';
+import { gustAt, raceClock, track, trackAt } from './track.js';
 import { pixelTexture } from './textures.js';
 
 // O motivo de cada ponto de perigo, no cenário: paredão de onde caem pedras, encosta de neve, placa de travessia
@@ -437,5 +437,80 @@ export function wallOpenAt(layout, k, side) {
     if (!kind.opening || (kind.motion !== 'cross' && site.side !== side)) return false;
     const offset = ((distance - site.dist) % track.length + track.length + track.length / 2) % track.length - track.length / 2;
     return Math.abs(offset) < OPENING;
+  });
+}
+
+// Rajadas de vento (cânion): birutas dos dois lados apontam para onde o vento vai empurrar e se enchem conforme a
+// rajada se arma. Antes do trecho, placa VENTO. A física fica em track.js (gustAt) e race.js.
+const SOCK_EVERY = 32, SOCK_POLE = 5.5, SOCK_LENGTH = 2.6;
+export function buildGustSites(group, layout, onUpdate) {
+  const pole = new THREE.BoxGeometry(0.18, SOCK_POLE, 0.18), poleMaterial = solid(0x6a6460);
+  const sock = new THREE.CylinderGeometry(0.22, 0.55, SOCK_LENGTH, 6, 1, true);
+  sock.translate(0, SOCK_LENGTH / 2, 0);
+  const band = new THREE.CylinderGeometry(0.4, 0.46, 0.5, 6, 1, true);
+  band.translate(0, SOCK_LENGTH * 0.45, 0);
+  const sockMaterial = solid(0xf06a18, { side: THREE.DoubleSide }), bandMaterial = solid(0xf4f0e8, { side: THREE.DoubleSide });
+  for (const zone of layout.gusts ?? []) {
+    const socks = [];
+    for (let along = 6; along < zone.length; along += SOCK_EVERY) {
+      for (const side of [-1, 1]) {
+        const at = spot(zone.start + along, side * (HALF + 2.2));
+        put(group, pole, poleMaterial, { ...at, y: at.y + SOCK_POLE / 2 });
+        const pivot = new THREE.Group();
+        pivot.position.set(at.x, at.y + SOCK_POLE - 0.2, at.z);
+        pivot.rotation.order = 'YXZ';
+        pivot.rotation.y = at.yaw;
+        const arm = new THREE.Group();
+        arm.add(new THREE.Mesh(sock, sockMaterial), new THREE.Mesh(band, bandMaterial));
+        pivot.add(arm);
+        group.add(pivot);
+        socks.push({ arm, dist: zone.start + along, phase: Math.random() * 6 });
+      }
+    }
+    addWideSign(group, zone.start - 50, wideSign('VENTO', '#e8e0d0', '#2a2420'), 1);
+    addWideSign(group, zone.start - 50, wideSign('VENTO', '#e8e0d0', '#2a2420'), -1);
+    onUpdate?.(time => {
+      for (const s of socks) {
+        const gust = gustAt(s.dist, raceClock.time);
+        const strength = gust ? Math.min(1, gust.level + gust.warn * 0.45) : 0, dir = gust?.dir ?? 1;
+        const flutter = Math.sin(time * (8 + strength * 14) + s.phase) * (0.05 + strength * 0.08);
+        s.arm.rotation.z = Math.PI + dir * (0.15 + strength * 0.85) * Math.PI / 2 + flutter;   // de pendurada a esticada de lado
+      }
+    });
+  }
+}
+
+// Placas de turbo (salar): faixa de setas correndo para a frente, com borda acesa, e pontinhos no chão mostrando o
+// caminho até ela. A do salto grande tem placa TURBO dos dois lados.
+const GUIDE_AHEAD = 45, GUIDE_EVERY = 5;
+export function buildBoostSites(group, layout, onUpdate) {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 16;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#0e2a3a'; ctx.fillRect(0, 0, 16, 16);
+  ctx.fillStyle = '#30f0ff';
+  for (let k = 0; k < 6; k++) { ctx.fillRect(7 - k, 3 + k, 2, 2); ctx.fillRect(7 + k, 3 + k, 2, 2); }
+  ctx.fillStyle = '#f040c0';
+  for (let k = 0; k < 4; k++) { ctx.fillRect(7 - k, 10 + k, 1, 1); ctx.fillRect(8 + k, 10 + k, 1, 1); }
+  const texture = pixelTexture(canvas);
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  const padMaterial = new THREE.MeshBasicMaterial({ map: texture, fog: false, ...overRoadMaterial() });
+  const edgeMaterial = new THREE.MeshBasicMaterial({ color: 0x30f0ff, fog: false, ...overRoadMaterial() });
+  const guideMaterial = new THREE.MeshBasicMaterial({ color: 0x30f0ff, fog: false, transparent: true, opacity: 0.8, ...overRoadMaterial() });
+  for (const pad of layout.boosts ?? []) {
+    const a = pad.lane - pad.half, b = pad.lane + pad.half;
+    group.add(new THREE.Mesh(roadStrip(pad.start, pad.start + pad.length, a, b, pad.half * 2, 0.05), padMaterial));
+    for (const lateral of [a, b]) group.add(new THREE.Mesh(roadStrip(pad.start, pad.start + pad.length, lateral - 0.2, lateral + 0.2, 4, 0.06), edgeMaterial));
+    for (let d = GUIDE_EVERY; d <= GUIDE_AHEAD; d += GUIDE_EVERY) {
+      group.add(new THREE.Mesh(roadStrip(pad.start - d, pad.start - d + 1.2, pad.lane - 0.4, pad.lane + 0.4, 2, 0.05), guideMaterial));
+    }
+    if (pad.jump) {
+      addWideSign(group, pad.start - 70, wideSign('TURBO', '#30f0ff', '#0e2a3a'), 1);
+      addWideSign(group, pad.start - 70, wideSign('TURBO', '#30f0ff', '#0e2a3a'), -1);
+    }
+  }
+  onUpdate?.(time => {
+    texture.offset.y = -time * 3;
+    guideMaterial.opacity = 0.45 + 0.4 * (Math.floor(time * 4) % 2);
   });
 }

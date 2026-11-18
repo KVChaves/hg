@@ -5,16 +5,16 @@
 // Os power-ups (`powerup`) fazem efeito na hora. Nenhum item do bagageiro pode ser usado antes de TRAPS_UNLOCK_TIME.
 
 export const TRAP_TYPES = {
-  spikes: { id: 'spikes', label: 'ESPINHOS', caughtText: 'NOS ESPINHOS', price: 30, maxCharges: 5, summary: 'FURA O PNEU', charges: 3, halfLength: 1.9, halfWidth: 2.95, life: 20, effect: 'puncture', duration: 4 },
-  oil: { id: 'oil', label: 'OLEO', caughtText: 'NO OLEO', price: 35, maxCharges: 5, summary: 'CARRO PERDE ADERENCIA', charges: 3, halfLength: 2.85, halfWidth: 2.8, life: 20, effect: 'oil', duration: 2.4 },
-  paint: { id: 'paint', label: 'TINTA', caughtText: 'NA TINTA', price: 55, maxCharges: 3, summary: 'COBRE O PARA-BRISA', charges: 1, halfLength: 1.6, halfWidth: 2.4, life: 20, effect: 'paint', duration: 7 },
-  dynamite: { id: 'dynamite', label: 'DINAMITE', caughtText: 'NA DINAMITE', price: 65, maxCharges: 4, summary: 'EXPLODE AO PISAR E JOGA O CARRO PARA TRAS', charges: 2, halfLength: 1.0, halfWidth: 1.3, life: 90, radius: 8 },
-  smoke: { id: 'smoke', label: 'FUMACA', caughtText: 'NA FUMACA', price: 35, maxCharges: 3, summary: 'ESCONDE A PISTA', charges: 1, halfLength: 8, halfWidth: 6.5, life: 9, effect: 'smoke', duration: 3 },
-  extinguisher: { id: 'extinguisher', label: 'EXTINTOR', price: 70, maxCharges: 3, summary: 'RECUPERA 20% DA VIDA', charges: 1, powerup: true },
-  shield: { id: 'shield', label: 'ESCUDO', price: 100, maxCharges: 2, summary: 'ABSORVE 80% DA VIDA POR 8 S', charges: 1, powerup: true },
-  emp: { id: 'emp', label: 'PULSO EMP', price: 70, maxCharges: 3, summary: 'SEM NITRO, TIRO E ITENS POR 8 S, A 50 M', charges: 1, powerup: true },
-  mine: { id: 'mine', label: 'MINA TELEGUIADA', price: 110, maxCharges: 3, summary: 'PERSEGUE O CARRO A FRENTE, GRUDA E EXPLODE', charges: 1, powerup: true },
-  harpoon: { id: 'harpoon', label: 'ARPAO', price: 75, maxCharges: 3, summary: 'FISGA ATE 50 M E PRENDE POR 6 S. E SOLTA OU CANCELA', charges: 1, powerup: true },
+  spikes: { id: 'spikes', label: 'ESPINHOS', caughtText: 'NOS ESPINHOS', price: 40, maxCharges: 5, summary: 'FURA O PNEU', charges: 3, halfLength: 1.9, halfWidth: 2.95, life: 20, effect: 'puncture', duration: 5 },
+  oil: { id: 'oil', label: 'OLEO', caughtText: 'NO OLEO', price: 30, maxCharges: 5, summary: 'CARRO PERDE ADERENCIA', charges: 3, halfLength: 2.85, halfWidth: 2.8, life: 20, effect: 'oil', duration: 2.8 },
+  paint: { id: 'paint', label: 'TINTA', caughtText: 'NA TINTA', price: 40, maxCharges: 3, summary: 'COBRE O PARA-BRISA', charges: 1, halfLength: 1.6, halfWidth: 2.4, life: 20, effect: 'paint', duration: 7 },
+  dynamite: { id: 'dynamite', label: 'DINAMITE', caughtText: 'NA DINAMITE', price: 75, maxCharges: 4, summary: 'EXPLODE AO PISAR E JOGA O CARRO PARA TRAS', charges: 2, halfLength: 1.0, halfWidth: 1.3, life: 90, radius: 8 },
+  smoke: { id: 'smoke', label: 'FUMACA', caughtText: 'NA FUMACA', price: 50, maxCharges: 3, summary: 'ESCONDE A PISTA', charges: 1, halfLength: 8, halfWidth: 6.5, life: 9, effect: 'smoke', duration: 3 },
+  extinguisher: { id: 'extinguisher', label: 'EXTINTOR', price: 60, maxCharges: 3, summary: 'RECUPERA 20% DA VIDA', charges: 1, powerup: true },
+  shield: { id: 'shield', label: 'ESCUDO', price: 130, maxCharges: 2, summary: 'ABSORVE 80% DA VIDA POR 8 S', charges: 1, powerup: true },
+  emp: { id: 'emp', label: 'PULSO EMP', price: 90, maxCharges: 3, summary: 'SEM NITRO, TIRO E ITENS POR 8 S, A 50 M', charges: 1, powerup: true },
+  mine: { id: 'mine', label: 'MINA TELEGUIADA', price: 120, maxCharges: 3, summary: 'PERSEGUE O CARRO A FRENTE, GRUDA E EXPLODE', charges: 1, powerup: true },
+  harpoon: { id: 'harpoon', label: 'ARPAO', price: 85, maxCharges: 3, summary: 'FISGA ATE 50 M E PRENDE POR 6 S. E SOLTA OU CANCELA', charges: 1, powerup: true },
 };
 
 // Chão queimando onde a flecha incendiária caiu. Não se compra: só a besta cria. Quem passa por cima pega fogo

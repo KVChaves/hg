@@ -3,7 +3,7 @@ import { poseRig } from '../game/carRoll.js';
 import * as THREE from 'three';
 import { gradientMap } from '../art/recolor.js';
 import { colorRamp } from '../art/shade.js';
-import { EYE, VIEW } from '../config.js';
+import { EYE, VIEW, WINDOW_VIEW } from '../config.js';
 import { createCharmPendulum } from './charmPendulum.js';
 import { createDashboard } from './dashboard.js';
 import { DEPTH, LAYOUT } from './layout.js';
@@ -194,5 +194,11 @@ export function createCabin({ camera, car, loadout }) {
     return screenY < ROOF_LINE || screenY > DASH_LINE;
   }
 
-  return { scene, update, setAmbient, isBehindCabin, renderMirror, setPart, setPartColor, loadout, grips, setTrapButtonPressed: dashboard.setTrapButtonPressed, setWeapon: dashboard.setWeapon, ammoSlot: dashboard.ammoSlot };
+  // Visão pela janela: a cabeça sai pela janela do motorista. O interior não é desenhado (ver main.js).
+  function setWindowView(on) {
+    const { x, y, z } = WINDOW_VIEW.head;
+    head.position.set(on ? x : 0, on ? y : 0, on ? z : 0);
+  }
+
+  return { scene, update, setAmbient, isBehindCabin, setWindowView, renderMirror, setPart, setPartColor, loadout, grips, setTrapButtonPressed: dashboard.setTrapButtonPressed, setWeapon: dashboard.setWeapon, ammoSlot: dashboard.ammoSlot };
 }

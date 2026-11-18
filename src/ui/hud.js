@@ -27,15 +27,16 @@ function centered(ctx, text, y, color, scale = 1) {
 
 const CONTROLS = [
   ['W / S', 'ACELERA / FREIA E RE'], ['A / D', 'DIRECAO'], ['ESPACO', 'NITRO'], ['SHIFT', 'DRIFT NAS CURVAS'],
-  ['E', 'USA ITEM DO BAGAGEIRO'], ['RODA DO MOUSE', 'TROCA ITEM'], ['Q (SEGURE)', 'VE O CARRO POR FORA'], ['H', 'BUZINA'],
+  ['E', 'USA ITEM DO BAGAGEIRO'], ['RODA DO MOUSE', 'TROCA ITEM'], ['Q (SEGURE)', 'OLHA PELA JANELA'], ['H', 'BUZINA'],
   ['MOUSE', 'OLHA'], ['CLIQUE', 'ATIRA'], ['BOTAO DIREITO', 'SEGURA A ARMA'], ['R', 'RECARREGA'], ['C', 'CENTRALIZA A CAMERA'],
 ];
 const NPC_HELP = ['SE VOCE ESTIVER MUITO ATRAS, UM NPC ACENA', 'NA BEIRA DA PISTA COM UM ITEM ACIMA DA CABECA:', 'MUNICAO, NITRO, EXTINTOR OU ARMADILHA.', 'PASSE PERTO DELE PARA PEGAR O ITEM.'];
 
 // Pop-up antes da contagem: botões do jogo e o que querem dizer os NPCs da beira da pista.
-function drawIntroPopup(ctx, timeLeft) {
+// `challenge`: linhas do desafio próprio da pista (campo `challenge` do bioma), quando ela tem um.
+function drawIntroPopup(ctx, timeLeft, challenge = []) {
   const w = 440, lineH = 11, rows = Math.ceil(CONTROLS.length / 2);
-  const h = 62 + rows * lineH + 14 + NPC_HELP.length * lineH + 16;
+  const h = 62 + rows * lineH + 14 + NPC_HELP.length * lineH + 16 + (challenge.length ? 14 + challenge.length * lineH : 0);
   const x = Math.round(CENTER_X - w / 2), y = Math.round(VIEW.height / 2 - h / 2);
   ctx.fillStyle = 'rgba(0,0,0,0.88)'; ctx.fillRect(x, y, w, h);
   ctx.fillStyle = '#f0d060'; ctx.fillRect(x, y, w, 2); ctx.fillRect(x, y + h - 2, w, 2); ctx.fillRect(x, y, 2, h); ctx.fillRect(x + w - 2, y, 2, h);
@@ -49,6 +50,11 @@ function drawIntroPopup(ctx, timeLeft) {
   let ny = y + 32 + rows * lineH + 8;
   centered(ctx, 'NPCS NA BEIRA DA PISTA', ny, '#6fe070'); ny += lineH + 3;
   for (const line of NPC_HELP) { centered(ctx, line, ny, '#e8d8c0'); ny += lineH; }
+  if (challenge.length) {
+    ny += 3;
+    centered(ctx, 'DESAFIO DA PISTA', ny, '#ff9a40'); ny += lineH + 3;
+    for (const line of challenge) { centered(ctx, line, ny, '#ffe9a0'); ny += lineH; }
+  }
   centered(ctx, `A CORRIDA COMECA EM ${Math.ceil(timeLeft)}`, y + h - 14, '#a89878');
 }
 
@@ -69,7 +75,7 @@ function paintDamageBand(width, height, edgeAt) {
   return band;
 }
 
-export function createHud(canvas, { killFeed, pause, scope, featFeed, mainMenu, multiplayer, podium, matchSetup, results, voteScreen, matchLabel, biomeName, race, weapon, hands, garage, workshop, externalView, spectator, spectatorExit, isLocked, combat, car, activeCamera, opponents, isBehindCabin, isInSmoke, roadsideHelp, traps, powerStatus = () => [] }) {
+export function createHud(canvas, { matchTable, isTableHeld, killFeed, pause, scope, featFeed, mainMenu, multiplayer, podium, matchSetup, results, voteScreen, matchLabel, biomeName, biomeChallenge = () => [], race, weapon, hands, garage, workshop, windowView, spectator, spectatorExit, isLocked, combat, car, activeCamera, opponents, isBehindCabin, isInSmoke, roadsideHelp, traps, powerStatus = () => [] }) {
   canvas.width = VIEW.width;
   canvas.height = VIEW.height;
   const ctx = canvas.getContext('2d');
@@ -228,7 +234,7 @@ export function createHud(canvas, { killFeed, pause, scope, featFeed, mainMenu, 
       centered(ctx, biomeName(), 100, '#ffe9a0');
     }
     if (!race.started && race.intro <= 0) centered(ctx, String(Math.min(3, Math.ceil(race.countdown))), 118, '#ffe9a0', 4);
-    if (!race.started && race.intro > 0) drawIntroPopup(ctx, race.intro);
+    if (!race.started && race.intro > 0) drawIntroPopup(ctx, race.intro, biomeChallenge());
     else if (race.goTimer > 0) centered(ctx, 'GO!', 118, '#6fe070', 4);
     if (race.started) killFeed.draw(ctx);
     if (car.wrecked > 0) {
@@ -255,7 +261,7 @@ export function createHud(canvas, { killFeed, pause, scope, featFeed, mainMenu, 
     }
   }
 
-  return () => {
+  function drawScreen() {
     ctx.clearRect(0, 0, VIEW.width, VIEW.height);
     clearClickable();
     if (mainMenu.isOpen) { mainMenu.draw(ctx); return; }
@@ -270,18 +276,24 @@ export function createHud(canvas, { killFeed, pause, scope, featFeed, mainMenu, 
       return;
     }
     if (workshop.isOpen) { workshop.draw(ctx); return; }
-    const scoped = scope.active && !externalView.active && !spectator.active;
-    if (!externalView.active && !spectator.active && !scoped) {
-      hands.draw(ctx);
+    const scoped = scope.active && !spectator.active;
+    if (!spectator.active && !scoped) {
+      hands.draw(ctx, { outside: windowView.active });
       if (traps.aiming) drawThrowReticle();
       else if (hands.isHoldingGun()) drawCrosshair();
     }
-    if (race.started) drawRacerNames(ctx, activeCamera(), opponents, (x, y, z) => isInSmoke(x, z) || (!externalView.active && !scoped && isBehindCabin(x, y, z)));
+    if (race.started) drawRacerNames(ctx, activeCamera(), opponents, (x, y, z) => isInSmoke(x, z) || (!windowView.active && !scoped && isBehindCabin(x, y, z)));
     if (scoped) scope.draw(ctx);
-    if (!externalView.active && !spectator.active) drawBurning();
+    if (!windowView.active && !spectator.active) drawBurning();
     drawPowerStatus();
     drawDamage();
     drawMessages();
     if (pause.isOpen) pause.draw(ctx);
+  }
+
+  // A tabela da partida (TAB) vai por cima de qualquer tela.
+  return () => {
+    drawScreen();
+    if (isTableHeld()) matchTable.draw(ctx);
   };
 }

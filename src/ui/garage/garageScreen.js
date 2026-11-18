@@ -50,7 +50,7 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
   const carScene = createGarageScene(resolveCarSpec(carSelection));
 
   // O painel do carro tem duas abas: aparência (grátis) e desempenho (peças com preço e efeito).
-  const performanceKeys = ['bumper', 'bumperTrim', 'tire', 'glass', 'height'];
+  const performanceKeys = ['bumper', 'bumperTrim', 'tire', 'glass', 'height', 'exhaust'];
   const lookKeys = Object.keys(CAR_SLOTS).filter(key => !performanceKeys.includes(key));
   const tabOf = key => (performanceKeys.includes(key) ? 'performance' : 'look');
 

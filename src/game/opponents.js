@@ -1,7 +1,8 @@
 import { ACCEL, CAR_MAX_HP, MAX_SPEED, NITRO_ACCEL, NITRO_DRAIN, NITRO_MAX_SPEED, SLIPSTREAM_KMH } from '../config.js';
 import { LIVERIES } from '../world/car/carLivery.js';
 import { createCarModel } from '../world/car/carModel.js';
-import { alignToTwist, hazardAt, inFlightZone, inGap, onBridge, SHARP_RADIUS, surfaceAt, track, trackAt, turnAt, wrapDistance } from '../world/track.js';
+import { alignToTwist, boostAt, gustAt, hazardAt, jumpBoostAhead, inFlightZone, inGap, onBridge, SHARP_RADIUS, surfaceAt, track, trackAt, turnAt, wrapDistance } from '../world/track.js';
+import { BOOST_SPEED, BOOST_TIME } from './car.js';
 import { FALL_TIME, fallIsCertain, GRAVITY, sinkStep, stepFlight } from './flight.js';
 import { BRIDGE_HALF } from './mapLayout.js';
 import { createFlip, lifeAfterDestruction, poseFlippingCar, RESPAWN_PROTECTION } from './carFlip.js';
@@ -24,6 +25,9 @@ const NITRO_MIN_SPEED = 15, NITRO_BURST = [1, 1.6], NITRO_PAUSE = [12, 24], NITR
 const NITRO_VIEW = 70, NITRO_MAX_CURVE = 1 / 60, NITRO_RIVAL_AHEAD = 90, NITRO_RIVAL_BEHIND = 30;
 const REMOTE_BLEND = 12, REMOTE_PREDICTION_TIME = 0.4, REMOTE_SNAP_DISTANCE = 40;
 const GRUDGE_TIME = 8, FIRST_TRAP_DELAY = [6, 14];
+// Vento e turbo (cânion e salar). A rajada desloca a IA de lado (a IA corrige na velocidade de troca de faixa).
+// Antes do salto grande a IA mira na placa de turbo da rampa, com um erro que às vezes a deixa de fora.
+const GUST_LANE_RATE = 1 / 4, JUMP_BOOST_SIGHT = 150, JUMP_BOOST_AIM = [0.2, 1.25];
 
 const between = ([low, high]) => low + Math.random() * (high - low);
 
@@ -335,7 +339,26 @@ export function updateRemoteRacer(op, dt) {
   op.model.roll(op.v * dt);
 }
 
-export function updateOpponent(op, dt, field, racing, activeTraps) {
+// Placa de turbo: igual ao jogador, joga a IA a BOOST_SPEED por BOOST_TIME segundos.
+function hitBoostPad(op) {
+  const pad = boostAt(op.dist, op.lane);
+  if (pad && pad !== op.boostPad && op.v > 3) {
+    op.v = Math.max(op.v, BOOST_SPEED);
+    op.boost = BOOST_TIME;
+  }
+  op.boostPad = pad;
+}
+
+// Chegando ao salto grande a IA vai para a placa de turbo da rampa. Cada carro sorteia uma vez o quanto acerta.
+function steerToJumpBoost(op) {
+  const pad = jumpBoostAhead(op.dist, JUMP_BOOST_SIGHT);
+  if (!pad) { op.boostAim = null; return; }
+  op.boostAim ??= (Math.random() < 0.5 ? -1 : 1) * pad.half * between(JUMP_BOOST_AIM);
+  op.laneTarget = pad.lane + op.boostAim;
+  op.laneHold = Math.max(op.laneHold, 0.3);
+}
+
+export function updateOpponent(op, dt, field, racing, activeTraps, time = 0) {
   op.nitroActive = false;
   if (op.sunk > 0) { sinkOpponent(op, dt); return; }
   if (op.dead > 0) {
@@ -351,8 +374,11 @@ export function updateOpponent(op, dt, field, racing, activeTraps) {
     const laneBefore = op.lane;
     updateNitro(op, dt, field);
     updateDrift(op, dt);
-    const target = avoidTraffic(op, targetSpeedForCurves(op, op.nitroActive ? NITRO_MAX_SPEED : op.vmax + op.slipstream * SLIPSTREAM_KMH / 3.6), field, dt) * speedFactorFromEffects(op.effects);
+    op.boost = Math.max(0, (op.boost ?? 0) - dt);
+    let target = avoidTraffic(op, targetSpeedForCurves(op, op.nitroActive ? NITRO_MAX_SPEED : op.vmax + op.slipstream * SLIPSTREAM_KMH / 3.6), field, dt) * speedFactorFromEffects(op.effects);
+    if (op.boost > 0) target = Math.max(target, BOOST_SPEED);
     dodgeTraps(op, activeTraps);
+    if (track.boosts.length) steerToJumpBoost(op);
     op.dodgeTime -= dt;
     const accel = op.acc + (op.nitroActive ? NITRO_ACCEL : 0);
     if (!op.airborne) op.v = op.v < target ? Math.min(target, op.v + accel * dt) : Math.max(target, op.v - 30 * dt);   // no ar o pé no acelerador não muda nada
@@ -362,8 +388,10 @@ export function updateOpponent(op, dt, field, racing, activeTraps) {
     if (op.effects.oil > 0) op.lane += Math.sin(op.effects.oil * OIL_SWING_RATE) * OIL_LANE_SWING * dt;
     op.lane += op.knock * dt;
     op.knock *= Math.exp(-KNOCK_DECAY * dt);
+    if (track.gusts.length) op.lane += (gustAt(op.dist, time)?.push ?? 0) * GUST_LANE_RATE * dt;
     op.lane = Math.max(-LANE_DRIFT_LIMIT, Math.min(LANE_DRIFT_LIMIT, op.lane));
     op.laneRate = dt > 0 ? (op.lane - laneBefore) / dt : 0;
+    if (track.boosts.length && !op.airborne) hitBoostPad(op);
     op.nose += op.spin * dt;
     op.spin *= Math.exp(-SPIN_DECAY * dt);
     op.nose *= Math.exp(-NOSE_RETURN * dt);

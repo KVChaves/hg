@@ -33,7 +33,7 @@ A primeira corrida só larga quando todos clicarem em Pronto na garagem. Se o ad
 | Shift | drift (freio de mão) |
 | E | usar item do bagageiro |
 | Roda do mouse | trocar item do bagageiro |
-| Q (segurar) | ver o carro por fora |
+| Q (segurar) | pôr a cabeça para fora da janela: olha e atira para trás, mas o carro fica mais lento |
 | H | buzina |
 | Mouse | olhar (clique para capturar, Esc solta) |
 | Clique | atirar |

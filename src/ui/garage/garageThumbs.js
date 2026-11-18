@@ -43,6 +43,32 @@ function spoilerThumb(kind) {
   return r.commit();
 }
 
+// Traseira do carro com o escapamento da variante e a cor da chama que ele solta.
+const EXHAUST_THUMB = {
+  stock: { xs: [14, 26], size: 2, flame: [0xff7a18, 3] },
+  muffled: { xs: [14, 26], size: 3, flame: [0x4a7aff, 2] },
+  sport: { xs: [10, 15, 25, 30], size: 1, flame: [0xff6a18, 4] },
+  drift: { xs: [20], size: 3, flame: [0x30e070, 5] },
+  turbo: { xs: [13, 27], size: 3, flame: [0x3a6aff, 7] },
+  explosive: { xs: [13, 27], size: 2, flame: [0xff2810, 8] },
+};
+function exhaustThumb(option) {
+  const r = new Raster(W, H);
+  const { xs, size, flame } = EXHAUST_THUMB[option.value] ?? EXHAUST_THUMB.stock;
+  r.rect(4, 4, 32, 10, 0x6a6a72);                    // traseira da carroceria
+  r.rect(7, 6, 26, 4, 0x2a2e38);                     // vidro traseiro
+  r.rect(6, 11, 3, 2, 0xc02020);
+  r.rect(31, 11, 3, 2, 0xc02020);                    // lanternas
+  r.rect(4, 14, 32, 3, 0x34343a);                    // para-choque
+  r.disc(8, 19, 3, 0x18181c);
+  r.disc(32, 19, 3, 0x18181c);
+  for (const x of xs) {
+    r.rect(x - size, 17, size * 2, 3, 0x2a2a2e);     // cano
+    r.rect(x - Math.ceil(size / 2), 20, Math.max(1, size), flame[1], flame[0]);   // chama
+  }
+  return r.commit();
+}
+
 // Frente do carro com o para-choque da variante.
 function bumperThumb(id) {
   const r = new Raster(W, H);
@@ -68,6 +94,12 @@ function bumperThumb(id) {
     r.disc(12, 12, 2, gold);
     r.disc(28, 12, 2, gold);                         // faróis auxiliares
     r.rect(14, 22, 12, 2, 0x70747c);                 // protetor de cárter
+  }
+  if (id === 'explosive') {
+    for (const y of [16, 19]) for (const x of [8, 11, 14, 17, 20, 23, 26, 29]) r.rect(x, y, 3, 3, 0xc02424);   // dinamites
+    for (const x of [9, 15, 21, 27]) r.rect(x, 14, 1, 2, 0x1a1a1e);                                         // pavios
+    r.rect(13, 16, 2, 6, gold);
+    r.rect(25, 16, 2, 6, gold);                      // fitas
   }
   if (id === 'ram') {
     r.poly([[5, 21], [35, 21], [35, 17], [5, 17]], dark);
@@ -305,6 +337,7 @@ const EXTERIOR = {
   spoiler: option => spoilerThumb(option.value),
   height: option => heightThumb(option),
   bumper: option => bumperThumb(option.value),
+  exhaust: exhaustThumb,
   tire: option => tireThumb(option),
   rim: option => paintRim(option.value, 0xb01820),
   glass: option => glassThumb(option),

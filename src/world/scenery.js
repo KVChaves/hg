@@ -5,7 +5,7 @@ import { createAtmosphere } from './atmosphere.js';
 import { buildTunnels } from './tunnels.js';
 import { buildWalls } from './walls.js';
 import { buildEpicSections } from './epicVisuals.js';
-import { buildBeltSites, buildHazardSites, buildStormSites } from './hazardSites.js';
+import { buildBeltSites, buildBoostSites, buildGustSites, buildHazardSites, buildStormSites } from './hazardSites.js';
 import { createRandom, generateTrack, isOverChasm, surfaceAt, track, trackAt, valleyReach } from './track.js';
 import { noiseTexture, pixelTexture, surfaceTexture } from './textures.js';
 import { pngNow } from '../cabin/pngPixels.js';
@@ -134,7 +134,7 @@ function addRoad(group, biome, groundMaterial) {
   const kerbMaterial = new THREE.MeshBasicMaterial({ map: kerbTexture(biome.kerb), side: THREE.DoubleSide, ...offset(-3) });
 
   const roadY = k => py[k], kerbY = k => py[k] + 0.005, groundY = (k, x, z) => track.heightAt(x, z);
-  const isGap = k => track.gap[k] === 1 || track.bridge[k] === 1, overChasm = k => track.drop[k] > 0 || track.bed[k] > 0 || track.lift[k] > 0;   // a rampa é de pedra e a ponte, de gelo (desenhadas em epicVisuals): sem estrada comum nem barranco
+  const isGap = k => track.gap[k] === 1 || track.bridge[k] > 0, overChasm = k => track.drop[k] > 0 || track.bed[k] > 0 || track.lift[k] > 0;   // a rampa é de pedra e a ponte, de gelo (desenhadas em epicVisuals): sem estrada comum nem barranco
   group.add(new THREE.Mesh(stripGeometry(-half, half, 10, roadY, roadY, isGap), roadMaterial));
   if (track.valley) {                                // vale: sem zebra nem acostamento, a terra sobe direto da estrada
     for (const side of [-1, 1]) group.add(new THREE.Mesh(valleyGeometry(side), groundMaterial));
@@ -214,6 +214,8 @@ function disposeGroup(group) {
   });
 }
 
+const FLASH_FOG_FAR = 320;
+
 export function createWorldScene() {
   const scene = new THREE.Scene();
   scene.fog = new THREE.Fog(0x000000, 15, 230);
@@ -253,6 +255,8 @@ export function createWorldScene() {
     buildHazardSites(content, layout, animation => biomeAnimations.push(animation));
     buildStormSites(content, layout, animation => biomeAnimations.push(animation));
     buildBeltSites(content, layout, animation => biomeAnimations.push(animation));
+    buildGustSites(content, layout, animation => biomeAnimations.push(animation));
+    buildBoostSites(content, layout, animation => biomeAnimations.push(animation));
     biome.addProps({
       onUpdate: animation => biomeAnimations.push(animation), group: content, random: createRandom(seed + 2), bounds, heightAt: track.heightAt, spotIsClear: (() => { const isClear = spotChecker(); return (x, z, distance) => isClear(x, z, distance) && !isOverChasm(x, z); })(), isOpen: openCheck(layout),
     });
@@ -285,6 +289,19 @@ export function createWorldScene() {
     }
     atmosphere.setWeatherVisible(level < 0.3);
   };
+
+  // Clarão de relâmpago (0 a 1), chamado depois de setDarkness: a neblina abre e clareia, como se o raio
+  // iluminasse tudo por um instante.
+  const flashColor = new THREE.Color(0xc8d8ff);
+  scene.setFlash = level => {
+    if (level <= 0.01) return;
+    scene.fog.color.lerp(flashColor, level * 0.75);
+    scene.background.copy(scene.fog.color);
+    scene.fog.far += (FLASH_FOG_FAR - scene.fog.far) * level;
+  };
+
+  // Rajada de vento: as partículas do clima correm de lado (x, z em m/s no mundo).
+  scene.setGust = (x, z) => atmosphere.setGust(x, z);
 
   // Anima céu, clima e bioma em volta da posição (x, y, z) do carro.
   scene.updateMap = (dt, x, y, z) => {

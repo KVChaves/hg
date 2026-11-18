@@ -30,7 +30,7 @@ export function createAtmosphere(scene) {
   scene.add(streaks);
 
   const offsets = new Float32Array(MAX_PARTICLES * 3), sway = new Float32Array(MAX_PARTICLES);
-  let weather = null, time = 0, active = 0, storm = 0, wind = 0;
+  let weather = null, time = 0, active = 0, storm = 0, wind = 0, gustX = 0, gustZ = 0;
   const tint = new THREE.Color();
 
   function setBiome(biome) {
@@ -65,7 +65,8 @@ export function createAtmosphere(scene) {
     time += dt;
     const wrap = (value, size) => ((value % size) + size) % size - size / 2;
     for (let i = 0; i < active; i++) {
-      offsets[i * 3] -= storm * wind * dt;           // vento do temporal empurra as partículas de lado
+      offsets[i * 3] -= storm * wind * dt - gustX * dt;   // vento do temporal (e a rajada do cânion) empurra as partículas de lado
+      offsets[i * 3 + 2] += gustZ * dt;
       offsets[i * 3 + 1] -= weather.fall * dt;
       const swing = Math.sin(time * weather.swaySpeed + sway[i]) * weather.sway;
       positions[i * 3] = x + wrap(offsets[i * 3] - x, BOX.x) + swing;
@@ -92,7 +93,12 @@ export function createAtmosphere(scene) {
     if (weather) points.material.size = (weather.size ?? 2) + level * 2;
   }
 
-  return { setBiome, update, setWeatherVisible, setStorm };
+  function setGust(x, z) {
+    gustX = x;
+    gustZ = z;
+  }
+
+  return { setBiome, update, setWeatherVisible, setStorm, setGust };
 }
 
 // Ajudas para pintar céu: gradiente até a cor do horizonte (`sky` do bioma) e uma serra no meio da altura.

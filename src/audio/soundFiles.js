@@ -58,5 +58,9 @@ export const PHASE_MUSIC = {
   neonTokyo: 'assets/audio/music/neon-tokyo.mp3',
   stadium: 'assets/audio/music/stadium.mp3',
   winterMountain: 'assets/audio/music/winter-mountain.mp3',
+  // As fases novas ainda não têm música própria: emprestam a de outro bioma até ganharem a sua.
+  windCanyon: 'assets/audio/music/desert.mp3',
+  saltFlats: 'assets/audio/music/stadium.mp3',
+  stormSwamp: 'assets/audio/music/jungle.mp3',
 };
 

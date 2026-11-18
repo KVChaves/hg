@@ -55,8 +55,12 @@ export const CAR_SLOTS = {
     label: 'Farol', short: 'FAROL', default: 'rect', colorDefault: 0xf8f4d8,
     options: named([['rect', 'Retangular'], ['round', 'Redondo'], ['twin', 'Duplo'], ['slim', 'Fino'], ['covered', 'Com grade']]),
   },
-  bumper: { label: 'Para-choque', short: 'CHOQUE', default: 'stock', colorDefault: 0x34343a, options: named([['stock', 'Original'], ['sport', 'Esportivo'], ['steel', 'Aco'], ['ram', 'Ariete'], ['absorber', 'Absorvedor']]) },
+  bumper: { label: 'Para-choque', short: 'CHOQUE', default: 'stock', colorDefault: 0x34343a, options: named([['stock', 'Original'], ['sport', 'Esportivo'], ['steel', 'Aco'], ['ram', 'Ariete'], ['explosive', 'Explosivo'], ['absorber', 'Absorvedor']]) },
   bumperTrim: { label: 'Detalhe do para-choque', short: 'DETALHE', colorDefault: 0xd8b840 },
+  exhaust: {
+    label: 'Escapamento', short: 'ESCAPE', default: 'stock', colorDefault: 0x2a2a2e,
+    options: named([['stock', 'Original'], ['muffled', 'Abafado'], ['sport', 'Esportivo'], ['drift', 'Coletor'], ['turbo', 'Turbo duplo'], ['explosive', 'Explosivo']]),
+  },
   glass: {
     label: 'Vidros', short: 'VIDRO', default: 'clear', colorDefault: 0x3a3c44,
     options: { clear: { name: 'Claro', value: 0 }, light: { name: 'Leve', value: 0.18 }, medium: { name: 'Fume', value: 0.35 }, dark: { name: 'Escuro', value: 0.7 }, black: { name: 'Blindado', value: 0.92 } },
@@ -147,6 +151,8 @@ export function resolveCarSpec({ options, colors }) {
     tireKind: options.tire,
     heightKind: options.height,
     glassKind: options.glass,
+    exhaustKind: options.exhaust,
+    exhaustColor: colors.exhaust,
     bumperColor: colors.bumper,
     bumperTrimColor: colors.bumperTrim,
     tire: value('tire'),

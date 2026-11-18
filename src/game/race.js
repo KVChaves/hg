@@ -1,6 +1,6 @@
 import { CAR_MAX_HP, LAPS, TRACK_WIDTH } from '../config.js';
-import { beltPush, hazardAt, inFlightZone, inGap, isEpic, nearestIndex, onBridge, OPEN_WALL, surfaceAt, track, trackAt, valleyRise, valleySlope, wrapDistance } from '../world/track.js';
-import { crashDamage, damagePlayer, resetCar, trackCapsizes } from './car.js';
+import { beltPush, boostAt, gustAt, hazardAt, raceClock, inFlightZone, inGap, isEpic, nearestIndex, onBridge, OPEN_WALL, surfaceAt, track, trackAt, valleyRise, valleySlope, wrapDistance } from '../world/track.js';
+import { BOOST_SPEED, BOOST_TIME, crashDamage, damagePlayer, resetCar, trackCapsizes } from './car.js';
 import { resetRig, rigLean } from './carRoll.js';
 import { createFlip, flipLandingTime, lifeAfterDestruction, RESPAWN_PROTECTION } from './carFlip.js';
 import { createCollisions } from './collisions.js';
@@ -24,20 +24,21 @@ const MIN_TIME_GAP = 0.05;                           // segundos entre tempos es
 const IMPACT_DAMAGE = 0.4;                           // pontos de vida por m/s de batida
 const HARD_LANDING = 11, LANDING_DAMAGE = 3;         // a partir de 11 m/s de descida o pouso tira 3 pontos de vida por m/s (suspensão aguenta o resto)
 const AIR_PITCH_RATE = 3, BANK_RATE = 8;             // no ar o bico acompanha a trajetória aos poucos
+const BOOST_MIN_SPEED = 3;                           // de ré ou parado a placa de turbo não faz nada
 const FACE_BOUNCE = 0.2;                             // quem bate na face da outra margem volta com isso da velocidade
 
 const GRID_ROW_GAP = 16, GRID_STAGGER = 7;           // metros entre as filas e entre os dois carros de uma fila
 const gridDistance = slot => track.length - 8 - (slot >> 1) * GRID_ROW_GAP - (slot & 1) * GRID_STAGGER;
 const gridLane = slot => (slot & 1 ? 1 : -1) * TRACK_WIDTH * 0.27;   // duas filas, uma de cada lado do centro
 
-export function createRace(car, opponents, { onCrash, onDestroyed }) {
+export function createRace(car, opponents, { onCrash, onDestroyed, onBlast }) {
   const playerProxy = { name: 'Player', netId: 'player', sunk: 0, slipstream: 0, wx: 0, wy: 0, wz: 0, twist: 0, y: 0, yaw: 0, dist: 0, lane: 0, v: 0, dead: 0, protectedFor: 0, x: 0, z: 0, isPlayer: true, effects: car.effects };
   const field = [playerProxy, ...opponents];
   const finishTimes = new Map();                     // nome -> tempo em que cruzou a linha final
   let playerStart = 0, wrongWayTime = 0;
   const allOpponents = [...opponents];               // `opponents` e `field` guardam só quem corre nesta partida
 
-  const collisions = createCollisions({ car, field, onCrash, onDestroyed });
+  const collisions = createCollisions({ car, field, onCrash, onDestroyed, onBlast });
 
   const race = {
     intro: INTRO_TIME, countdown: 3.8, started: false, goTimer: 0, time: 0,
@@ -124,6 +125,26 @@ export function createRace(car, opponents, { onCrash, onDestroyed }) {
       car.vx += tx[i] * push;
       car.vz += tz[i] * push;
     }
+    // Rajada de vento (cânion): empurra de lado, no chão e no ar. Na ponte sem mureta pode jogar o carro no abismo.
+    const gust = track.gusts.length && car.sunk <= 0 ? gustAt(race.playerDist, race.time) : null;
+    car.gust = gust ? gust.push : 0;
+    if (gust) {
+      car.vx += -tz[i] * gust.push * dt;
+      car.vz += tx[i] * gust.push * dt;
+    }
+    // Placa de turbo: ao entrar nela o carro é jogado para a frente, acima da velocidade máxima.
+    const pad = track.boosts.length && !car.airborne && car.sunk <= 0 ? boostAt(race.playerDist, offset) : null;
+    if (pad && pad !== car.boostPad) {
+      const fx = -Math.sin(car.yaw), fz = -Math.cos(car.yaw), forward = car.vx * fx + car.vz * fz;
+      if (forward > BOOST_MIN_SPEED) {
+        const kick = Math.max(0, BOOST_SPEED - forward);
+        car.vx += fx * kick;
+        car.vz += fz * kick;
+        car.boost = BOOST_TIME;
+        car.boostKick = true;
+      }
+    }
+    car.boostPad = pad;
     car.roadTurn = track.turn[i] * (-Math.sin(car.yaw) * tx[i] - Math.cos(car.yaw) * tz[i]);   // a curva como o carro a enxerga, de frente ou de ré
     car.offTrack = wall < OPEN_WALL ? 0 : Math.abs(offset);   // túnel e tubo não têm mato: a faixa junto da parede não freia; no vale a encosta freia
     car.lateral = offset;
@@ -393,6 +414,7 @@ export function createRace(car, opponents, { onCrash, onDestroyed }) {
       race.goTimer -= dt;
       if (!race.finished) race.time += dt;
     }
+    raceClock.time = race.time;
     updatePlayerCondition(dt);
     updatePlayerOnTrack(dt);
     updateWrongWay(dt);
@@ -403,7 +425,7 @@ export function createRace(car, opponents, { onCrash, onDestroyed }) {
     }
     for (const op of opponents) {
       if (op.remote) updateRemoteRacer(op, dt);
-      else updateOpponent(op, dt, field, race.started, activeTraps);
+      else updateOpponent(op, dt, field, race.started, activeTraps, race.time);
     }
     collisions.update(dt);
     playerProxy.x = car.x;

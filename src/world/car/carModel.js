@@ -26,12 +26,18 @@ function spoilerGeometry(kind, model) {
 
 const flashMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
 
-// Escapamento: dois canos na traseira e o fogo do nitro saindo deles (z positivo é para trás).
+// Escapamento: canos na traseira e o fogo do nitro saindo deles (z positivo é para trás).
+// Cada tipo tem seus canos (`xs`, raio, comprimento) e chama (`layers`: raio, comprimento e cor).
 const REAR_Z = 2.2;
-const EXHAUST_X = [-0.42, 0.42], EXHAUST_Y = 0.36;
-const pipeGeometry = new THREE.CylinderGeometry(0.075, 0.09, 0.3, 6);
-pipeGeometry.rotateX(Math.PI / 2);
-const pipeMaterial = new THREE.MeshBasicMaterial({ color: 0x2a2a2e });
+const EXHAUST_Y = 0.36;
+const EXHAUSTS = {
+  stock: { xs: [-0.42, 0.42], radius: 0.08, length: 0.3, layers: [[0.15, 0.95, 0xff7a18], [0.08, 0.55, 0xffe080]] },
+  muffled: { xs: [-0.42, 0.42], radius: 0.12, length: 0.42, layers: [[0.1, 0.5, 0x4a7aff], [0.05, 0.3, 0xc8e0ff]] },
+  sport: { xs: [-0.55, -0.32, 0.32, 0.55], radius: 0.06, length: 0.3, layers: [[0.11, 0.85, 0xff6a18], [0.06, 0.5, 0xffe890]] },
+  drift: { xs: [0], radius: 0.1, length: 0.34, layers: [[0.17, 1.0, 0x30e070], [0.09, 0.6, 0xd8ffd0]] },
+  turbo: { xs: [-0.42, 0.42], radius: 0.13, length: 0.4, layers: [[0.2, 1.5, 0x3a6aff], [0.1, 0.9, 0xe8f4ff]] },
+  explosive: { xs: [-0.42, 0.42], radius: 0.1, length: 0.36, layers: [[0.24, 1.4, 0xff2810], [0.13, 0.9, 0xffa020], [0.06, 0.5, 0xfff0a0]] },
+};
 
 // Base na boca do cano e ponta para trás, para a chama esticar a partir do escapamento.
 function flameGeometry(radius, length) {
@@ -40,17 +46,38 @@ function flameGeometry(radius, length) {
   geometry.rotateX(Math.PI / 2);
   return geometry;
 }
-const FLAME_LAYERS = [
-  { geometry: flameGeometry(0.15, 0.95), material: new THREE.MeshBasicMaterial({ color: 0xff7a18, fog: false }) },
-  { geometry: flameGeometry(0.08, 0.55), material: new THREE.MeshBasicMaterial({ color: 0xffe080, fog: false }) },
-];
 const FLAME_FLICKER = [0.7, 1.25];
+
+function createExhaust(kind, color) {
+  const config = EXHAUSTS[kind] ?? EXHAUSTS.stock;
+  const pipes = new THREE.Group(), flames = new THREE.Group();
+  const geometries = [new THREE.CylinderGeometry(config.radius * 0.85, config.radius, config.length, 6).rotateX(Math.PI / 2)];
+  const materials = [new THREE.MeshBasicMaterial({ color })];
+  for (const x of config.xs) {
+    const pipe = new THREE.Mesh(geometries[0], materials[0]);
+    pipe.position.set(x, EXHAUST_Y, REAR_Z);
+    pipes.add(pipe);
+  }
+  for (const [radius, length, flameColor] of config.layers) {
+    const geometry = flameGeometry(radius, length), material = new THREE.MeshBasicMaterial({ color: flameColor, fog: false });
+    geometries.push(geometry);
+    materials.push(material);
+    for (const x of config.xs) {
+      const flame = new THREE.Mesh(geometry, material);
+      flame.position.set(x, EXHAUST_Y, REAR_Z + config.length / 2);
+      flame.raycast = () => {};                  // o fogo não conta como acerto no carro
+      flames.add(flame);
+    }
+  }
+  flames.visible = false;
+  return { pipes, flames, dispose: () => { geometries.forEach(g => g.dispose()); materials.forEach(m => m.dispose()); } };
+}
 
 // `spec` descreve o carro: veja DEFAULT_SPEC. A frente do modelo aponta para z negativo.
 const DEFAULT_SPEC = {
   model: 'coupe', headlightShape: 'rect', primary: 0xc4c0b8, secondary: 0x98161e, glyph: 0xe8e4dc, pattern: 'digital', decal: 'crosses',
   spoiler: 'wing', hood: 'none', hoodColor: 0xd8d4cc, height: 0, tire: { width: 1, radius: 1 }, rim: 'spokes', rimColor: 0xb01820,
-  headlight: 0xf8f4d8, glass: { color: 0x3a3c44, level: 0 }, tireColor: 0x0a0a0c, bumper: 'stock', bumperColor: 0x34343a, bumperTrimColor: 0xd8b840, tireKind: 'street', heightKind: 'stock', glassKind: 'clear', model: 'coupe',
+  headlight: 0xf8f4d8, glass: { color: 0x3a3c44, level: 0 }, tireColor: 0x0a0a0c, bumper: 'stock', bumperColor: 0x34343a, bumperTrimColor: 0xd8b840, tireKind: 'street', exhaustKind: 'stock', exhaustColor: 0x2a2a2e, heightKind: 'stock', glassKind: 'clear', model: 'coupe',
 };
 
 export function createCarModel(initialSpec, seed = 0) {
@@ -78,25 +105,21 @@ export function createCarModel(initialSpec, seed = 0) {
     }
   }
 
-  const flames = new THREE.Group();
-  flames.visible = false;
-  lifted.add(flames);
-  for (const x of EXHAUST_X) {
-    const pipe = new THREE.Mesh(pipeGeometry, pipeMaterial);
-    pipe.position.set(x, EXHAUST_Y, REAR_Z);
-    lifted.add(pipe);
-    for (const { geometry, material } of FLAME_LAYERS) {
-      const flame = new THREE.Mesh(geometry, material);
-      flame.position.set(x, EXHAUST_Y, REAR_Z + 0.14);
-      flame.raycast = () => {};                  // o fogo não conta como acerto no carro
-      flames.add(flame);
-    }
-  }
+  let exhaust = null, exhaustKey = '', flames = new THREE.Group();
 
   let flashing = false, radiusScale = 1, hoodOrnament = null, hoodKey = '', bumper = null, bumperKey = '', addons = null, addonsKey = '', tireDetails = [], tireKey = '';
 
   function apply(partialSpec) {
     const spec = { ...DEFAULT_SPEC, ...partialSpec };
+
+    const nextExhaust = `${spec.exhaustKind}|${spec.exhaustColor}`;
+    if (nextExhaust !== exhaustKey) {
+      exhaustKey = nextExhaust;
+      if (exhaust) { lifted.remove(exhaust.pipes, exhaust.flames); exhaust.dispose(); }
+      exhaust = createExhaust(spec.exhaustKind, spec.exhaustColor);
+      flames = exhaust.flames;
+      lifted.add(exhaust.pipes, flames);
+    }
 
     paint.map?.dispose();
     paint.map = pixelTexture(paintLivery(spec, seed));

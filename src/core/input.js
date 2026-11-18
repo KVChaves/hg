@@ -5,6 +5,12 @@ import { LOOK } from '../config.js';
 export const keys = {};
 export const look = { yaw: 0, pitch: 0 };
 
+// Volta a cabeça para dentro dos limites normais (ao sair da janela).
+export function clampLook() {
+  look.yaw = clamp(look.yaw, -LOOK.maxYaw, LOOK.maxYaw);
+  look.pitch = clamp(look.pitch, -LOOK.maxPitchDown, LOOK.maxPitchUp);
+}
+
 const LOOK_SPEED = 0.0024, WHEEL_MIN_INTERVAL = 90;
 let stageEl = null;
 
@@ -12,13 +18,16 @@ export const isLocked = () => stageEl !== null && document.pointerLockElement ==
 
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
-export function setupInput(stage, { onFire, onReload, onDropTrap, onCycleTrap, canLockPointer, sensitivity, isTyping }) {
+const NORMAL_LIMITS = { minYaw: -LOOK.maxYaw, maxYaw: LOOK.maxYaw, maxPitchUp: LOOK.maxPitchUp, maxPitchDown: LOOK.maxPitchDown };
+
+// Até onde a cabeça vira. `limits()` pode trocar os limites (na janela o piloto olha para trás).
+export function setupInput(stage, { onFire, onReload, onDropTrap, onCycleTrap, canLockPointer, sensitivity, isTyping, limits = () => NORMAL_LIMITS }) {
   stageEl = stage;
 
   addEventListener('keydown', e => {
     if (isTyping()) return;                          // digitando o nome, as teclas não comandam o carro
     keys[e.code] = true;
-    if (e.code === 'Space') e.preventDefault();
+    if (e.code === 'Space' || e.code === 'Tab') e.preventDefault();   // TAB abre a tabela da partida, não muda o foco
     if (e.code === 'KeyC') { look.yaw = 0; look.pitch = 0; }
     if (e.code === 'KeyR') onReload();
     if (e.code === 'KeyE' && !e.repeat) onDropTrap();
@@ -34,8 +43,9 @@ export function setupInput(stage, { onFire, onReload, onDropTrap, onCycleTrap, c
   addEventListener('mousemove', e => {
     if (!isLocked()) return;
     const speed = LOOK_SPEED * sensitivity();
-    look.yaw = clamp(look.yaw - e.movementX * speed, -LOOK.maxYaw, LOOK.maxYaw);
-    look.pitch = clamp(look.pitch - e.movementY * speed, -LOOK.maxPitchDown, LOOK.maxPitchUp);
+    const { minYaw, maxYaw, maxPitchUp, maxPitchDown } = limits();
+    look.yaw = clamp(look.yaw - e.movementX * speed, minYaw, maxYaw);
+    look.pitch = clamp(look.pitch - e.movementY * speed, -maxPitchDown, maxPitchUp);
   });
   addEventListener('mousedown', e => {
     if (!isLocked()) return;

@@ -224,6 +224,97 @@ function addBridge(group, { start, length, water }) {
   group.add(icicles);
 }
 
+// Ponte pênsil de tábuas (cânion): sem mureta, só o tabuleiro, torres nas cabeceiras e cabos lá no alto. Os cabos
+// e os tirantes não seguram ninguém: quem sai pela beirada cai no rio do fundo.
+const TOWER_HEIGHT = 16, CABLE_SAG = 9, HANGER_EVERY = 10, TRESTLE_EVERY = 30;
+function plankTexture() {
+  const size = 32, canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  for (let y = 0; y < size; y += 4) {
+    const k = Math.random() * 26;
+    ctx.fillStyle = `rgb(${120 + k | 0},${80 + k * 0.7 | 0},${46 + k * 0.4 | 0})`;
+    ctx.fillRect(0, y, size, 3);
+    ctx.fillStyle = '#2a1a0e';
+    ctx.fillRect(0, y + 3, size, 1);                // fresta entre as tábuas
+    ctx.fillStyle = 'rgba(40,24,12,.5)';
+    for (let i = 0; i < 3; i++) ctx.fillRect(Math.random() * size, y + 1, 2 + Math.random() * 5, 1);
+    ctx.fillStyle = '#8a8a8a';
+    ctx.fillRect(3, y + 1, 1, 1); ctx.fillRect(size - 4, y + 1, 1, 1);   // pregos
+  }
+  const texture = pixelTexture(canvas);
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  return texture;
+}
+
+// Tampo do tabuleiro: as tábuas atravessam a pista (uma imagem a cada PLANK_REPEAT metros de pista).
+const PLANK_REPEAT = 4;
+function deckGeometry(from, to, half) {
+  const steps = Math.max(1, Math.round((to - from) / track.step)), pos = [], uv = [], index = [];
+  for (let i = 0; i <= steps; i++) {
+    const distance = from + (to - from) * i / steps, t = trackAt(distance);
+    for (const [lateral, u] of [[-half, 0], [half, half * 2 / 8]]) {
+      pos.push(t.x - t.tz * lateral, t.y, t.z + t.tx * lateral);
+      uv.push(u, (distance - from) / PLANK_REPEAT);
+    }
+    if (i < steps) index.push(i * 2, i * 2 + 2, i * 2 + 1, i * 2 + 1, i * 2 + 2, i * 2 + 3);
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geometry.setIndex(index);
+  return geometry;
+}
+
+function addWoodBridge(group, { start, length, water }) {
+  const half = TRACK_WIDTH / 2, map = plankTexture();
+  group.add(new THREE.Mesh(slabGeometry(start, start + length, -half, half, t => t.y - 0.01, t => t.y - 0.8), new THREE.MeshBasicMaterial({ color: 0x4a2e18 })));
+  group.add(new THREE.Mesh(deckGeometry(start, start + length, half), new THREE.MeshBasicMaterial({ map, side: THREE.DoubleSide })));
+  const edge = new THREE.MeshBasicMaterial({ color: 0xf0c040 });   // faixa amarela na quina, para ver onde acaba
+  for (const side of [-1, 1]) group.add(new THREE.Mesh(slabGeometry(start, start + length, side * half - 0.3 * (side > 0), side * half + 0.3 * (side < 0), t => t.y + 0.02, t => t.y - 0.05), edge));
+  const post = new THREE.MeshBasicMaterial({ color: 0x5a3a22 }), rope = new THREE.MeshBasicMaterial({ color: 0xb89a6a });
+  const box = (w, h, d, x, y, z, yaw, material) => {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+    mesh.position.set(x, y, z);
+    mesh.rotation.y = yaw;
+    group.add(mesh);
+  };
+  const yawAt = t => Math.atan2(-t.tx, -t.tz);
+  // Torres nas duas cabeceiras, uma de cada lado.
+  for (const along of [0, length]) {
+    const t = trackAt(start + along);
+    for (const side of [-1, 1]) {
+      const lateral = side * (half + 1.6);
+      box(1.2, TOWER_HEIGHT, 1.2, t.x - t.tz * lateral, t.y + TOWER_HEIGHT / 2 - 3, t.z + t.tx * lateral, yawAt(t), post);
+    }
+    box(TRACK_WIDTH + 4.4, 0.9, 0.9, t.x, t.y + TOWER_HEIGHT - 3.5, t.z, yawAt(t), post);
+  }
+  // Cabo principal em curva de um topo ao outro e tirantes descendo até a beira do tabuleiro.
+  const cableY = u => TOWER_HEIGHT - 3 - CABLE_SAG * 4 * u * (1 - u);
+  for (const side of [-1, 1]) {
+    const lateral = side * (half + 1.2);
+    for (let d = 0; d < length; d += 3) {
+      const a = trackAt(start + d), b = trackAt(start + Math.min(length, d + 3));
+      const ya = a.y + cableY(d / length), yb = b.y + cableY(Math.min(1, (d + 3) / length));
+      const from = new THREE.Vector3(a.x - a.tz * lateral, ya, a.z + a.tx * lateral), to = new THREE.Vector3(b.x - b.tz * lateral, yb, b.z + b.tx * lateral);
+      const span = to.clone().sub(from), mesh = new THREE.Mesh(new THREE.BoxGeometry(0.22, span.length(), 0.22), rope);
+      mesh.position.copy(from).add(to).multiplyScalar(0.5);
+      mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), span.normalize());
+      group.add(mesh);
+    }
+    for (let d = HANGER_EVERY; d < length - 2; d += HANGER_EVERY) {
+      const t = trackAt(start + d), height = cableY(d / length);
+      if (height < 1) continue;
+      box(0.08, height, 0.08, t.x - t.tz * lateral, t.y + height / 2, t.z + t.tx * lateral, yawAt(t), rope);
+    }
+  }
+  // Cavaletes de madeira até o rio.
+  for (let d = TRESTLE_EVERY; d < length - 10; d += TRESTLE_EVERY) {
+    const t = trackAt(start + d), height = t.y - 0.8 - water + 2;
+    for (const side of [-0.6, 0.6]) box(0.9, height, 0.9, t.x - t.tz * side * half, water - 2 + height / 2, t.z + t.tx * side * half, yawAt(t), post);
+  }
+}
+
 // Vulcão sob o vão: cone de rocha saindo do fundo do buraco, cratera com lava (a lava em que o carro cai) e
 // fumaça e brasas subindo da boca.
 // A borda fica 4 m acima do pé da rampa: logo abaixo do bico, então o cone aparece mas não atrapalha o voo.
@@ -310,7 +401,8 @@ export function buildEpicSections(group, layout, biome, onUpdate) {
       addTube(group, section, biome.epic.tube);
     } else if (section.type === 'bridge') {
       addRiver(group, section, section.water, biome.epic.abyss, false, onUpdate);
-      addBridge(group, section);
+      if (section.style === 'wood') addWoodBridge(group, section);
+      else addBridge(group, section);
     } else {
       // Com vulcão a lava em volta fica lá no fundo do buraco; a que importa é a da cratera.
       addRiver(group, section, section.volcano ? section.floor + 3 : section.water, biome.epic.abyss, biome.epic.glow, onUpdate);

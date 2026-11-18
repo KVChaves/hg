@@ -115,8 +115,8 @@ function riverProfile({ ramp, lip, gap, flat, descent }) {
 }
 
 // A inclinação calculada por diferença entre amostras arredonda o bico e a beira do vão: aqui ela é a exata.
-function fixRiverSlopes({ start, length }) {
-  const { count, step, py, lift, slope } = track, { slopeAt } = riverProfile(RIVER);
+function fixRiverSlopes({ start, length, river }) {
+  const { count, step, py, lift, slope } = track, { slopeAt } = riverProfile(river);
   const base = i => py[i] - lift[i];
   forEachSample(start, length, (i, d) => {
     slope[i] = (base((i + 1) % count) - base((i - 1 + count) % count)) / (2 * step) + slopeAt(d);
@@ -125,13 +125,17 @@ function fixRiverSlopes({ start, length }) {
 
 // Rampa única sobre um rio que cruza a pista. O leito (`track.bed`) afunda só sob o vão: como o terreno segue o
 // ponto mais próximo da pista, vira uma faixa de rio atravessando a estrada, sem invadir outros trechos.
+// `plan.gap` alarga o vão (o salto do recorde no salar pede turbo ou nitro); `plan.boost` põe uma placa de turbo
+// no meio da pista logo antes da rampa.
 function placeRiverJump(plan, placer, layout) {
-  const { ramp, gap, flat, descent, depth } = RIVER, length = ramp + gap + flat + descent;
+  const river = { ...RIVER, gap: plan.gap ?? RIVER.gap };
+  const { ramp, gap, flat, descent, depth } = river, length = ramp + gap + flat + descent;
   const bank = plan.volcano ? VOLCANO_BANK : RIVER.bank, bedDepth = Math.max(plan.volcano ? VOLCANO_DEPTH : depth, (plan.below ?? WATER_BELOW) + 6);
-  const start = placer.seek(EPIC_MARGIN, length + EPIC_MARGIN, EPIC_MAX_CURVE);
+  const runUp = plan.boost ? JUMP_BOOST_RUNUP : 0;
+  const start = placer.seek(EPIC_MARGIN + runUp, length + EPIC_MARGIN, EPIC_MAX_CURVE);
   if (start === null) return;
-  placer.reserve(start - EPIC_MARGIN, start + length + EPIC_MARGIN);
-  const { py, gap: gaps, epic, bed, lift, flight } = track, { heightAt } = riverProfile(RIVER);
+  placer.reserve(start - EPIC_MARGIN - runUp, start + length + EPIC_MARGIN);
+  const { py, gap: gaps, epic, bed, lift, flight } = track, { heightAt } = riverProfile(river);
   // O chão existe até a primeira amostra do vão e volta na primeira amostra depois dele: o vão desenhado é esse.
   const span = [Infinity, Infinity];
   forEachSample(start, length, (i, d) => {
@@ -148,24 +152,29 @@ function placeRiverJump(plan, placer, layout) {
   });
   narrowWalls(placer, start, length, JUMP_WALL);
   const section = {
-    type: 'jump', start, length, gaps: [span], blocks: [[start, span[0]], [span[1], start + length]], respawn: start - RESPAWN_BACK,
+    type: 'jump', start, length, river, gaps: [span], blocks: [[start, span[0]], [span[1], start + length]], respawn: start - RESPAWN_BACK - runUp,
     water: 0, floor: 0, depth: bedDepth, below: plan.below ?? WATER_BELOW, fallLabel: plan.fallLabel ?? 'CAIU', volcano: Boolean(plan.volcano),
   };
   layout.epics.push(section);
   track.jumps.push(section);
+  if (plan.boost) addBoost(layout, { start: start - JUMP_BOOST_AT, length: BOOST_LENGTH, lane: 0, half: JUMP_BOOST_HALF, jump: true });
 }
+const JUMP_BOOST_RUNUP = 40, JUMP_BOOST_AT = 26, JUMP_BOOST_HALF = 3.5;
 
+// `icy: false` faz uma ponte seca (de tábuas, no cânion): track.bridge vale 2 nela, e o carro não escorrega.
+// `style`: como epicVisuals.js desenha ('ice' ou 'wood').
 function placeBridge(plan, placer, layout) {
   const { length } = plan, start = placer.seek(EPIC_MARGIN, length + EPIC_MARGIN, EPIC_MAX_CURVE);
   if (start === null) return;
   placer.reserve(start - EPIC_MARGIN, start + length + EPIC_MARGIN);
-  const below = plan.below ?? 16;
+  const below = plan.below ?? 16, icy = plan.icy ?? true;
   forEachSample(start, length, i => {
-    track.bridge[i] = track.epic[i] = 1;            // sem voo livre: na ponte o carro só sai do chão pela beirada
+    track.bridge[i] = icy ? 1 : 2;                  // sem voo livre: na ponte o carro só sai do chão pela beirada
+    track.epic[i] = 1;
     track.bed[i] = Math.max(BRIDGE_DEPTH, below + 6);
     track.wall[i] = BRIDGE_REACH;
   });
-  const section = { type: 'bridge', start, length, gaps: [[start, start + length]], respawn: start - RESPAWN_BACK, water: 0, below, fallLabel: plan.fallLabel ?? 'CAIU' };
+  const section = { type: 'bridge', start, length, gaps: [[start, start + length]], respawn: start - RESPAWN_BACK, water: 0, below, fallLabel: plan.fallLabel ?? 'CAIU', style: plan.style ?? 'ice' };
   layout.epics.push(section);
   track.bridges.push(section);
 }
@@ -209,6 +218,43 @@ function placeBelts(plan, placer, layout) {
     const belt = { start, length: plan.length, force: plan.force, dir: placer.random() < 0.5 ? -1 : 1 };
     track.belts.push(belt);
     layout.belts.push(belt);
+  }
+}
+
+// Rajadas de vento (`gusts`: { force, period, onBridges, count, length }): trechos em que o vento sopra de lado em
+// ciclos (calmaria, aviso, rajada) e empurra o carro para fora. `onBridges` cobre cada ponte sem mureta, onde a
+// rajada pode jogar o carro no abismo; `count` trechos a mais vão em retas livres. Ver gustAt em track.js.
+const GUST_MARGIN = 30, GUST_BRIDGE_EXTRA = 25;
+function placeGusts(plan, placer, layout) {
+  const random = placer.random, zones = [];
+  if (plan.onBridges) for (const bridge of track.bridges) zones.push({ start: bridge.start - GUST_BRIDGE_EXTRA, length: bridge.length + GUST_BRIDGE_EXTRA * 2 });
+  for (let n = 0; n < (plan.count ?? 0); n++) {
+    const start = placer.seek(GUST_MARGIN, plan.length + GUST_MARGIN, 1 / 60);
+    if (start === null) break;
+    placer.reserve(start - GUST_MARGIN, start + plan.length + GUST_MARGIN);
+    zones.push({ start, length: plan.length });
+  }
+  for (const zone of zones) {
+    const gust = { ...zone, force: plan.force, period: plan.period * (0.85 + random() * 0.3), phase: random(), dir: random() < 0.5 ? -1 : 1 };
+    track.gusts.push(gust);
+    layout.gusts.push(gust);
+  }
+}
+
+// Placas de turbo (`boosts`: { count, half }): faixas curtas sobre parte da pista que jogam o carro acima da
+// velocidade máxima por um instante. Ficam em retas, numa faixa sorteada: quem quer o turbo sai da trajetória.
+const BOOST_MARGIN = 50, BOOST_LENGTH = 9, BOOST_LANE = TRACK_WIDTH / 2 - 3;
+function addBoost(layout, pad) {
+  track.boosts.push(pad);
+  layout.boosts.push(pad);
+}
+function placeBoosts(plan, placer, layout) {
+  for (let n = 0; n < plan.count; n++) {
+    const start = placer.seek(BOOST_MARGIN, BOOST_LENGTH + BOOST_MARGIN, 1 / 90);
+    if (start === null) return;
+    placer.reserve(start - BOOST_MARGIN, start + BOOST_LENGTH + BOOST_MARGIN);
+    const half = plan.half ?? 2.6, lane = (placer.random() * 2 - 1) * (BOOST_LANE - half + 2);
+    addBoost(layout, { start, length: BOOST_LENGTH, lane, half, jump: false });
   }
 }
 
@@ -289,13 +335,15 @@ function recomputeSlope() {
 
 export function createMapLayout(plan, seed) {
   const random = createRandom(seed + 5), placer = createPlacer(random);
-  const layout = { tunnels: [], epics: [], hazards: [], storms: [], belts: [] };
+  const layout = { tunnels: [], epics: [], hazards: [], storms: [], belts: [], gusts: [], boosts: [] };
   if (plan.twist) placeTwist(placer, layout);        // os trechos épicos pedem retas longas: escolhem primeiro
   placeRiverJump(plan.jump ?? {}, placer, layout);
-  if (plan.bridge) placeBridge(plan.bridge, placer, layout);
+  for (const bridge of [plan.bridge ?? []].flat()) placeBridge(bridge, placer, layout);   // uma ponte ou uma lista delas
   if (plan.dark) placeDarkTunnel(plan.dark, placer, layout);
   if (plan.storm) placeStorm(plan.storm, placer, layout);
   if (plan.belts) placeBelts(plan.belts, placer, layout);
+  if (plan.gusts) placeGusts(plan.gusts, placer, layout);
+  if (plan.boosts) placeBoosts(plan.boosts, placer, layout);
   placeTunnels(plan.tunnels, placer, random, layout);
   placeHazards(plan.hazards ?? [], placer, layout);
   if (plan.bumps) addBumps(plan.bumps);

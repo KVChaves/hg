@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { MAX_RACERS, VIEW } from './config.js';
+import { LOOK, MAX_RACERS, VIEW, WINDOW_VIEW } from './config.js';
 import { createAudioSystem } from './audio/audioSystem.js';
 import { createRenderer } from './core/renderer.js';
-import { isLocked, keys, look, setupInput } from './core/input.js';
+import { clampLook, isLocked, keys, look, setupInput } from './core/input.js';
 import { createCabin } from './cabin/cabin.js';
 import { loadLoadout } from './cabin/loadout.js';
 import { bearingFrom, createCar, updateCar } from './game/car.js';
@@ -48,18 +48,20 @@ import { createPodiumScreen } from './ui/podiumScreen.js';
 import { isClickable, pointerOnStage } from './ui/panelKit.js';
 import { createMatchSetupScreen } from './ui/matchSetupScreen.js';
 import { createResultsScreen } from './ui/resultsScreen.js';
+import { createMatchTable } from './ui/matchTable.js';
 import { createVoteScreen } from './ui/voteScreen.js';
 import { createWeaponWorkshop } from './ui/weaponWorkshop.js';
 import { createCarDamageEffects } from './world/carDamageEffects.js';
-import { createExternalView } from './world/externalView.js';
+import { createWindowView } from './world/windowView.js';
 import { createCarLights } from './world/car/carLights.js';
-import { darkZoneAt, stormAt, track } from './world/track.js';
+import { darkZoneAt, gustAt, stormAt, track, trackAt } from './world/track.js';
 import { setSurface, setWeatherGrip } from './game/surface.js';
 import { setGravity } from './game/flight.js';
 import { findRivals } from './game/rivals.js';
 import { createSpectator } from './game/spectator.js';
 import { giveKillReward } from './game/killReward.js';
 import { createObstacles } from './game/obstacles.js';
+import { createLightning } from './game/lightning.js';
 import { createFoamEffect } from './world/foamEffect.js';
 import { BIOMES, pickMatchBiome } from './world/biomes/index.js';
 import { createHarpoonVisual } from './world/harpoonVisual.js';
@@ -147,7 +149,10 @@ function onRacerDestroyed(victim, killer, cause) {
 
 const driftTracker = createDriftTracker(car, duration => feats.drift(duration));
 
-const race = createRace(car, opponents, { onCrash: playAt, onDestroyed: onRacerDestroyed });
+const race = createRace(car, opponents, {
+  onCrash: playAt, onDestroyed: onRacerDestroyed,
+  onBlast: (x, y, z) => { combat.explodeAt(x, y, z); playAt('dynamite', x, z, 1); },   // para-choque explosivo
+});
 const feats = createFeats({ featFeed, race, car, driftTracker });
 const net = createRoomClient();
 let online = null;                                   // criado mais abaixo; os sistemas só avisam quando há partida online
@@ -190,6 +195,13 @@ function powerStatus() {
   const hooked = pulls.leftFor(me);
   if (hooked > 0) lines.push({ text: `PRESO NO ARPAO ${hooked.toFixed(1)}S: NITRO OU EMP SOLTA`, color: '#ffd060' });
   if (fuse > 0) lines.push({ text: `MINA GRUDADA ${fuse.toFixed(1)}S: USE O EMP`, color: '#ff4030' });
+  // Rajada de vento (cânion): avisa de que lado ela vai empurrar, para dar tempo de contraesterçar.
+  const gust = track.gusts.length ? gustAt(race.playerDist, race.time) : null;
+  if (gust && (gust.warn > 0.05 || gust.level > 0.05)) {
+    const label = gust.level > 0.3 ? 'RAJADA' : 'VENTO VINDO';
+    lines.push({ text: gust.dir > 0 ? `${label} >>>` : `<<< ${label}`, color: gust.level > 0.3 ? '#ff9a40' : '#f0e0a0' });
+  }
+  if (car.boost > 0) lines.push({ text: 'TURBO!', color: '#30f0ff' });
   return lines;
 }
 const traps = createTraps({ scene: world, car, race, harpoon, burning, mines, emp, onCaught: onTrapCaught, onSound: playAt, onExtinguisher: racer => { foam.spray(racer); online.sendExtinguisher(racer); }, onPlaced: (type, dist, lane, owner, id) => online.sendTrap(type, dist, lane, owner, id), onDetonated: id => online.sendTrapBoom(id) });
@@ -199,6 +211,11 @@ const obstacles = createObstacles({
   onPlayerHit: type => featFeed.announce(`BATEU ${type.hitText}`, { color: '#f06050' }),
   onSpawned: ob => online.sendObstacle(ob),
   onBroken: ob => online.sendObstacleBreak(ob),
+});
+const lightning = createLightning({
+  scene: world, race, car, onSound: playAt,
+  isAuthority: () => !online.active || net.isAdmin,
+  onPlayerHit: () => featFeed.announce('ATINGIDO PELO RAIO', { color: '#70d8ff' }),
 });
 const combat = createOpponentCombat({
   scene: world, car, race, opponents, traps, burning, look, onSound: playAt,
@@ -238,7 +255,7 @@ const lapSupplies = createLapSupplies({
     audio.playWorldSound('itemCollected', 0, 0);
   },
 });
-const damageEffects = createCarDamageEffects(world, MAX_RACERS, () => (spectator.active ? spectator.camera : externalView.active ? externalView.camera : camera));
+const damageEffects = createCarDamageEffects(world, MAX_RACERS, () => (spectator.active ? spectator.camera : camera));
 const racerConditions = Array.from({ length: MAX_RACERS }, () => ({}));
 let activeConditions = racerConditions;
 const cabin = createCabin({ camera, car, loadout: loadLoadout() });
@@ -252,14 +269,25 @@ const hands = createHands({
   look,
   cabin,
   isAiming: () => Boolean(keys.AimButton),
-  wantsFire: () => Boolean(keys.FireButton) && !traps.aiming && !externalView.active && !outOfAction(),
+  wantsFire: () => Boolean(keys.FireButton) && !traps.aiming && !outOfAction(),
   wantsNitro: () => Boolean(keys.Space) && car.nitro > 0 && !car.nitroLocked && race.started && !car.airborne && car.sunk <= 0 && !inMenus() && !outOfAction(),   // no ar o registro não abre
 });
 const scope = createScope({
   camera, weapon, hands, car,
   isAiming: () => Boolean(keys.AimButton),
-  canAim: () => !externalView.active && !spectator.active && !inMenus() && !outOfAction(),
+  canAim: () => !spectator.active && !inMenus() && !outOfAction(),
 });
+
+// Escapamento explosivo: com o nitro aberto, deixa fogo no asfalto logo atrás do carro.
+const FIRE_TRAIL_INTERVAL = 0.12, FIRE_TRAIL_BEHIND = 12;
+let fireTrailWait = 0;
+function updateFireTrail(dt) {
+  fireTrailWait -= dt;
+  if (!car.nitroActive || car.parts.fireTrail <= 0 || fireTrailWait > 0) return;
+  fireTrailWait = FIRE_TRAIL_INTERVAL;
+  const me = race.field[0];
+  traps.burnGround(me.dist - FIRE_TRAIL_BEHIND, me.lane, null, me);
+}
 
 function applyEquipment({ weaponId, trunk, upgrades, parts }) {
   weapon.equip(weaponId, upgradeFactor('ammo', upgrades.ammo));
@@ -310,7 +338,7 @@ const matchSetup = createMatchSetupScreen({
   // Corrida rápida pula a garagem: corre com o carro e as compras salvos.
   onContinue: () => {
     if (matchSetup.config.mode !== 'quick') { garage.open(); return; }
-    externalView.applySpec(garage.carSpec());
+    windowView.applySpec(garage.carSpec());
     startMatch(matchSetup.matchConfig());
   },
   onBack: () => mainMenu.open(),
@@ -363,12 +391,12 @@ const garage = createGarageScreen({
   onKickPlayer: id => net.kick(id),
   onOpenWorkshop: id => workshop.open(id),
   onProceed: () => {
-    externalView.applySpec(garage.carSpec());
+    windowView.applySpec(garage.carSpec());
     startMatch(matchSetup.matchConfig());
   },
   onBetweenRacesEnd: () => {
     workshop.isOpen = false;                         // o tempo vale também para quem está na oficina
-    externalView.applySpec(garage.carSpec());
+    windowView.applySpec(garage.carSpec());
     if (online.active) {
       if (!garage.isOpen) garage.open();
       online.markReady();
@@ -379,7 +407,7 @@ const garage = createGarageScreen({
   onBack: () => mainMenu.open(),
 });
 const spectator = createSpectator({ opponents, race, camera: new THREE.PerspectiveCamera(VIEW.fov, VIEW.width / VIEW.height, 0.1, 400) });
-const externalView = createExternalView({ scene: world, car, look, initialSpec: garage.carSpec(), seed: PLAYER_CAR_SEED });
+const windowView = createWindowView({ scene: world, car, initialSpec: garage.carSpec(), seed: PLAYER_CAR_SEED });
 applyEquipment(equipment);
 // Pausa da corrida (ver os eventos de ESC mais abaixo).
 const pause = createPauseMenu({
@@ -389,7 +417,11 @@ const pause = createPauseMenu({
   onMainMenu: () => location.reload(),               // recarregar volta ao menu com tudo zerado (online, sai da sala)
   onQuit: () => window.close(),                      // o navegador só permite em abas abertas por script
 });
-const drawHud = createHud(hudCanvas, { killFeed, pause, scope, featFeed, mainMenu, multiplayer, podium, matchSetup, results, voteScreen, matchLabel: () => `CORRIDA ${match ? match.currentRace : 1} DE ${match ? match.raceCount : 1}`, biomeName: () => biome.name, race, weapon, hands, garage, workshop, externalView, spectator, spectatorExit: () => (online.active ? 'ENTER IR PARA A GARAGEM' : 'ENTER VER RESULTADOS'), isLocked, combat, car, roadsideHelp, traps, powerStatus, opponents, activeCamera: () => (spectator.active ? spectator.camera : externalView.active ? externalView.camera : camera), isBehindCabin: (x, y, z) => !spectator.active && cabin.isBehindCabin(x, y, z), isInSmoke: (x, z) => darkness.level > 0.5 || sandstorm.level > 0.6 || car.effects.smoke > 0 || traps.smokeBlocks(car.x, car.z, x, z) });
+const matchTable = createMatchTable({
+  getMatch: () => match, race, localName: () => race.field[0].name,
+  isBlocked: () => mainMenu.isOpen || multiplayer.isOpen || matchSetup.isOpen || podium.isOpen,   // ainda montando a partida ou já acabou
+});
+const drawHud = createHud(hudCanvas, { matchTable, isTableHeld: () => Boolean(keys.Tab) && !(garage.isTyping() || multiplayer.isTyping()), killFeed, pause, scope, featFeed, mainMenu, multiplayer, podium, matchSetup, results, voteScreen, matchLabel: () => `CORRIDA ${match ? match.currentRace : 1} DE ${match ? match.raceCount : 1}`, biomeName: () => biome.name, biomeChallenge: () => biome.challenge ?? [], race, weapon, hands, garage, workshop, windowView, spectator, spectatorExit: () => (online.active ? 'ENTER IR PARA A GARAGEM' : 'ENTER VER RESULTADOS'), isLocked, combat, car, roadsideHelp, traps, powerStatus, opponents, activeCamera: () => (spectator.active ? spectator.camera : camera), isBehindCabin: (x, y, z) => !spectator.active && cabin.isBehindCabin(x, y, z), isInSmoke: (x, z) => darkness.level > 0.5 || sandstorm.level > 0.6 || car.effects.smoke > 0 || traps.smokeBlocks(car.x, car.z, x, z) });
 const inMenus = () => pause.isOpen || mainMenu.isOpen || multiplayer.isOpen || podium.isOpen || matchSetup.isOpen || results.isOpen || voteScreen.isOpen || garage.isOpen || workshop.isOpen;
 
 // ESC (o navegador solta o mouse) ou perder o foco no meio da corrida abre a pausa; ESC de novo continua.
@@ -403,7 +435,7 @@ addEventListener('keydown', event => {
 
 setupInput(stage, {
   onFire: () => {
-    if (externalView.active || outOfAction()) return;
+    if (outOfAction()) return;
     if (traps.aiming) { traps.throwItem(car.yaw + look.yaw); return; }
     hands.requestFire();
   },
@@ -416,6 +448,7 @@ setupInput(stage, {
   canLockPointer: () => !inMenus() && !garageReopening,
   sensitivity: () => settings.sensitivity * scope.sensitivity(),
   isTyping: () => garage.isTyping() || multiplayer.isTyping(),
+  limits: () => (windowView.active ? WINDOW_VIEW : NORMAL_LOOK),
 });
 stage.addEventListener('click', event => {
   if (!inMenus()) return;
@@ -428,7 +461,7 @@ race.reset();
 const elevationOf = (state, timer) => (timer > 0 ? flipElevation(state.flip, timer) : rigElevation(state.rig));
 
 function readRacerConditions() {
-  Object.assign(racerConditions[0], { x: car.wx, z: car.wz, yaw: car.yaw, vx: car.vx, vz: car.vz, health: car.health, burning: car.effects.burning > 0, elevation: car.wy + elevationOf(car, car.wrecked), visible: externalView.active });
+  Object.assign(racerConditions[0], { x: car.wx, z: car.wz, yaw: car.yaw, vx: car.vx, vz: car.vz, health: car.health, burning: car.effects.burning > 0, elevation: car.wy + elevationOf(car, car.wrecked), visible: windowView.active });
   opponents.forEach((op, i) => {
     const yaw = op.group.rotation.y;
     Object.assign(racerConditions[i + 1], {
@@ -461,15 +494,31 @@ function updateDarkness() {
   world.setStorm(sandstorm.level, storm?.zone ?? null);
   setWeatherGrip(sandstorm.level, storm?.zone.grip);
   world.setDarkness(darkness.level, spot?.zone.fog ?? [0, 0]);
-  const lit = racerDist => track.darkZones.length > 0 && darkZoneAt(racerDist) !== null;
+  const flash = inMenus() ? 0 : lightning.flash;
+  world.setFlash(flash);
+  updateGustParticles();
+  // Bioma noturno (`night`): faróis acesos a corrida toda.
+  const night = Boolean(biome?.night) && !inMenus();
+  const lit = racerDist => night || (track.darkZones.length > 0 && darkZoneAt(racerDist) !== null);
   for (const op of opponents) op.model.setLights(lit(op.dist));
-  externalView.setLights(darkness.level > 0);
-  playerLights.setOn(darkness.level > 0 && !externalView.active);
+  windowView.setLights(night || darkness.level > 0);
+  playerLights.setOn((night || darkness.level > 0) && !windowView.active);
   playerLights.group.position.set(car.wx, car.wy, car.wz);
   playerLights.group.rotation.set(car.pitch, car.yaw, car.twist);
   cabinTint.setHex(biome.cabinTint).lerp(darkCabin, darkness.level);
   if (sandstorm.level > 0) cabinTint.lerp(stormTint.setHex(stormZoneColor), sandstorm.level * 0.6);
+  if (flash > 0.05) cabinTint.lerp(flashTint, Math.round(flash * 4) / 4 * 0.7);   // em degraus, como a escuridão
   return cabinTint.getHex();
+}
+const flashTint = new THREE.Color(0xe0ecff);
+
+// Na rajada a poeira do clima corre de lado na pista, no sentido do empurrão.
+const GUST_PARTICLE_SPEED = 32;
+function updateGustParticles() {
+  const gust = !inMenus() && track.gusts.length ? gustAt(race.playerDist, race.time) : null;
+  if (!gust) { world.setGust(0, 0); return; }
+  const t = trackAt(race.playerDist), speed = gust.dir * Math.max(gust.level, gust.warn * 0.2) * GUST_PARTICLE_SPEED;
+  world.setGust(-t.tz * speed, t.tx * speed);
 }
 const TIME_BETWEEN_RACES = 45;                       // segundos na garagem antes da próxima corrida
 const RESULTS_DELAY = 2.5;                           // segundos entre cruzar a linha e ver os resultados
@@ -587,6 +636,7 @@ function beginRace(chosenBiome, seed, grid) {
   combat.reset();
   roadsideHelp.reset();
   obstacles.reset();
+  lightning.configure(biome.lightning);
   damageEffects.reset();
   look.yaw = look.pitch = 0;
   raceRecorded = false;
@@ -605,7 +655,7 @@ const pressed = code => { const down = Boolean(keys[code]); const fresh = down &
 const earlyGarage = () => online.active && race.crossed && !race.finished && (garage.isOpen || workshop.isOpen);
 function goToGarageEarly() {
   document.exitPointerLock();
-  externalView.applySpec(garage.carSpec());
+  windowView.applySpec(garage.carSpec());
   garage.openBetweenRaces(Infinity, { waitsForHost: true, waiting: true, waitLabel: 'ESPERANDO O FIM DA CORRIDA' });
 }
 const wantsSpectate = () => !inMenus() && !skipSpectate && spectator.hasTargets() && (online.active ? race.crossed && !race.finished : race.finished);
@@ -627,6 +677,18 @@ function finishRaceFlow(frameTime) {
   results.open(match, race.finishResults, { waitsForHost: online.active });
 }
 
+// Q segurado: a cabeça vai para fora da janela (dá para olhar e atirar para trás) e o carro fica mais lento.
+// Ao soltar, a cabeça volta para dentro e o olhar volta aos limites da cabine.
+const NORMAL_LOOK = { minYaw: -LOOK.maxYaw, maxYaw: LOOK.maxYaw, maxPitchUp: LOOK.maxPitchUp, maxPitchDown: LOOK.maxPitchDown };
+function updateWindowView() {
+  const wanted = Boolean(keys.KeyQ) && !inMenus() && !spectator.active && !outOfAction();
+  if (wanted === windowView.active) return;
+  windowView.setActive(wanted);
+  cabin.setWindowView(wanted);
+  car.leaning = wanted;
+  if (!wanted) clampLook();
+}
+
 function step(frameTime) {
   mainMenu.update();
   multiplayer.update();
@@ -641,11 +703,12 @@ function step(frameTime) {
   }
   spectator.update(frameTime, wantsSpectate());
   if (inMenus() && isLocked()) document.exitPointerLock();   // numa tela de menu o mouse nunca fica preso
-  externalView.setActive(Boolean(keys.KeyQ) && !inMenus() && !spectator.active);
+  updateWindowView();
   // A corrida fica parada nas telas de menu; online a pausa não pode parar os outros, só tira o controle do carro.
   const dt = inMenus() && !(online.active && (pause.isOpen || earlyGarage())) ? 0 : frameTime;
   const driving = outOfAction() || spectator.active || pause.isOpen || earlyGarage() ? NO_KEYS : keys;
   updateCar(car, dt, driving, race.started, hands.isNitroReady());
+  updateFireTrail(dt);
   race.update(dt, traps.active);
   driftTracker.update(dt);
   lapSupplies.update();
@@ -657,6 +720,11 @@ function step(frameTime) {
   powerVisuals.update(race.field, dt);
   burning.update(dt);
   obstacles.update(dt);
+  lightning.update(dt);
+  if (car.boostKick) {
+    car.boostKick = false;
+    playAt('itemCollected', car.x, car.z, 1);
+  }
   harpoon.setHeld(Boolean(keys.KeyE) && !outOfAction());   // E de novo solta o cabo preso
   harpoon.update(dt);
   pulls.update(dt);
@@ -668,12 +736,12 @@ function step(frameTime) {
   world.updateMap(dt, car.x, car.y, car.z);
   const darkTint = updateDarkness();
   cabin.setAmbient(garage.isOpen ? NEUTRAL_AMBIENT : darkTint);
-  weapon.update(dt, driving.FireButton && !traps.aiming && !externalView.active && hands.isGunReady());
+  weapon.update(dt, driving.FireButton && !traps.aiming && hands.isGunReady());
   const gear = readGearbox(car, driving.KeyW);
   cabin.update({ look, weapon, gear, race, traps, rivals: findRivals(race, opponents, car), dt, frameTime });
   hands.update(dt, gear);
   scope.update(frameTime);
-  externalView.update(dt);
+  windowView.update(dt);
   audio.update({ gear, race, keys: driving, nitroOpen: car.nitroActive, drifting: car.slipping, burning: car.effects.burning > 0 && car.wrecked <= 0 });
   audio.setMenuMusic(inMenus());
 
@@ -686,11 +754,8 @@ function step(frameTime) {
   } else if (spectator.active) {
     renderer.clear();
     renderer.render(world, spectator.camera);
-  } else if (externalView.active) {
-    renderer.clear();
-    renderer.render(world, externalView.camera);
-  } else if (scope.active) {
-    renderer.clear();                                // pela luneta só se vê a pista: a cabine fica fora do círculo
+  } else if (windowView.active || scope.active) {
+    renderer.clear();                                // pela janela e pela luneta não se vê a cabine
     renderer.render(world, camera);
   } else {
     cabin.renderMirror(renderer, world);
@@ -712,4 +777,4 @@ function frame(now) {
 }
 requestAnimationFrame(frame);
 
-export const game = { killFeed, getPause: () => pause.isOpen, beginRace, obstacles, lapSupplies, roadsideNpcs, featFeed, podium, multiplayer, net, online: () => online, pulls, world, getBiome: () => biome, harpoon, matchSetup, results, getMatch: () => match, roadsideHelp, mainMenu, settings, step, keys, look, car, race, opponents, combat, weapon, traps, burning, scope, cabin, hands, audio, garage, workshop, externalView, renderer, glCanvas, hudCanvas };
+export const game = { killFeed, lightning, getPause: () => pause.isOpen, beginRace, obstacles, lapSupplies, roadsideNpcs, featFeed, podium, multiplayer, net, online: () => online, pulls, world, getBiome: () => biome, harpoon, matchSetup, results, getMatch: () => match, roadsideHelp, mainMenu, settings, step, keys, look, car, race, opponents, combat, weapon, traps, burning, scope, cabin, hands, audio, garage, workshop, windowView, renderer, glCanvas, hudCanvas };

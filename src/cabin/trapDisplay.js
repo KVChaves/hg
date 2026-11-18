@@ -17,16 +17,17 @@ export function createTrapDisplay(parent) {
 
   let last = '';
   return slot => {
-    if (!slot) return;
-    const key = `${slot.type.id}|${slot.charges}`;
+    const key = slot ? `${slot.type.id}|${slot.charges}` : 'empty';   // sem itens no bagageiro o mostrador fica vazio
     if (key === last) return;
     last = key;
 
     r.restore(base);
-    const color = slot.charges > 0 ? 0xf01810 : 0x4a1410;
-    rasterText(r, String(slot.charges), 5, 4, color, 1, 2);
-    rasterText(r, String(slot.charges), 6, 4, color, 1, 2);
-    plotTrapIcon(r, slot.type.id, 16, 3, slot.charges <= 0);
+    if (slot) {
+      const color = slot.charges > 0 ? 0xf01810 : 0x4a1410;
+      rasterText(r, String(slot.charges), 5, 4, color, 1, 2);
+      rasterText(r, String(slot.charges), 6, 4, color, 1, 2);
+      plotTrapIcon(r, slot.type.id, 16, 3, slot.charges <= 0);
+    }
     r.commit();
     sprite.refresh();
   };

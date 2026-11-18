@@ -9,9 +9,9 @@ import { WEAPON_TYPES } from './weaponTypes.js';
 export const BUDGET = 1000;
 
 export const UPGRADES = {
-  life: { label: 'VIDA', levels: [{ price: 0, factor: 1 }, { price: 120, factor: 1.2 }, { price: 250, factor: 1.4 }, { price: 420, factor: 1.7 }] },
-  nitro: { label: 'NITRO', levels: [{ price: 0, factor: 1 }, { price: 80, factor: 1.25 }, { price: 170, factor: 1.5 }, { price: 280, factor: 2 }] },
-  ammo: { label: 'MUNICAO', levels: [{ price: 0, factor: 1 }, { price: 60, factor: 1.25 }, { price: 130, factor: 1.5 }, { price: 220, factor: 2 }] },
+  life: { label: 'VIDA', levels: [{ price: 0, factor: 1 }, { price: 140, factor: 1.2 }, { price: 290, factor: 1.4 }, { price: 480, factor: 1.65 }] },
+  nitro: { label: 'NITRO', levels: [{ price: 0, factor: 1 }, { price: 70, factor: 1.3 }, { price: 140, factor: 1.6 }, { price: 230, factor: 2 }] },
+  ammo: { label: 'MUNICAO', levels: [{ price: 0, factor: 1 }, { price: 70, factor: 1.2 }, { price: 150, factor: 1.4 }, { price: 250, factor: 1.8 }] },
 };
 
 export const NO_UPGRADES = { life: 0, nitro: 0, ammo: 0 };

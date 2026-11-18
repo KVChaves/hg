@@ -53,6 +53,20 @@ const DESIGNS = {
     for (const x of [-0.5, 0.5]) cone(0.07, 0.3, accent, [x, 0.42, 2.58], [HALF_PI, 0, 0]);
   },
 
+  // Feixe de dinamite amarrado na frente, com pavios e faixas de aviso.
+  explosive({ box, add, cone, prism }, { main, accent }) {
+    prism([[-2.5, 0.2], [-2.5, 0.3], [-2.2, 0.3], [-2.2, 0.2]], -0.9, 0.9, main);           // base
+    for (const row of [0.38, 0.54]) {
+      for (let i = -3; i <= 3; i++) {
+        add(new THREE.CylinderGeometry(0.075, 0.075, 0.5, 8), RED, { position: [i * 0.23, row, -2.42], rotation: [HALF_PI, 0, 0] });
+        cone(0.05, 0.12, DARK, [i * 0.23, row, -2.7], [-HALF_PI, 0, 0], 6);               // pavio
+      }
+    }
+    for (const x of [-0.5, 0.5]) box(0.07, 0.34, 0.5, accent, [x, 0.46, -2.42]);           // fitas
+    box(1.7, 0.2, 0.2, main, [0, 0.38, 2.34]);
+    box(1.4, 0.05, 0.05, RED, [0, 0.5, 2.46]);
+  },
+
   // Bloco grosso de borracha com cantos arredondados, faixas de aviso e refletores.
   absorber({ box, add, prism }, { main, accent }) {
     prism([[-2.54, 0.2], [-2.54, 0.5], [-2.42, 0.62], [-2.2, 0.62], [-2.2, 0.2]], -0.86, 0.86, main);

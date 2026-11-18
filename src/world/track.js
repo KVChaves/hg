@@ -5,7 +5,7 @@ import { fbm } from '../art/shade.js';
 // Pista gerada por semente: uma curva fechada em volta do centro, reamostrada em passos iguais, apoiada
 // num relevo. `track` é sempre o mesmo objeto; gerar outra pista troca o conteúdo dele.
 
-export const track = { length: 1, count: 0, step: 1, px: null, py: null, pz: null, tx: null, tz: null, slope: null, curvature: null, turn: null, wall: null, roll: null, gap: null, epic: null, drop: null, bed: null, enclosed: null, lift: null, flight: null, bridge: null, jumps: [], bridges: [], darkZones: [], stormZones: [], belts: [], hazards: [], valley: null, openWall: 0, chasmRange: null, heightAt: () => 0, meshHeightAt: () => 0 };
+export const track = { length: 1, count: 0, step: 1, px: null, py: null, pz: null, tx: null, tz: null, slope: null, curvature: null, turn: null, wall: null, roll: null, gap: null, epic: null, drop: null, bed: null, enclosed: null, lift: null, flight: null, bridge: null, jumps: [], bridges: [], darkZones: [], stormZones: [], belts: [], gusts: [], boosts: [], hazards: [], valley: null, openWall: 0, chasmRange: null, heightAt: () => 0, meshHeightAt: () => 0 };
 
 const CONTROL_COUNT = 18, HARMONICS = [[2, 0.8], [3, 0.55], [4, 0.3]];
 export const OPEN_WALL = TRACK_WIDTH / 2 + 3;         // até onde o centro do carro pode sair da pista, onde ficam os muros
@@ -227,7 +227,7 @@ export function generateTrack(seed, shape) {
     py: road.py, slope: road.slope, wall: new Float32Array(geometry.count).fill(openWall), openWall, valley: shape.valley ?? null, chasmRange: shape.chasmRange ?? [RIVER_FROM, RIVER_TO],
     roll: new Float32Array(geometry.count), gap: new Uint8Array(geometry.count), epic: new Uint8Array(geometry.count),
     drop: new Float32Array(geometry.count), bed: new Float32Array(geometry.count), enclosed: new Uint8Array(geometry.count),
-    lift: new Float32Array(geometry.count), flight: new Uint8Array(geometry.count), bridge: new Uint8Array(geometry.count), jumps: [], bridges: [], darkZones: [], stormZones: [], belts: [], hazards: [],
+    lift: new Float32Array(geometry.count), flight: new Uint8Array(geometry.count), bridge: new Uint8Array(geometry.count), jumps: [], bridges: [], darkZones: [], stormZones: [], belts: [], gusts: [], boosts: [], hazards: [],
     heightAt: groundAt, meshHeightAt: meshAt,
   });
 }
@@ -297,7 +297,7 @@ export const isEpic = distance => track.epic[sampleIndex(distance)] === 1;
 export const inGap = distance => track.gap[sampleIndex(distance)] === 1;
 export const inFlightZone = distance => track.flight[sampleIndex(distance)] === 1;
 
-export const onBridge = distance => track.bridge[sampleIndex(distance)] === 1;
+export const onBridge = distance => track.bridge[sampleIndex(distance)] > 0;   // 1: ponte de gelo, 2: ponte seca
 
 const offsetInto = (distance, from) => (((distance - from) % track.length) + track.length) % track.length;
 
@@ -338,6 +338,49 @@ export function beltPush(distance, offset) {
     if (along < belt.length) return belt.force * belt.dir * (offset < 0 ? 1 : -1);
   }
   return 0;
+}
+
+// Rajada de vento: cada trecho alterna calmaria, aviso e rajada num ciclo de `period` segundos, e a cada ciclo o
+// vento troca de lado. Depende só do relógio da corrida, então todos sentem o mesmo vento ao mesmo tempo.
+// Devolve { push, level, warn, dir }: `push` é a aceleração lateral (m/s², positiva para a direita de quem corre),
+// `level` de 0 a 1 (rajada cheia), `warn` de 0 a 1 enquanto ela se arma. Fora dos trechos, nulo.
+// Relógio da corrida (race.js atualiza): o cenário usa para mostrar o mesmo vento que a física sente.
+export const raceClock = { time: 0 };
+const GUST_FADE = 15, GUST_CALM = 0.42, GUST_WARN = 0.58, GUST_FULL = 0.66, GUST_END = 0.9;
+const gustState = { push: 0, level: 0, warn: 0, dir: 1, zone: null };
+export function gustAt(distance, time) {
+  for (const zone of track.gusts) {
+    const along = offsetInto(distance, zone.start);
+    if (along >= zone.length) continue;
+    const cycle = time / zone.period + zone.phase, u = cycle - Math.floor(cycle);
+    const dir = zone.dir * (Math.floor(cycle) % 2 ? -1 : 1);
+    const edge = Math.min(1, along / GUST_FADE, (zone.length - along) / GUST_FADE);
+    let level = 0, warn = 0;
+    if (u >= GUST_CALM && u < GUST_WARN) warn = (u - GUST_CALM) / (GUST_WARN - GUST_CALM);
+    else if (u >= GUST_WARN && u < GUST_FULL) { warn = 1; level = (u - GUST_WARN) / (GUST_FULL - GUST_WARN); }
+    else if (u >= GUST_FULL && u < GUST_END) level = 1;
+    else if (u >= GUST_END) level = 1 - (u - GUST_END) / (1 - GUST_END);
+    // Enquanto avisa, uma brisa leve já puxa um pouco para o lado da rajada.
+    Object.assign(gustState, { push: zone.force * dir * edge * Math.max(level, warn * 0.12), level: level * edge, warn: warn * edge, dir, zone });
+    return gustState;
+  }
+  return null;
+}
+
+// Placa de turbo sob (distance, lane), ou nula.
+export function boostAt(distance, lane) {
+  for (const pad of track.boosts) {
+    if (offsetInto(distance, pad.start) < pad.length && Math.abs(lane - pad.lane) < pad.half) return pad;
+  }
+  return null;
+}
+
+// Próxima placa de turbo da rampa (a que leva ao salto grande) até `range` metros à frente: a IA mira nela.
+export function jumpBoostAhead(distance, range) {
+  for (const pad of track.boosts) {
+    if (pad.jump && offsetInto(pad.start, distance) < range) return pad;
+  }
+  return null;
 }
 
 const surface = { x: 0, y: 0, z: 0, roll: 0, heading: 0, twistYaw: 0, twistPitch: 0 };

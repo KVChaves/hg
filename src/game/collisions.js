@@ -1,7 +1,7 @@
 import { CAR_MAX_HP } from '../config.js';
 import { wrapDistance } from '../world/track.js';
 import { crashDamage } from './car.js';
-import { ramOf } from './carUpgrades.js';
+import { blastOf, ramOf } from './carUpgrades.js';
 import { flipElevation } from './carFlip.js';
 import { applyHit, isOverturned, rigElevation, stepRig } from './carRoll.js';
 import { damageOpponent, poseOpponent } from './opponents.js';
@@ -18,11 +18,14 @@ const YAW_RESPONSE = 0.1, MAX_SPIN = 3.5;
 const WHEEL_SIDE = 0.86, WHEEL_REACH = 0.9, WHEEL_LIFT = 0.25;
 
 const SOUND_MIN_IMPACT = 4, SOUND_FULL_IMPACT = 25, SOUND_MIN_STRENGTH = 0.25;
+const BLAST_MIN_IMPACT = 6, BLAST_RADIUS = 6, BLAST_AREA_SHARE = 20 / 45, BLAST_COOLDOWN = 1.5;
 const DAMAGE_MIN_IMPACT = 4, DAMAGE_PER_SPEED = 0.4, DAMAGE_PER_SPEED_SQUARED = 0.02;
 
 const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
 
-export function createCollisions({ car, field, onCrash, onDestroyed }) {
+export function createCollisions({ car, field, onCrash, onDestroyed, onBlast = () => {} }) {
+  let clock = 0;
+  const blastReadyAt = new Map();                    // piloto → instante em que o para-choque explosivo volta a detonar
   const ramOfRacer = racer => (racer.isPlayer ? car.parts.ram : ramOf(racer.bumper));
   const stateOf = racer => (racer.isPlayer ? car : racer);
   const isOut = racer => racer.dead > 0 || racer.sunk > 0;
@@ -155,6 +158,24 @@ export function createCollisions({ car, field, onCrash, onDestroyed }) {
     // O para-choque de quem bate aumenta o dano do outro (o dos bots é o padrão).
     hurt(a.racer, damage * ramOfRacer(b.racer), b.racer);
     hurt(b.racer, damage * ramOfRacer(a.racer), a.racer);
+    explodeBumper(a, b, cx, cz, impact);
+    explodeBumper(b, a, cx, cz, impact);
+  }
+
+  // Para-choque explosivo: ao bater forte, detona no ponto de contato. Quem foi tocado leva a explosão inteira,
+  // quem está em volta (menos o dono) leva uma parte. O dono não se machuca.
+  function explodeBumper(owner, victim, cx, cz, impact) {
+    const power = owner.racer.isPlayer ? car.parts.blast : blastOf(owner.racer.bumper);
+    if (!power || impact < BLAST_MIN_IMPACT || (blastReadyAt.get(owner.racer) ?? 0) > clock) return;
+    blastReadyAt.set(owner.racer, clock + BLAST_COOLDOWN);
+    hurt(victim.racer, power, owner.racer);
+    for (const racer of field) {
+      if (racer === owner.racer || racer === victim.racer || isOut(racer)) continue;
+      const state = stateOf(racer);
+      const distance = Math.hypot(state.x - cx, state.z - cz);
+      if (distance <= BLAST_RADIUS) hurt(racer, power * BLAST_AREA_SHARE * (1 - distance / BLAST_RADIUS), owner.racer);
+    }
+    onBlast(cx, (owner.y + victim.y) / 2 + 0.6, cz);
   }
 
   const heightOf = racer => (racer.dead > 0 ? flipElevation(stateOf(racer).flip, racer.dead) : rigElevation(stateOf(racer).rig));
@@ -189,6 +210,7 @@ export function createCollisions({ car, field, onCrash, onDestroyed }) {
   return {
     update(dt) {
       if (dt <= 0) return;
+      clock += dt;
       collideAll();
       for (const racer of field) {
         if (isOut(racer) || racer.remote) continue;

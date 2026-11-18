@@ -266,12 +266,15 @@ export function createHands({ weapon, traps, look, cabin, customs, isAiming, wan
     ctx.restore();
   }
 
-  function draw(ctx) {
+  // `outside`: na visão pela janela só aparecem a arma e a mão que a segura (o volante ficou lá dentro).
+  function draw(ctx, { outside = false } = {}) {
     const grips = cabin.grips();
     placeGun();
 
-    const left = rimPoint(GRIP_LEFT_ANGLE, grips);
-    drawCentered(ctx, leftFist, left.x, left.y, left.angle);
+    if (!outside) {
+      const left = rimPoint(GRIP_LEFT_ANGLE, grips);
+      drawCentered(ctx, leftFist, left.x, left.y, left.angle);
+    }
 
     drawGun(ctx);
 
@@ -279,7 +282,7 @@ export function createHands({ weapon, traps, look, cabin, customs, isAiming, wan
     hand.x = lerp(from.x, target.x, t);
     hand.y = lerp(from.y, target.y, t);
     hand.angle = lerp(from.angle, target.angle, t);
-    drawCentered(ctx, poseImage(), hand.x, hand.y, hand.angle);
+    if (!outside || isHoldingGun()) drawCentered(ctx, poseImage(), hand.x, hand.y, hand.angle);
     effects.draw(ctx);
   }
 
