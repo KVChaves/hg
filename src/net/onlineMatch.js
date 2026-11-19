@@ -453,6 +453,11 @@ export function createOnlineMatch({ onRopeTripped = () => {}, onPlayerKilledBy =
   function onRoomChange(room) {
     if (!online.active) return;
     applyRenames(room);
+    const nowHost = room.hostId === net.id;
+    if (nowHost !== isHost) {                          // o admin saiu e este jogador assumiu: passa a simular os bots
+      isHost = nowHost;
+      for (const racer of race.field) if (isBotId(racer.netId)) racer.remote = !isHost;
+    }
     for (const racer of [...race.field]) {
       if (racer === me() || isBotId(racer.netId) || room.players.some(player => player.id === racer.netId)) continue;
       harpoonVisuals.get(racer)?.hide();

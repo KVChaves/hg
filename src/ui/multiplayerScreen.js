@@ -164,7 +164,7 @@ export function createMultiplayerScreen({ stage, net, getName, setName, onBack, 
     } else if (net.isAdmin) drawButton(ctx, START, 'INICIAR PARTIDA', inside(START, pointer.x, pointer.y), 'primary');
     else ctxText(ctx, 'AGUARDANDO O ADMIN', START.x + 42, START.y + 9, COLOR.muted);
     drawButton(ctx, GARAGE, 'GARAGEM', inside(GARAGE, pointer.x, pointer.y));
-    drawButton(ctx, LEAVE, net.isAdmin ? 'ENCERRAR SALA' : 'SAIR DA SALA', inside(LEAVE, pointer.x, pointer.y), 'danger');
+    drawButton(ctx, LEAVE, 'SAIR DA SALA', inside(LEAVE, pointer.x, pointer.y), 'danger');
   }
 
   screen.draw = ctx => {

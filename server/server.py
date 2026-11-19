@@ -257,9 +257,11 @@ class Lobby:
         client.room = None
         if reason:
             client.send({"t": "left", "reason": reason})
-        if client is room.host:
-            self.close_room(room)
-        elif room.members:
+        if not room.members:
+            self.rooms.pop(room.id, None)
+        else:
+            if client is room.host:
+                room.host = room.members[0]      # o admin saiu: o jogador mais antigo da sala assume
             self.publish_room(room)
 
     def close_room(self, room):

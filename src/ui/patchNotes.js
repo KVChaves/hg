@@ -53,6 +53,7 @@ export const PATCH_NOTES = [
       'ESC na garagem da sala volta ao menu principal.',
       'Espectando, o atalho para ir à garagem (online) ou ver os resultados passou de ENTER para ESPAÇO, porque o ENTER agora abre o chat.',
       'A sala pode proibir tiro para trás: com o olhar virado além de 90 graus nada dispara.',
+      'Se o ADMIN sair, a sala não fecha mais: o jogador mais antigo da sala vira o novo admin e passa a controlar a partida e os bots. A sala só some quando fica vazia.',
     ],
   },
   {
