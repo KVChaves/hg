@@ -14,11 +14,6 @@ import { WINTER_MOUNTAIN } from './winterMountain.js';
 // Para criar um bioma novo, basta um arquivo como estes e uma entrada aqui.
 export const BIOMES = [JUNGLE, FOREST, FIRE_FACTORY, NEON_TOKYO, STADIUM, WINTER_MOUNTAIN, DESERT, BEACH, SPACE, WIND_CANYON, SALT_FLATS, STORM_SWAMP];
 
-export function pickBiome(previous) {
-  const options = BIOMES.filter(biome => biome !== previous);
-  return options[Math.floor(Math.random() * options.length)];
-}
-
 // Opções da votação do próximo mapa (multiplayer): até `count` biomas ainda não jogados nesta rodada, sorteados.
 // Mesma regra de pickMatchBiome, mas nada é marcado como jogado: isso só acontece quando a votação termina.
 export function voteCandidates(played, count = 3) {

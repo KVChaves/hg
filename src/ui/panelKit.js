@@ -35,23 +35,6 @@ const UI = {
 for (const path of Object.values(UI)) loadPng(path).catch(() => {});
 export const uiImage = name => pngNow(UI[name]);
 
-// Preenche `box` com a imagem: bordas de `edge` pixels intactas e o miolo repetido (nine-slice).
-export function nineSlice(ctx, image, box, edge) {
-  const { width: iw, height: ih } = image;
-  const e = Math.min(edge, Math.floor(box.width / 2), Math.floor(box.height / 2));
-  const xs = [0, e, iw - e, iw], ys = [0, e, ih - e, ih];
-  const dx = [box.x, box.x + e, box.x + box.width - e, box.x + box.width], dy = [box.y, box.y + e, box.y + box.height - e, box.y + box.height];
-  for (let j = 0; j < 3; j++) for (let i = 0; i < 3; i++) {
-    const w = dx[i + 1] - dx[i], h = dy[j + 1] - dy[j], sw = xs[i + 1] - xs[i], sh = ys[j + 1] - ys[j];
-    if (w <= 0 || h <= 0 || sw <= 0 || sh <= 0) continue;
-    // repete o miolo em vez de esticar, para as manchas da textura não alongarem
-    for (let ty = 0; ty < h; ty += sh) for (let tx = 0; tx < w; tx += sw) {
-      const cw = Math.min(sw, w - tx), ch = Math.min(sh, h - ty);
-      ctx.drawImage(image, xs[i], ys[j], cw, ch, dx[i] + tx, dy[j] + ty, cw, ch);
-    }
-  }
-}
-
 export const MEDALS = ['#f0c840', '#c8d4e4', '#cc8448'];     // ouro, prata e bronze
 
 export const inside = ({ x, y, width, height }, px, py) => px >= x && py >= y && px < x + width && py < y + height;

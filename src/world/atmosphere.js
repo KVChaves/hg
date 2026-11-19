@@ -10,6 +10,15 @@ export function createAtmosphere(scene) {
   const domeMaterial = new THREE.MeshBasicMaterial({ side: THREE.BackSide, fog: false, depthWrite: false });
   const dome = new THREE.Mesh(new THREE.SphereGeometry(SKY_RADIUS, 16, 12), domeMaterial);
   dome.renderOrder = -1;
+  // O domo é desenhado primeiro e não grava profundidade: o tamanho não muda a imagem. Ele se centra em cada câmera
+  // que o desenha (frente, retrovisor, espectador) e encolhe para caber no alcance dela, que muda com a neblina.
+  dome.frustumCulled = false;
+  const eye = new THREE.Vector3();
+  dome.onBeforeRender = (renderer, scene, camera) => {
+    const radius = Math.min(SKY_RADIUS, camera.far * 0.9) / SKY_RADIUS;
+    eye.setFromMatrixPosition(camera.matrixWorld);
+    dome.matrixWorld.makeScale(radius, radius, radius).setPosition(eye);
+  };
   scene.add(dome);
 
   const positions = new Float32Array(MAX_PARTICLES * 3), colors = new Float32Array(MAX_PARTICLES * 3);
@@ -41,6 +50,7 @@ export function createAtmosphere(scene) {
   const dropOffsets = new Float32Array(PRECIP_COUNT * 3), dropSway = new Float32Array(PRECIP_COUNT);
   for (let i = 0; i < PRECIP_COUNT; i++) { dropOffsets.set([Math.random() * BOX.x, Math.random() * BOX.y, Math.random() * BOX.z], i * 3); dropSway[i] = Math.random() * Math.PI * 2; }
   let precip = null, precipLevel = 0, precipVisible = true;
+  let density = 1;                                   // fração das partículas desenhadas (qualidade gráfica)
 
   const offsets = new Float32Array(MAX_PARTICLES * 3), sway = new Float32Array(MAX_PARTICLES);
   let weather = null, time = 0, active = 0, storm = 0, wind = 0, gustX = 0, gustZ = 0;
@@ -56,7 +66,7 @@ export function createAtmosphere(scene) {
     domeMaterial.needsUpdate = true;
 
     weather = biome.weather;
-    active = Math.min(weather.count, MAX_PARTICLES);
+    active = Math.round(Math.min(weather.count, MAX_PARTICLES) * density);
     points.material.size = weather.size ?? 2;
     points.visible = !weather.streak;
     streaks.visible = Boolean(weather.streak);
@@ -97,7 +107,7 @@ export function createAtmosphere(scene) {
   const RAIN_FALL = 48, RAIN_STREAK = 2.4, SNOW_FALL = 7, SNOW_SWAY = 2.6;
   function updatePrecip(dt, x, y, z) {
     if (!precip || precipLevel <= 0.01) return;
-    const count = Math.ceil(PRECIP_COUNT * precipLevel), wrap = (value, size) => ((value % size) + size) % size - size / 2;
+    const count = Math.ceil(PRECIP_COUNT * precipLevel * density), wrap = (value, size) => ((value % size) + size) % size - size / 2;
     const fall = precip === 'rain' ? RAIN_FALL : SNOW_FALL;
     for (let i = 0; i < count; i++) {
       dropOffsets[i * 3 + 1] -= fall * dt;
@@ -142,7 +152,10 @@ export function createAtmosphere(scene) {
     gustZ = z;
   }
 
-  return { setBiome, update, setWeatherVisible, setStorm, setGust, setPrecipitation };
+  // Qualidade gráfica: `value` de 0 a 1. Vale a partir do próximo bioma para a poeira e já para chuva e neve.
+  function setDensity(value) { density = value; }
+
+  return { setDensity, setBiome, update, setWeatherVisible, setStorm, setGust, setPrecipitation };
 }
 
 // Ajudas para pintar céu: gradiente até a cor do horizonte (`sky` do bioma) e uma serra no meio da altura.

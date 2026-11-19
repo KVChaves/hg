@@ -25,6 +25,7 @@ export function createRoomClient() {
 
   const client = {
     status: 'offline', id: null, rooms: [], room: null, notice: '', ranking: null, history: null, matchRaces: null, legacy: null, token: null, chat: [],
+    online: null,                                    // jogadores conectados ao servidor (contando este); nulo sem conexão
     onStarted: () => {}, onEnded: () => {}, onGame: () => {}, onRoomChange: () => {}, onLeft: () => {},
     connect, setName, create, join, leave, kick, configure, start, endRace, endMatch, requestRanking, requestHistory, requestMatch, requestLegacy, sendChat, relay,
     get isAdmin() { return client.room?.hostId === client.id; },
@@ -42,6 +43,7 @@ export function createRoomClient() {
       client.onWelcome?.();
     },
     rooms(message) { client.rooms = message.rooms; },
+    online(message) { client.online = message.count; },
     ranking(message) { client.ranking = message.players; },
     history(message) {
       if (message.match) client.matchRaces = message.races;
@@ -109,6 +111,7 @@ export function createRoomClient() {
         return;
       }
       client.status = 'offline';
+      client.online = null;
       client.room = null;
       client.rooms = [];
       client.notice = everConnected ? LEFT_REASONS.lost : 'SERVIDOR NAO ENCONTRADO. ABRA O JOGO PELO RUN.SH';
@@ -125,6 +128,7 @@ export function createRoomClient() {
     resumeDeadline = 0;
     const wasInRoom = client.room !== null;
     client.status = 'offline';
+    client.online = null;
     client.room = null;
     client.rooms = [];
     client.notice = LEFT_REASONS.lost;

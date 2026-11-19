@@ -1,7 +1,8 @@
 import { MAX_RACERS, VIEW } from '../config.js';
 import { ctxText, textWidth } from '../art/font.js';
 import { PATCH_NOTES } from './patchNotes.js';
-import { saveSettings, SETTINGS_RANGE } from '../game/settings.js';
+import { ACTIONS, codeLabel, defaultBindings, saveSettings, SETTINGS_RANGE } from '../game/settings.js';
+import { QUALITY, QUALITY_LEVELS } from '../game/quality.js';
 import { chamferRect, COLOR, drawButton, drawHeading, drawLogo, drawRowStripe, drawRule, drawSlider, inside, markClickable, MEDALS, outline, panelBox, pointerOnStage } from './panelKit.js';
 
 // Menu inicial: Singleplayer, Multiplayer, Garagem, Ranking, Configurações e Sair.
@@ -12,6 +13,16 @@ const TIERS = { play: { height: 30, width: 190, scale: 2, gap: 6 }, more: { heig
 const TIER_GAP = 12;
 const PANEL = { x: 130, y: 44, width: 380, height: 272 };
 const BACK = { x: 245, y: 278, width: 150, height: 28 };
+const SETTINGS_BACK = { x: 170, y: 278, width: 145, height: 28 };
+const CONTROLS_BUTTON = { x: 325, y: 278, width: 145, height: 28 };
+// Tela de controles: duas colunas de ações, cada uma com dois botões de tecla.
+const CONTROLS_ROWS = 7, CONTROLS_COLUMN = { x: [46, 328], firstY: 64, gap: 26, labelWidth: 130, slotWidth: 68, slotGap: 4, height: 18 };
+const CONTROLS_BACK = { x: 160, y: 302, width: 150, height: 26 };
+const CONTROLS_RESET = { x: 330, y: 302, width: 150, height: 26 };
+const slotBox = (index, slot) => ({
+  x: CONTROLS_COLUMN.x[Math.floor(index / CONTROLS_ROWS)] + CONTROLS_COLUMN.labelWidth + slot * (CONTROLS_COLUMN.slotWidth + CONTROLS_COLUMN.slotGap),
+  y: CONTROLS_COLUMN.firstY + (index % CONTROLS_ROWS) * CONTROLS_COLUMN.gap, width: CONTROLS_COLUMN.slotWidth, height: CONTROLS_COLUMN.height,
+});
 const SLIDER = { x: 170, width: 300, height: 12, firstY: 88, gap: 38 };
 const RANKING_PANEL = { x: 30, y: 28, width: 580, height: 268 };
 const RANKING_TABS = [
@@ -58,14 +69,29 @@ const SLIDERS = [
   { key: 'effects', label: 'EFEITOS SONOROS' },
   { key: 'sensitivity', label: 'SENSIBILIDADE DA CAMERA' },
 ];
+// Qualidade gráfica: três botões lado a lado, na linha abaixo do último ajuste.
+const QUALITY_ROW = { y: SLIDER.firstY + SLIDERS.length * SLIDER.gap - 4, height: 18, gap: 6 };
+const qualityBox = index => {
+  const width = (SLIDER.width - QUALITY_ROW.gap * (QUALITY_LEVELS.length - 1)) / QUALITY_LEVELS.length;
+  return { x: SLIDER.x + index * (width + QUALITY_ROW.gap), y: QUALITY_ROW.y, width, height: QUALITY_ROW.height };
+};
 const sliderBox = index => ({ x: SLIDER.x, y: SLIDER.firstY + index * SLIDER.gap, width: SLIDER.width, height: SLIDER.height });
+
+// Jogadores conectados, no canto de cima à direita do menu: ícone de pessoa (pixel art) e o número.
+const ONLINE_BADGE = { right: VIEW.width - 12, y: 10, height: 17, padding: 5, gap: 4 };
+const PERSON_ICON = ['..###..', '.#####.', '.#####.', '..###..', '.......', '.#####.', '#######', '#######', '#######'];
+
+function drawPerson(ctx, x, y, color) {
+  ctx.fillStyle = color;
+  PERSON_ICON.forEach((row, j) => [...row].forEach((cell, i) => { if (cell === '#') ctx.fillRect(x + i, y + j, 1, 1); }));
+}
 
 const formatTime = seconds => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
 
 export function createMainMenu({ stage, settings, net, onSingleplayer, onMultiplayer, onGarage, onSettingChange, onEffectsPreview, onQuit }) {
-  let page = 'main', helpOpen = false, notesScroll = 0, pointer = { x: -1, y: -1 }, dragging = null, queued = null, view = 'ranking', selectedRace = null, viewingMatch = null, historyFilter = null;
+  let page = 'main', helpOpen = false, notesScroll = 0, pointer = { x: -1, y: -1 }, dragging = null, rebinding = null, swallowClick = false, queued = null, view = 'ranking', selectedRace = null, viewingMatch = null, historyFilter = null;
 
-  const screen = { isOpen: true };
+  const screen = { isOpen: true, isRebinding: () => rebinding !== null };
 
   function setPage(next) {
     if (next === 'ranking') {
@@ -77,6 +103,7 @@ export function createMainMenu({ stage, settings, net, onSingleplayer, onMultipl
     }
     page = next;
     helpOpen = false;
+    rebinding = null;
   }
 
   let nextY = BUTTON.y - 10, lastTier = null;
@@ -104,6 +131,33 @@ export function createMainMenu({ stage, settings, net, onSingleplayer, onMultipl
     settings[key] = low + (high - low) * t;
     onSettingChange(key, settings[key]);
   }
+
+  // Trocar uma tecla: o próximo botão (teclado ou mouse) vira o novo; ESC cancela e BACKSPACE/DELETE deixa o espaço vazio.
+  // Se a tecla já era de outra ação, as duas trocam de lugar.
+  function assignBinding(code) {
+    const { action, slot } = rebinding, { bindings } = settings, previous = bindings[action][slot];
+    rebinding = null;
+    if (code) for (const other of ACTIONS) other && bindings[other.id].forEach((used, i) => {
+      if (used === code && !(other.id === action && i === slot)) bindings[other.id][i] = previous;
+    });
+    bindings[action][slot] = code;
+    saveSettings(settings);
+  }
+  addEventListener('keydown', e => {
+    if (!rebinding) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (e.repeat) return;
+    if (e.code === 'Escape') rebinding = null;
+    else assignBinding(e.code === 'Backspace' || e.code === 'Delete' ? '' : e.code);
+  }, true);
+  addEventListener('mousedown', e => {
+    if (!rebinding) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    swallowClick = true;                             // o clique que vem depois não deve apertar o botão que estiver embaixo
+    assignBinding(`Mouse${e.button}`);
+  }, true);
 
   addEventListener('mousemove', e => {
     if (!screen.isOpen) return;
@@ -134,8 +188,17 @@ export function createMainMenu({ stage, settings, net, onSingleplayer, onMultipl
   }, { passive: false });
   stage.addEventListener('click', e => {
     if (!screen.isOpen) return;
+    if (swallowClick) { swallowClick = false; return; }
     const { x, y } = pointerOnStage(e, stage);
     if (page === 'main') entries.find(entry => inside(entry, x, y))?.action();
+    else if (page === 'settings' && QUALITY_LEVELS.some((_, i) => inside(qualityBox(i), x, y))) {
+      settings.quality = QUALITY_LEVELS.find((_, i) => inside(qualityBox(i), x, y));
+      onSettingChange('quality', settings.quality);
+      saveSettings(settings);
+    }
+    else if (page === 'settings' && inside(CONTROLS_BUTTON, x, y)) setPage('controls');
+    else if (page === 'settings' && inside(SETTINGS_BACK, x, y)) setPage('main');
+    else if (page === 'controls') clickControls(x, y);
     else if (page === 'notes' && inside(NOTES_BACK, x, y)) setPage('main');
     else if (page === 'ranking' && RANKING_TABS.some(tab => inside(tab, x, y))) {
       view = RANKING_TABS.find(tab => inside(tab, x, y)).view;
@@ -149,6 +212,12 @@ export function createMainMenu({ stage, settings, net, onSingleplayer, onMultipl
       else setPage('main');
     } else if (page === 'ranking' && view === 'history') clickHistory(x, y);
   });
+
+  function clickControls(x, y) {
+    if (inside(CONTROLS_BACK, x, y)) { setPage('settings'); return; }
+    if (inside(CONTROLS_RESET, x, y)) { Object.assign(settings.bindings, defaultBindings()); saveSettings(settings); rebinding = null; return; }
+    ACTIONS.forEach(({ id }, index) => [0, 1].forEach(slot => { if (inside(slotBox(index, slot), x, y)) rebinding = { action: id, slot }; }));
+  }
 
   function setHistoryFilter(name) {
     historyFilter = name;
@@ -179,16 +248,29 @@ export function createMainMenu({ stage, settings, net, onSingleplayer, onMultipl
     });
   }
 
-  function drawBack(ctx, label = '< VOLTAR') {
-    drawButton(ctx, BACK, label, inside(BACK, pointer.x, pointer.y));
+  function drawBack(ctx, label = '< VOLTAR', box = BACK) {
+    drawButton(ctx, box, label, inside(box, pointer.x, pointer.y));
   }
 
   function heading(ctx, text) {
     drawHeading(ctx, text, VIEW.width / 2, PANEL.y + 14);
   }
 
+  // Sem conexão o ícone fica apagado e o número vira um traço.
+  function drawOnlineCount(ctx) {
+    const online = net.status === 'online' && Number.isFinite(net.online);
+    const label = online ? String(net.online) : '-', color = online ? COLOR.selected : COLOR.muted;
+    const { right, y, height, padding, gap } = ONLINE_BADGE, iconWidth = PERSON_ICON[0].length;
+    const width = padding * 2 + iconWidth + gap + textWidth(label), x = right - width;
+    chamferRect(ctx, { x, y, width, height }, 2, COLOR.edge);
+    chamferRect(ctx, { x: x + 1, y: y + 1, width: width - 2, height: height - 2 }, 1, COLOR.panel);
+    drawPerson(ctx, x + padding, y + (height - PERSON_ICON.length) / 2 | 0, color);
+    ctxText(ctx, label, x + padding + iconWidth + gap, y + (height - 7) / 2 | 0, online ? COLOR.text : COLOR.muted);
+  }
+
   function drawMain(ctx) {
     drawTitle(ctx);
+    drawOnlineCount(ctx);
     for (const entry of entries) {
       const hovered = inside(entry, pointer.x, pointer.y);
       if (entry.tier === 'quit') drawButton(ctx, entry, entry.label, hovered, 'danger');
@@ -207,7 +289,31 @@ export function createMainMenu({ stage, settings, net, onSingleplayer, onMultipl
       ctxText(ctx, percent, box.x + box.width - textWidth(percent), box.y - 14, COLOR.selected);
       drawSlider(ctx, box, t, dragging === i || inside({ ...box, y: box.y - 6, height: box.height + 12 }, pointer.x, pointer.y));
     });
-    drawBack(ctx);
+    ctxText(ctx, 'QUALIDADE GRAFICA', SLIDER.x, QUALITY_ROW.y - 14, COLOR.text);
+    QUALITY_LEVELS.forEach((level, i) => {
+      const box = qualityBox(i);
+      drawButton(ctx, box, QUALITY[level].label, inside(box, pointer.x, pointer.y), { style: 'tab', active: settings.quality === level });
+    });
+    drawBack(ctx, '< VOLTAR', SETTINGS_BACK);
+    drawButton(ctx, CONTROLS_BUTTON, 'CONTROLES', inside(CONTROLS_BUTTON, pointer.x, pointer.y));
+  }
+
+  function drawControls(ctx) {
+    panelBox(ctx, RANKING_PANEL);
+    drawHeading(ctx, 'CONTROLES', VIEW.width / 2, RANKING_PANEL.y + 14);
+    ACTIONS.forEach(({ id, label }, index) => {
+      const first = slotBox(index, 0);
+      ctxText(ctx, label, first.x - CONTROLS_COLUMN.labelWidth, first.y + 6, COLOR.text);
+      [0, 1].forEach(slot => {
+        const box = slotBox(index, slot), waiting = rebinding?.action === id && rebinding.slot === slot;
+        const text = waiting ? (Math.floor(performance.now() / 400) % 2 ? '...' : 'APERTE') : codeLabel(settings.bindings[id][slot]);
+        drawButton(ctx, box, text, inside(box, pointer.x, pointer.y), { style: 'tab', active: waiting });
+      });
+    });
+    const hint = rebinding ? 'APERTE UMA TECLA OU BOTAO DO MOUSE. ESC CANCELA, BACKSPACE LIMPA.' : 'CLIQUE NUM BOTAO E APERTE A NOVA TECLA. CADA ACAO TEM DUAS TECLAS.';
+    ctxText(ctx, hint, Math.round(VIEW.width / 2 - textWidth(hint) / 2), RANKING_PANEL.y + RANKING_PANEL.height - 26, COLOR.muted);
+    drawBack(ctx, '< VOLTAR', CONTROLS_BACK);
+    drawButton(ctx, CONTROLS_RESET, 'RESTAURAR PADRAO', inside(CONTROLS_RESET, pointer.x, pointer.y));
   }
 
   // Tabela de jogadores: `cells` devolve o texto de cada coluna (menos a do nome) de uma linha.
@@ -401,7 +507,7 @@ export function createMainMenu({ stage, settings, net, onSingleplayer, onMultipl
     drawBack(ctx);
   }
 
-  const pages = { main: drawMain, settings: drawSettings, ranking: drawRanking, notes: drawNotes, bye: drawBye };
+  const pages = { main: drawMain, settings: drawSettings, controls: drawControls, ranking: drawRanking, notes: drawNotes, bye: drawBye };
   screen.draw = ctx => pages[page](ctx);
   screen.update = () => {
     if (!queued) return;

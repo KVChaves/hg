@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { TRACK_WIDTH } from '../../config.js';
 import { OPEN_WALL, track, trackAt } from '../track.js';
 import { pixelTexture } from '../textures.js';
+import { addCulledInstances } from '../instancing.js';
 
 // Peças comuns aos biomas: objetos instanciados espalhados fora da pista ou enfileirados na beira dela.
 
@@ -17,14 +18,13 @@ const CAR_ZONE = 8, FOOTPRINT_STEP = 6;              // metros: altura que atrap
 export const solid = (color, extra = {}) => new THREE.MeshBasicMaterial({ color, ...extra });
 export const pickFrom = list => random => list[Math.floor(random() * list.length)];
 
+// Os meshes daqui só recebem as posições; no fim (`finish`) as instâncias vão para a cena repartidas em blocos
+// que a câmera pode descartar (world/instancing.js).
 function instancedParts(ctx, parts, count) {
-  return parts.map(part => {
-    const mesh = new THREE.InstancedMesh(part.geometry, part.material, count);
-    mesh.frustumCulled = false;
-    ctx.group.add(mesh);
-    return mesh;
-  });
+  return parts.map(part => new THREE.InstancedMesh(part.geometry, part.material, count));
 }
+
+const finish = (ctx, meshes, placed) => addCulledInstances(ctx.group, meshes, placed);
 
 const dimensions = size => (Array.isArray(size) ? size : [size, size, size]);
 
@@ -86,7 +86,7 @@ export function scatter(ctx, { count, clearance, parts, sizeOf = () => 1 }) {
     if (!found) continue;
     placeInstance(meshes, parts, placed++, x, heightAt(x, z), z, yaw, size, random);
   }
-  for (const mesh of meshes) mesh.count = placed;
+  finish(ctx, meshes, placed);
 }
 
 // Dois planos cruzados com uma imagem: planta ou copa desenhada em pixel art. `lift` sobe a base em metros.
@@ -121,7 +121,7 @@ export function nearRoad(ctx, { count, from, to, parts, sizeOf = () => 1 }) {
     if (!spotIsClear(x, z, start * 0.9) || !footprintIsClear(ctx, footprintOf(parts, size), x, z, yaw)) continue;
     placeInstance(meshes, parts, placed++, x, heightAt(x, z), z, yaw, size, random);
   }
-  for (const mesh of meshes) mesh.count = placed;
+  finish(ctx, meshes, placed);
 }
 
 // Coloca acima da pista, em alturas `height` e até `lateral` metros para cada lado.
@@ -135,7 +135,7 @@ export function overRoad(ctx, { count, height, lateral, parts, sizeOf = () => 1 
     const t = trackAt(d), side = (random() * 2 - 1) * lateral;
     placeInstance(meshes, parts, placed++, t.x - t.tz * side, t.y + height[0] + random() * (height[1] - height[0]), t.z + t.tx * side, random() * Math.PI * 2, sizeOf(random), random);
   }
-  for (const mesh of meshes) mesh.count = placed;
+  finish(ctx, meshes, placed);
 }
 
 // Enfileira objetos dos dois lados da pista a cada `every` metros, fora dos túneis.
@@ -153,7 +153,7 @@ export function alongRoad(ctx, { every, offset, parts, sizeOf = () => 1, facesRo
       placeInstance(meshes, parts, placed++, x, heightAt(x, z), z, yaw, size, random);
     }
   }
-  for (const mesh of meshes) mesh.count = placed;
+  finish(ctx, meshes, placed);
 }
 
 // Pórticos que atravessam a pista. `build(random)` devolve um grupo com origem no centro da estrada.

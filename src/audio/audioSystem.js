@@ -339,10 +339,10 @@ export function createAudioSystem(settings) {
     update({ gear, race, keys, nitroOpen, drifting, burning }) {
       if (!raceOn) return;
       updateBurning(Boolean(burning));
-      const throttle = Boolean(race.started && (keys.KeyW || keys.ArrowUp));
+      const throttle = Boolean(race.started && keys.accelerate);
       updateEngine(gear, throttle, nitroOpen);
       updateLaunch(throttle, gear.kmh, race.started);
-      updateHorn(Boolean(keys.KeyH));
+      updateHorn(Boolean(keys.horn));
       updateGear(gear);
       updateDrift(drifting);
       updateNitro(Boolean(nitroOpen));

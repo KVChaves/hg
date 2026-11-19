@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { pixelTexture } from '../textures.js';
 import { createBodyAddons, createTireDetails } from './carAddons.js';
 import { createBumper, disposeBumper } from './carBumper.js';
+import { createNeon, createRoofAccessory } from './carExtras.js';
 import { createBodyGeometry, createSpoilerGeometry } from './carGeometry.js';
 import { createHoodOrnament, disposeHoodOrnament } from './carHood.js';
 import { paintLivery, paintRim, WHEEL_POSITIONS_Z } from './carLivery.js';
@@ -77,7 +78,8 @@ function createExhaust(kind, color) {
 const DEFAULT_SPEC = {
   model: 'coupe', headlightShape: 'rect', primary: 0xc4c0b8, secondary: 0x98161e, glyph: 0xe8e4dc, pattern: 'digital', decal: 'crosses',
   spoiler: 'wing', hood: 'none', hoodColor: 0xd8d4cc, height: 0, tire: { width: 1, radius: 1 }, rim: 'spokes', rimColor: 0xb01820,
-  headlight: 0xf8f4d8, glass: { color: 0x3a3c44, level: 0 }, tireColor: 0x0a0a0c, bumper: 'stock', bumperColor: 0x34343a, bumperTrimColor: 0xd8b840, tireKind: 'street', exhaustKind: 'stock', exhaustColor: 0x2a2a2e, heightKind: 'stock', glassKind: 'clear', model: 'coupe',
+  headlight: 0xf8f4d8, glass: { color: 0x3a3c44, level: 0 }, tireColor: 0x0a0a0c, bumper: 'stock', bumperColor: 0x34343a, bumperTrimColor: 0xd8b840, tireKind: 'street', exhaustKind: 'stock', exhaustColor: 0x2a2a2e, heightKind: 'stock', glassKind: 'clear',
+  finish: 'gloss', roof: 'none', roofColor: 0x26282e, neon: 'none', neonColor: 0x30e0ff,
 };
 
 export function createCarModel(initialSpec, seed = 0) {
@@ -107,6 +109,7 @@ export function createCarModel(initialSpec, seed = 0) {
 
   let exhaust = null, exhaustKey = '', flames = new THREE.Group();
 
+  let roof = null, roofKey = '', neon = null, neonKey = '';
   let flashing = false, radiusScale = 1, hoodOrnament = null, hoodKey = '', bumper = null, bumperKey = '', addons = null, addonsKey = '', tireDetails = [], tireKey = '';
 
   function apply(partialSpec) {
@@ -139,6 +142,22 @@ export function createCarModel(initialSpec, seed = 0) {
       }
       hoodOrnament = createHoodOrnament(spec.hood, spec.hoodColor, spec.model);
       lifted.add(hoodOrnament);
+    }
+
+    const nextRoof = `${spec.roof}|${spec.roofColor}|${spec.model}`;
+    if (nextRoof !== roofKey) {
+      roofKey = nextRoof;
+      roof?.dispose();
+      roof = createRoofAccessory(spec.roof, spec.roofColor, spec.model);
+      lifted.add(roof.group);
+    }
+
+    const nextNeon = `${spec.neon}|${spec.neonColor}`;
+    if (nextNeon !== neonKey) {
+      neonKey = nextNeon;
+      neon?.dispose();
+      neon = createNeon(spec.neon, spec.neonColor);
+      group.add(neon.group);                       // no chão: não sobe com a suspensão
     }
 
     const nextBumper = `${spec.bumper}|${spec.bumperColor}|${spec.bumperTrimColor}`;

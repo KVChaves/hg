@@ -15,8 +15,6 @@ const LAND_STEP = 0.5;                               // chegar até esse tanto a
 export const FLOAT_DEPTH = 0.7;                      // o carro afundado fica com a cabine fora d'água
 const SINK_RATE = 1.6;
 
-export const createFlight = () => ({ y: 0, vy: 0, airborne: false, sunk: 0, jump: null });
-
 // `ground`: altura do chão sob o carro, ou nulo onde não há chão (o vão sobre o rio).
 // `groundRate`: quanto o chão sobe por segundo debaixo do carro (inclinação × velocidade ao longo da pista).
 // Devolve 'ground', 'air', 'landed' (com `impact`, m/s de descida no toque) ou 'blocked' (bateu na face da margem).

@@ -2,8 +2,8 @@ import { ctxText, textWidth } from '../art/font.js';
 import { COLOR, inside, outline, pointerOnStage } from './panelKit.js';
 
 // Chat global: todo jogador conectado ao servidor lê todas as mensagens, esteja em sala, em corrida, no menu ou na garagem.
-// Fechado, o chat não ocupa a tela: só aparece um ícone de mensagem no canto inferior esquerdo quando chega mensagem nova.
-// ENTER (ou um clique no ícone) abre a caixa no mesmo canto e a mensagem é digitada ali mesmo; ENTER com texto envia e a caixa continua aberta;
+// Fechado, o chat não ocupa a tela: só fica um ícone de mensagem no canto inferior esquerdo quando chega mensagem nova.
+// ENTER (ou a tecla escolhida nas configurações, ou um clique no ícone) abre a caixa no mesmo canto e a mensagem é digitada ali mesmo; ENTER com texto envia e a caixa continua aberta;
 // fecha com ENTER sem digitar nada, com um clique fora ou com ESC.
 // O servidor limpa o texto e limita a frequência; aqui só se desenha e se envia.
 
@@ -19,7 +19,7 @@ const typedCharacter = key => {
   return TYPABLE.test(typed) ? typed : '';
 };
 
-export function createChatBox({ stage, net, canOpen = () => true, isOwn = () => false }) {
+export function createChatBox({ stage, net, canOpen = () => true, isOwn = () => false, openCodes = () => ['Enter'], isRebinding = () => false }) {
   let pointer = { x: -1, y: -1 }, draft = null, readAt = performance.now();   // `draft` nulo: caixa fechada
   addEventListener('mousemove', e => { pointer = pointerOnStage(e, stage); });
 
@@ -49,7 +49,7 @@ export function createChatBox({ stage, net, canOpen = () => true, isOwn = () => 
       else if (draft.length < CHAT_LENGTH) draft += typedCharacter(e.key);
       return;
     }
-    if (e.key !== 'Enter' || e.repeat || !canOpen()) return;
+    if (!openCodes().includes(e.code) || e.repeat || !canOpen() || isRebinding()) return;
     e.preventDefault();
     e.stopImmediatePropagation();                     // este ENTER só abre o chat: nada mais deve reagir a ele
     openBox();
@@ -83,14 +83,14 @@ export function createChatBox({ stage, net, canOpen = () => true, isOwn = () => 
     },
     // Clique no ícone de mensagem nova (caixa fechada) abre a caixa.
     clickIcon(x, y) {
-      if (isOpen() || !unread() || !inside(ICON, x, y)) return false;
+      if (isOpen() || !canOpen() || !unread() || !inside(ICON, x, y)) return false;
       openBox();
       return true;
     },
     cancel: () => { draft = null; },
     draw(ctx) {
       const now = performance.now();
-      if (!isOpen()) { drawIcon(ctx, now); return; }
+      if (!isOpen()) { if (canOpen()) drawIcon(ctx, now); return; }
       const box = boxRect();
       ctx.fillStyle = 'rgba(20, 10, 7, 0.88)';
       ctx.fillRect(box.x, box.y, box.width, box.height);

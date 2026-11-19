@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { enableCulling } from '../instancing.js';
 import { paintGradient, paintSilhouette } from '../atmosphere.js';
 import { cutTop, speckle } from './wallPaint.js';
 import { acrossRoad, archFrame, EDGE, nearRoad, pickFrom, scatter, solid } from './propKit.js';
@@ -189,7 +190,7 @@ export const BEACH = {
       boatMesh.forEach(mesh => mesh.setMatrixAt(boats, matrix));
       boats++;
     }
-    boatMesh.forEach(mesh => { mesh.count = boats; mesh.frustumCulled = false; ctx.group.add(mesh); });
+    boatMesh.forEach(mesh => { mesh.count = boats; enableCulling(mesh); ctx.group.add(mesh); });
 
     // Gaivotas rodando no céu.
     const wing = new THREE.BoxGeometry(1.8, 0.06, 0.4), gulls = [];

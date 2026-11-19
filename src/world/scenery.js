@@ -215,6 +215,7 @@ function disposeGroup(group) {
 }
 
 const FLASH_FOG_FAR = 320;
+const MAX_VIEW = 400, VIEW_MARGIN = 20;              // metros: alcance máximo da câmera e folga além do fim da neblina
 
 export function createWorldScene() {
   const scene = new THREE.Scene();
@@ -238,6 +239,7 @@ export function createWorldScene() {
     scene.background = new THREE.Color(biome.sky);
     scene.fog.color.setHex(biome.sky);
     [scene.fog.near, scene.fog.far] = biome.fog;
+    limitFog();
 
     atmosphere.setBiome(biome);
     const texture = surfaceTexture(biome.ground);
@@ -303,6 +305,24 @@ export function createWorldScene() {
       scene.fog.far += (Math.min(weatherType.fog[1], scene.fog.far) - scene.fog.far) * weatherLevel;
     }
     atmosphere.setWeatherVisible(level < 0.3);
+    limitFog();
+  };
+
+  // Qualidade gráfica: a neblina fecha no máximo a `limit` metros, para a câmera poder parar ali.
+  let viewLimit = Infinity;
+  function limitFog() {
+    if (scene.fog.far <= viewLimit) return;
+    scene.fog.near *= viewLimit / scene.fog.far;
+    scene.fog.far = viewLimit;
+  }
+  scene.setViewLimit = limit => { viewLimit = limit; };
+  scene.setParticleDensity = value => atmosphere.setDensity(value);
+
+  // Até onde vale desenhar: logo além do fim da neblina, porque depois dela tudo tem a cor do céu. No escuro e na
+  // tempestade a neblina aperta, mas faróis e luzes (que ignoram a neblina) continuam visíveis até o alcance normal do bioma.
+  scene.viewDistance = () => {
+    const biomeFar = Math.min(currentBiome?.fog[1] ?? MAX_VIEW, viewLimit);
+    return Math.min(MAX_VIEW, Math.max(scene.fog.far, biomeFar) + VIEW_MARGIN);
   };
 
   // Clarão de relâmpago (0 a 1), chamado depois de setDarkness: a neblina abre e clareia, como se o raio
@@ -313,6 +333,7 @@ export function createWorldScene() {
     scene.fog.color.lerp(flashColor, level * 0.75);
     scene.background.copy(scene.fog.color);
     scene.fog.far += (FLASH_FOG_FAR - scene.fog.far) * level;
+    limitFog();
   };
 
   // Rajada de vento: as partículas do clima correm de lado (x, z em m/s no mundo).

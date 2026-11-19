@@ -2,6 +2,7 @@ import { SLIPSTREAM_KMH, VIEW } from '../config.js';
 import { ctxText, textWidth } from '../art/font.js';
 import { bayer, hash } from '../art/shade.js';
 import { clearClickable } from './panelKit.js';
+import { codeLabel } from '../game/settings.js';
 import { loadPng, pngNow } from '../cabin/pngPixels.js';
 import { drawRacerNames } from './racerNames.js';
 
@@ -25,16 +26,21 @@ function centered(ctx, text, y, color, scale = 1) {
   ctxText(ctx, text, x, y, color, scale);
 }
 
-const CONTROLS = [
-  ['W / S', 'ACELERA / FREIA E RE'], ['A / D', 'DIRECAO'], ['ESPACO', 'NITRO'], ['SHIFT', 'DRIFT NAS CURVAS'],
-  ['E', 'USA ITEM DO BAGAGEIRO'], ['RODA DO MOUSE', 'TROCA ITEM'], ['MOUSE P/ ESQUERDA', 'OLHA PELA JANELA'], ['H', 'BUZINA'],
-  ['MOUSE', 'OLHA'], ['CLIQUE', 'ATIRA'], ['BOTAO DIREITO', 'SEGURA A ARMA'], ['R', 'RECARREGA'], ['C', 'CENTRALIZA A CAMERA'],
-];
+// As teclas vêm das configurações (o jogador pode remapear); só a roda do mouse e o olhar são fixos.
+const controlsFor = settings => {
+  const key = action => codeLabel(settings.bindings[action].find(Boolean));   // só a primeira tecla: a coluna é estreita
+  return [
+    [key('accelerate'), 'ACELERA'], [key('brake'), 'FREIA E RE'], [`${key('left')} / ${key('right')}`, 'DIRECAO'], [key('nitro'), 'NITRO'],
+    [key('handbrake'), 'DRIFT NAS CURVAS'], [key('trap'), 'USA ITEM DO BAGAGEIRO'], ['RODA DO MOUSE', 'TROCA ITEM'], ['MOUSE P/ ESQUERDA', 'OLHA PELA JANELA'],
+    [key('horn'), 'BUZINA'], ['MOUSE', 'OLHA'], [key('fire'), 'ATIRA'], [key('aim'), 'SEGURA A ARMA'], [key('reload'), 'RECARREGA'], [key('recenter'), 'CENTRALIZA A CAMERA'],
+  ];
+};
 const NPC_HELP = ['SE VOCE ESTIVER MUITO ATRAS, UM NPC ACENA', 'NA BEIRA DA PISTA COM UM ITEM ACIMA DA CABECA:', 'MUNICAO, NITRO, EXTINTOR OU ARMADILHA.', 'PASSE PERTO DELE PARA PEGAR O ITEM.'];
 
 // Pop-up antes da contagem: botões do jogo e o que querem dizer os NPCs da beira da pista.
 // `challenge`: linhas do desafio próprio da pista (campo `challenge` do bioma), quando ela tem um.
-function drawIntroPopup(ctx, timeLeft, challenge = []) {
+function drawIntroPopup(ctx, timeLeft, challenge = [], settings) {
+  const CONTROLS = controlsFor(settings);
   const w = 440, lineH = 11, rows = Math.ceil(CONTROLS.length / 2);
   const h = 62 + rows * lineH + 14 + NPC_HELP.length * lineH + 16 + (challenge.length ? 14 + challenge.length * lineH : 0);
   const x = Math.round(CENTER_X - w / 2), y = Math.round(VIEW.height / 2 - h / 2);
@@ -75,7 +81,7 @@ function paintDamageBand(width, height, edgeAt) {
   return band;
 }
 
-export function createHud(canvas, { chat, matchTable, isTableHeld, killFeed, pause, scope, featFeed, mainMenu, multiplayer, podium, matchSetup, results, voteScreen, matchLabel, biomeName, biomeChallenge = () => [], race, weapon, hands, garage, workshop, windowView, spectator, spectatorExit, isLocked, combat, car, activeCamera, opponents, isBehindCabin, isInSmoke, roadsideHelp, traps, powerStatus = () => [] }) {
+export function createHud(canvas, { chat, matchTable, isTableHeld, killFeed, pause, scope, featFeed, mainMenu, multiplayer, podium, matchSetup, results, voteScreen, matchLabel, biomeName, biomeChallenge = () => [], race, weapon, hands, garage, workshop, windowView, spectator, spectatorExit, isLocked, combat, car, activeCamera, opponents, isBehindCabin, isInSmoke, roadsideHelp, traps, powerStatus = () => [], settings }) {
   canvas.width = VIEW.width;
   canvas.height = VIEW.height;
   const ctx = canvas.getContext('2d');
@@ -236,7 +242,7 @@ export function createHud(canvas, { chat, matchTable, isTableHeld, killFeed, pau
       centered(ctx, biomeName(), 100, '#ffe9a0');
     }
     if (!race.started && race.intro <= 0) centered(ctx, String(Math.min(3, Math.ceil(race.countdown))), 118, '#ffe9a0', 4);
-    if (!race.started && race.intro > 0) drawIntroPopup(ctx, race.intro, biomeChallenge());
+    if (!race.started && race.intro > 0) drawIntroPopup(ctx, race.intro, biomeChallenge(), settings);
     else if (race.goTimer > 0) centered(ctx, 'GO!', 118, '#6fe070', 4);
     if (race.started) killFeed.draw(ctx);
     if (car.wrecked > 0) {

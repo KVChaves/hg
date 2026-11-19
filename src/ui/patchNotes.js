@@ -3,8 +3,33 @@
 
 export const PATCH_NOTES = [
   {
+    title: 'GARAGEM: APARENCIA',
+    items: [
+      'Nova peca ACABAMENTO: Brilhante, Fosco, Metalico (com purpurina), Perolado e Cromado.',
+      'Nova peca TETO: Bagageiro, Antena com bandeira, Barbatana, Entrada de ar e Giroflex que pisca. Aceita qualquer cor.',
+      'Nova peca NEON embaixo do carro: Embaixo, Nas rodas, Pulsante e Arco-iris. Os outros jogadores tambem veem.',
+      'Novas pinturas: Camuflada, Tigrada, Faixas de corrida, Fibra de carbono e Degrade.',
+      'Novos adesivos (Coracao, Coroa, Alvo e Asas), frisos (Tracejado, Zigue-zague e Faixa degrade), farois (Bravo e Faixa de LED), aros (Raios duplos e Calota) e numeros (00, 3, 11 e 77).',
+      'Botao SORTEAR na aba APARENCIA: sorteia pecas e cores que combinam entre si, sem mexer nas pecas de desempenho compradas.',
+      'Paleta com 20 cores prontas abaixo do seletor de cor.',
+      'Pecas com muitas opcoes mostram as miniaturas em duas linhas, sem ficarem espremidas.',
+      'O seletor de cor nao passa mais por cima do painel da direita.',
+    ],
+  },
+  {
+    title: 'DESEMPENHO',
+    items: [
+      'Nova opcao QUALIDADE GRAFICA em CONFIGURACOES: BAIXA, MEDIA e ALTA. Na BAIXA o mundo e desenhado em resolucao menor (a cabine continua nitida), a vista alcanca menos, o retrovisor desliga e ha menos particulas de clima.',
+      'O retrovisor redesenha a cada poucos quadros e enxerga ate 150 metros, em vez de redesenhar a pista inteira a cada quadro.',
+      'A camera para de desenhar logo depois do fim da neblina, onde nada mais aparece.',
+      'Arvores, predios e outros enfeites fora da tela deixam de ser desenhados.',
+      'Os efeitos sonoros viraram MP3: o download ficou cerca de 10 MB menor.',
+    ],
+  },
+  {
     title: 'SALAS E CONEXAO',
     items: [
+      'O menu inicial mostra no canto de cima, a direita, quantos jogadores estao conectados ao servidor agora (contando voce).',
       'Chat GLOBAL: todos os jogadores conectados leem todas as mensagens, em sala, corrida, menu ou garagem. Mensagem nova mostra um icone de envelope no canto inferior esquerdo; ENTER ou um clique nele abre a caixa, e a mensagem e digitada ali. ENTER com texto envia e a caixa continua aberta; ENTER sem digitar nada, clicar fora ou ESC fecha. Mensagem nova toca um som de notificacao.',
       'O jogo conecta ao servidor ja na abertura, para o chat funcionar tambem fora das salas; o seu nome vale no chat mesmo sem estar numa sala.',
       'Reconexao: quem cai da sala guarda a vaga por alguns segundos e retoma de onde parou.',

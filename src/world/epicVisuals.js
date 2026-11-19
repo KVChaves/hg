@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { enableCulling } from './instancing.js';
 import { TRACK_WIDTH } from '../config.js';
 import { JUMP_WALL } from '../game/mapLayout.js';
 import { nearestIndex, track, trackAt, TWIST_RADIUS } from './track.js';
@@ -221,6 +222,7 @@ function addBridge(group, { start, length, water }) {
     matrix.compose(position.set(t.x - t.tz * side, t.y - BRIDGE_THICKNESS, t.z + t.tx * side), rotation, scale.set(1, 0.8 + Math.random() * 2.4, 1));
     icicles.setMatrixAt(i, matrix);
   }
+  enableCulling(icicles);                            // paradas: com a esfera certa a câmera descarta a ponte fora da tela
   group.add(icicles);
 }
 

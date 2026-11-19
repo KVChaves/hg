@@ -4,7 +4,7 @@
 // e casing (cápsula batendo no painel).
 // Os volumes igualam a força dos arquivos, que varia muito; a escopeta passa de 1 porque o arquivo é baixo.
 
-const sound = (path, volume) => ({ url: `assets/audio/weapons/${path}.wav`, volume });
+const sound = (path, volume) => ({ url: `assets/audio/weapons/${path}.mp3`, volume });
 
 const DRY_FIRE = sound('dry-fire', 0.4);              // o mesmo gatilho vazio em todas as armas
 const ROUND_IN = sound('round-in', 1);
@@ -49,9 +49,9 @@ export const WEAPON_SOUNDS = {
 };
 
 // Armas com som próprio. Cada som tem `fallback`: enquanto o arquivo novo não existe, toca o da arma parecida.
-// Arquivos novos: assets/audio/weapons/<arma>/<nome>.wav (veja a lista em NOVOS-SONS.md).
+// Arquivos novos: assets/audio/weapons/<arma>/<nome>.mp3 (veja a lista em NOVOS-SONS.md).
 const own = (path, volume, fallback, fallbackVolume = volume) => ({ ...sound(path, volume), fallback: fallback.url ?? fallback, fallbackVolume: fallback.volume ?? fallbackVolume });
-const HARPOON_SOUND = { url: 'assets/audio/traps/harpoon.wav', volume: 0.5 };
+const HARPOON_SOUND = { url: 'assets/audio/traps/harpoon.mp3', volume: 0.5 };
 const BASE = WEAPON_SOUNDS;
 
 WEAPON_SOUNDS.magnum = {

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { enableCulling } from './instancing.js';
 import { TRACK_WIDTH } from '../config.js';
 import { TUNNEL_HALF_WIDTH, TUNNEL_HEIGHT } from '../game/mapLayout.js';
 import { track, trackAt } from './track.js';
@@ -50,7 +51,6 @@ function addHangingSpikes(group, tunnel, spikes) {
   geometry.rotateX(Math.PI);
   geometry.translate(0, -0.5, 0);
   const mesh = new THREE.InstancedMesh(geometry, new THREE.MeshBasicMaterial({ color: spikes.color }), spikes.count);
-  mesh.frustumCulled = false;
   const matrix = new THREE.Matrix4(), quaternion = new THREE.Quaternion(), position = new THREE.Vector3(), scale = new THREE.Vector3();
   for (let i = 0; i < spikes.count; i++) {
     const t = trackAt(tunnel.start + Math.random() * tunnel.length), side = (Math.random() * 2 - 1) * (TUNNEL_HALF_WIDTH - 1.5);
@@ -59,6 +59,7 @@ function addHangingSpikes(group, tunnel, spikes) {
     matrix.compose(position.set(t.x - t.tz * side, y, t.z + t.tx * side), quaternion, scale.set(size, length, size));
     mesh.setMatrixAt(i, matrix);
   }
+  enableCulling(mesh);                               // parado: com a esfera certa a câmera descarta o túnel fora da tela
   group.add(mesh);
 }
 

@@ -108,8 +108,6 @@ export function useModel(id, { glb, texture = null, zUp = true }) {
   return id;
 }
 
-export const modelReady = id => Boolean(registry.get(id)?.ready);
-
 // Partes prontas para instanciar. Sem a textura, o modelo sai de uma cor só (`fallback`).
 export function modelParts(id, { height, fallback = 0x8a8a90 }) {
   const entry = registry.get(id);

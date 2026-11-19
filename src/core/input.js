@@ -21,23 +21,37 @@ const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 const NORMAL_LIMITS = { minYaw: -LOOK.maxYaw, maxYaw: LOOK.maxYaw, maxPitchUp: LOOK.maxPitchUp, maxPitchDown: LOOK.maxPitchDown };
 
 // Até onde a cabeça vira. `limits()` pode trocar os limites (na janela o piloto olha para trás).
-export function setupInput(stage, { onFire, onReload, onDropTrap, onCycleTrap, canLockPointer, sensitivity, isTyping, limits = () => NORMAL_LIMITS }) {
+export function setupInput(stage, { bindings, isRebinding = () => false, onFire, onReload, onDropTrap, onCycleTrap, canLockPointer, sensitivity, isTyping, limits = () => NORMAL_LIMITS }) {
   stageEl = stage;
 
+  // `keys` guarda os códigos físicos (KeyW, Mouse0...) e também cada ação (accelerate, fire...) com as teclas que o jogador escolheu.
+  const actionsFor = code => Object.keys(bindings()).filter(action => bindings()[action].includes(code));
+  const refresh = () => { for (const action in bindings()) keys[action] = bindings()[action].some(code => code && keys[code]); };
+  const press = (code, repeat) => {
+    keys[code] = true;
+    refresh();
+    if (repeat) return;
+    const actions = actionsFor(code);
+    if (actions.includes('fire')) onFire();
+    if (actions.includes('trap')) onDropTrap();
+  };
+  const release = code => { keys[code] = false; refresh(); };
+
   addEventListener('keydown', e => {
-    if (isTyping()) return;                          // digitando o nome, as teclas não comandam o carro
-    keys[e.code] = true;
+    if (isTyping() || isRebinding()) return;         // digitando o nome, as teclas não comandam o carro
     if (e.code === 'Space' || e.code === 'Tab') e.preventDefault();   // TAB abre a tabela da partida, não muda o foco
-    if (e.code === 'KeyC') { look.yaw = 0; look.pitch = 0; }
-    if (e.code === 'KeyR') onReload();
-    if (e.code === 'KeyE' && !e.repeat) onDropTrap();
+    const actions = actionsFor(e.code);
+    if (actions.includes('recenter')) { look.yaw = 0; look.pitch = 0; }
+    if (actions.includes('reload')) onReload();
+    if (actions.includes('fire') && !isLocked()) { keys[e.code] = true; refresh(); return; }   // sem mouse preso o tiro por tecla não dispara
+    press(e.code, e.repeat);
   });
-  addEventListener('keyup', e => { keys[e.code] = false; });
+  addEventListener('keyup', e => release(e.code));
   addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 
   stage.addEventListener('click', () => { if (!isLocked() && canLockPointer()) stage.requestPointerLock()?.catch?.(() => {}); });
   document.addEventListener('pointerlockchange', () => {
-    if (!isLocked()) { keys.AimButton = false; keys.FireButton = false; }
+    if (!isLocked()) { keys.Mouse0 = keys.Mouse1 = keys.Mouse2 = false; refresh(); }
   });
 
   addEventListener('mousemove', e => {
@@ -49,13 +63,9 @@ export function setupInput(stage, { onFire, onReload, onDropTrap, onCycleTrap, c
   });
   addEventListener('mousedown', e => {
     if (!isLocked()) return;
-    if (e.button === 0) { keys.FireButton = true; onFire(); }
-    if (e.button === 2) keys.AimButton = true;
+    press(`Mouse${e.button}`, false);
   });
-  addEventListener('mouseup', e => {
-    if (e.button === 0) keys.FireButton = false;
-    if (e.button === 2) keys.AimButton = false;
-  });
+  addEventListener('mouseup', e => release(`Mouse${e.button}`));
   let lastWheelTime = 0;
   addEventListener('wheel', e => {
     if (!isLocked()) return;

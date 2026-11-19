@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { LOOK, MAX_RACERS, VIEW, WINDOW_VIEW } from './config.js';
 import { createAudioSystem } from './audio/audioSystem.js';
-import { createRenderer } from './core/renderer.js';
+import { createRenderer, createWorldPass } from './core/renderer.js';
 import { clampLook, isLocked, keys, look, setupInput } from './core/input.js';
 import { createCabin } from './cabin/cabin.js';
 import { loadLoadout } from './cabin/loadout.js';
@@ -29,6 +29,7 @@ import { loadEquipment } from './game/equipment.js';
 import { upgradeFactor } from './game/shop.js';
 import { createRoadsideHelp } from './game/roadsideHelp.js';
 import { loadSettings } from './game/settings.js';
+import { qualityOf } from './game/quality.js';
 import { loadWeaponCustoms } from './game/weaponCustomization.js';
 import { createWeapon } from './game/weapon.js';
 import { createLapSupplies } from './game/lapSupplies.js';
@@ -81,6 +82,7 @@ const PAN_FULL_DISTANCE = 6;                         // perto disso o som vem do
 const glCanvas = document.getElementById('gl');
 const hudCanvas = document.getElementById('hud');
 const renderer = createRenderer(glCanvas);
+const worldPass = createWorldPass(renderer);
 const camera = new THREE.PerspectiveCamera(VIEW.fov, VIEW.width / VIEW.height, 0.1, 400);
 const world = createWorldScene();
 let biome = BIOMES[0];
@@ -287,13 +289,13 @@ const hands = createHands({
   traps,
   look,
   cabin,
-  isAiming: () => Boolean(keys.AimButton),
-  wantsFire: () => Boolean(keys.FireButton) && !traps.aiming && !outOfAction() && !shotBlocked(),
-  wantsNitro: () => Boolean(keys.Space) && car.nitro > 0 && !car.nitroLocked && race.started && !car.airborne && car.sunk <= 0 && !inMenus() && !outOfAction(),   // no ar o registro não abre
+  isAiming: () => Boolean(keys.aim),
+  wantsFire: () => Boolean(keys.fire) && !traps.aiming && !outOfAction() && !shotBlocked(),
+  wantsNitro: () => Boolean(keys.nitro) && car.nitro > 0 && !car.nitroLocked && race.started && !car.airborne && car.sunk <= 0 && !inMenus() && !outOfAction(),   // no ar o registro não abre
 });
 const scope = createScope({
   camera, weapon, hands, car,
-  isAiming: () => Boolean(keys.AimButton),
+  isAiming: () => Boolean(keys.aim),
   canAim: () => !spectator.active && !inMenus() && !outOfAction(),
 });
 
@@ -316,7 +318,17 @@ const SETTING_APPLIERS = {
   menuMusic: value => audio.setMenuMusicVolume(value),
   effects: value => audio.setEffectsVolume(value),
   sensitivity: () => {},                             // a entrada lê o valor direto de `settings`
+  quality: level => applyQuality(level),
 };
+
+// Qualidade gráfica (game/quality.js): resolução do mundo, alcance da vista, retrovisor e partículas.
+function applyQuality(level) {
+  const quality = qualityOf(level);
+  worldPass.setScale(quality.worldScale);
+  world.setViewLimit(quality.viewLimit);
+  world.setParticleDensity(quality.particles);
+  cabin.renderMirror.setEvery(quality.mirrorEvery);
+}
 const mainMenu = createMainMenu({
   stage,
   settings,
@@ -436,16 +448,18 @@ const matchTable = createMatchTable({
 const chat = createChatBox({
   stage, net,
   isOwn: line => line.name === playerName || line.name === race.field[0]?.name,
+  openCodes: () => settings.bindings.chat,
+  isRebinding: () => mainMenu.isRebinding(),
   canOpen: () => !garage.isTyping() && !multiplayer.isTyping(),   // com um campo de nome aberto, o ENTER é dele
 });
 // Com a caixa do chat aberta, o clique (dentro ou fora) é só dela: fora fecha, e nada chega na tela de baixo.
 stage.addEventListener('click', event => {
   const { x, y } = pointerOnStage(event, stage);
   if (chat.isOpen()) chat.click(x, y);
-  else if (!chat.clickIcon(x, y)) return;
+  else if (isLocked() || !chat.clickIcon(x, y)) return;
   event.stopImmediatePropagation();
 }, true);
-const drawHud = createHud(hudCanvas, { chat, matchTable, isTableHeld: () => Boolean(keys.Tab) && !(garage.isTyping() || multiplayer.isTyping() || chat.isOpen()), killFeed, pause, scope, featFeed, mainMenu, multiplayer, podium, matchSetup, results, voteScreen, matchLabel: () => `CORRIDA ${match ? match.currentRace : 1} DE ${match ? match.raceCount : 1}`, biomeName: () => biome.name, biomeChallenge: () => biome.challenge ?? [], race, weapon, hands, garage, workshop, windowView, spectator, spectatorExit: () => (online.active ? 'ESPACO IR PARA A GARAGEM' : 'ESPACO VER RESULTADOS'), isLocked, combat, car, roadsideHelp, traps, powerStatus, opponents, activeCamera: () => (spectator.active ? spectator.camera : camera), isBehindCabin: (x, y, z) => !spectator.active && cabin.isBehindCabin(x, y, z), isInSmoke: (x, z) => darkness.level > 0.5 || sandstorm.level > 0.6 || car.effects.smoke > 0 || traps.smokeBlocks(car.x, car.z, x, z) });
+const drawHud = createHud(hudCanvas, { settings, chat, matchTable, isTableHeld: () => Boolean(keys.scoreboard) && !(garage.isTyping() || multiplayer.isTyping() || chat.isOpen()), killFeed, pause, scope, featFeed, mainMenu, multiplayer, podium, matchSetup, results, voteScreen, matchLabel: () => `CORRIDA ${match ? match.currentRace : 1} DE ${match ? match.raceCount : 1}`, biomeName: () => biome.name, biomeChallenge: () => biome.challenge ?? [], race, weapon, hands, garage, workshop, windowView, spectator, spectatorExit: () => (online.active ? 'ESPACO IR PARA A GARAGEM' : 'ESPACO VER RESULTADOS'), isLocked, combat, car, roadsideHelp, traps, powerStatus, opponents, activeCamera: () => (spectator.active ? spectator.camera : camera), isBehindCabin: (x, y, z) => !spectator.active && cabin.isBehindCabin(x, y, z), isInSmoke: (x, z) => darkness.level > 0.5 || sandstorm.level > 0.6 || car.effects.smoke > 0 || traps.smokeBlocks(car.x, car.z, x, z) });
 const inMenus = () => pause.isOpen || mainMenu.isOpen || multiplayer.isOpen || podium.isOpen || matchSetup.isOpen || results.isOpen || voteScreen.isOpen || garage.isOpen || workshop.isOpen;
 
 // ESC (o navegador solta o mouse) ou perder o foco no meio da corrida abre a pausa; ESC de novo continua.
@@ -463,6 +477,8 @@ addEventListener('keydown', event => {
 
 traps.aimYaw = () => car.yaw + look.yaw;
 setupInput(stage, {
+  bindings: () => settings.bindings,
+  isRebinding: () => mainMenu.isRebinding(),
   onFire: () => {
     if (chat.isOpen() || outOfAction() || shotBlocked()) return;
     if (traps.aiming) { traps.throwItem(car.yaw + look.yaw); return; }
@@ -792,7 +808,7 @@ function step(frameTime) {
     car.boostKick = false;
     playAt('itemCollected', car.x, car.z, 1);
   }
-  harpoon.setHeld(Boolean(keys.KeyE) && !outOfAction());   // com o cabo ainda em voo, E de novo cancela
+  harpoon.setHeld(Boolean(keys.trap) && !outOfAction());   // com o cabo ainda em voo, E de novo cancela
   harpoon.update(dt);
   pulls.update(dt);
   foam.update(dt);
@@ -803,8 +819,8 @@ function step(frameTime) {
   world.updateMap(dt, car.x, car.y, car.z);
   const darkTint = updateDarkness();
   cabin.setAmbient(garage.isOpen ? NEUTRAL_AMBIENT : darkTint);
-  weapon.update(dt, driving.FireButton && !traps.aiming && hands.isGunReady() && !shotBlocked());
-  const gear = readGearbox(car, driving.KeyW);
+  weapon.update(dt, driving.fire && !traps.aiming && hands.isGunReady() && !shotBlocked());
+  const gear = readGearbox(car, driving.accelerate);
   cabin.update({ look, weapon, gear, race, traps, rivals: findRivals(race, opponents, car), dt, frameTime });
   hands.update(dt, gear);
   scope.update(frameTime);
@@ -819,20 +835,28 @@ function step(frameTime) {
   if (mainMenu.isOpen || multiplayer.isOpen || matchSetup.isOpen || garage.isOpen && garage.view === 'car') {
     garage.renderCar(renderer);
   } else if (spectator.active) {
-    renderer.clear();
-    renderer.render(world, spectator.camera);
+    fitViewDistance(spectator.camera);
+    worldPass.render(world, spectator.camera);
   } else if (windowView.active || scope.active) {
-    renderer.clear();                                // pela janela e pela luneta não se vê a cabine
-    renderer.render(world, camera);
+    fitViewDistance(camera);
+    worldPass.render(world, camera);                 // pela janela e pela luneta não se vê a cabine
   } else {
-    cabin.renderMirror(renderer, world);
-    renderer.clear();
-    renderer.render(world, camera);
+    fitViewDistance(camera);
+    cabin.renderMirror(renderer, world, camera.far);
+    worldPass.render(world, camera);
     renderer.clearDepth();
     renderer.render(cabin.scene, camera);
   }
   drawHud();
   finishRaceFlow(frameTime);
+}
+
+// A câmera para logo depois do fim da neblina: além dela tudo já tem a cor do céu e só gastaria a placa de vídeo.
+function fitViewDistance(view) {
+  const far = world.viewDistance();
+  if (view.far === far) return;
+  view.far = far;
+  view.updateProjectionMatrix();
 }
 
 let lastTime = performance.now();
@@ -842,6 +866,7 @@ function frame(now) {
   lastTime = now;
   step(dt);
 }
+applyQuality(settings.quality);
 requestAnimationFrame(frame);
 
 export const game = { mines, nets, killFeed, lightning, getPause: () => pause.isOpen, beginRace, obstacles, lapSupplies, roadsideNpcs, featFeed, podium, multiplayer, net, online: () => online, pulls, world, getBiome: () => biome, harpoon, matchSetup, results, getMatch: () => match, roadsideHelp, mainMenu, settings, step, keys, look, car, race, opponents, combat, weapon, traps, burning, scope, cabin, hands, audio, garage, workshop, windowView, renderer, glCanvas, hudCanvas };

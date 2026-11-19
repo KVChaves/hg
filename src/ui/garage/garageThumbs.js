@@ -1,7 +1,7 @@
 import { Raster } from '../../art/raster.js';
-import { mix } from '../../art/shade.js';
+import { bayer, mix } from '../../art/shade.js';
 import { rasterText, textWidth } from '../../art/font.js';
-import { PATTERNS, paintRim } from '../../world/car/carLivery.js';
+import { paintFinishSample, PATTERNS, paintRim } from '../../world/car/carLivery.js';
 import { paintTrapIcon } from '../../art/trapIcons.js';
 import { createGunRig } from '../guns/gunRig.js';
 import { paintNitroBottle, NITRO_SIZE } from '../../cabin/dashboard.js';
@@ -209,6 +209,16 @@ function decalThumb(id) {
   } else if (id === 'flame') {
     r.poly([[20, 3], [26, 11], [28, 19], [20, 25], [12, 19], [14, 11], [19, 10]], 0xe8e4dc);
     r.poly([[20, 14], [24, 19], [20, 23], [16, 19]], 0xf8f4ec);
+  } else if (id === 'heart') {
+    r.poly([[20, 24], [10, 14], [9, 9], [12, 5], [16, 5], [20, 9], [24, 5], [28, 5], [31, 9], [30, 14]], 0xe8e4dc);
+  } else if (id === 'crown') {
+    r.poly([[9, 22], [31, 22], [31, 8], [26, 14], [20, 5], [14, 14], [9, 8]], 0xe8c040);
+    r.rect(9, 18, 23, 3, 0xf8e8a0);
+  } else if (id === 'target') {
+    r.disc(20, 14, 11, 0xe8e4dc); r.disc(20, 14, 8, 0x8a2020); r.disc(20, 14, 5, 0xe8e4dc); r.disc(20, 14, 2, 0x8a2020);
+  } else if (id === 'wings') {
+    for (const side of [-1, 1]) r.poly([[20 + side * 2, 12], [20 + side * 17, 5], [20 + side * 15, 10], [20 + side * 16, 13], [20 + side * 10, 18], [20 + side * 2, 17]], 0xe8e4dc);
+    r.disc(20, 14, 3, 0xf8f4ec);
   } else if (id === 'chevrons') {
     for (const i of [-1, 0, 1]) r.poly([[20 + i * 9 - 6, 6], [20 + i * 9, 6], [20 + i * 9 + 6, 14], [20 + i * 9, 22], [20 + i * 9 - 6, 22], [20 + i * 9, 14]], 0xe8e4dc);
   } else {
@@ -250,6 +260,9 @@ function trimThumb(id) {
   if (id === 'line') r.rect(0, 14, W, 1, 0xe8e4dc);
   else if (id === 'thick') r.rect(0, 12, W, 4, 0xe8e4dc);
   else if (id === 'double') { r.rect(0, 10, W, 1, 0xe8e4dc); r.rect(0, 16, W, 1, 0xe8e4dc); }
+  else if (id === 'dashed') for (let x = 1; x < W; x += 10) r.rect(x, 13, 6, 3, 0xe8e4dc);
+  else if (id === 'zigzag') for (let x = 0, up = true; x < W; x += 5, up = !up) r.line(x, up ? 11 : 17, x + 5, up ? 17 : 11, 0xe8e4dc, 2);
+  else if (id === 'fade') for (let x = 0; x < W; x++) for (let y = 10; y < 18; y++) if (bayer(x >> 1, y >> 1) < x / W * 1.2 - 0.1) r.put(x, y, 0xe8e4dc);
   return r.commit();
 }
 
@@ -272,6 +285,11 @@ function headlightThumb(shape) {
     if (shape === 'round') r.disc(cx, 14, 7, color);
     else if (shape === 'twin') { r.disc(cx - 4, 14, 3.4, color); r.disc(cx + 4, 14, 3.4, color); }
     else if (shape === 'slim') r.rect(cx - 8, 13, 16, 3, color);
+    else if (shape === 'led') { r.rect(cx - 10, 13, 20, 2, color); r.rect(cx < 20 ? cx - 10 : cx + 6, 12, 4, 4, 0xffffff); }
+    else if (shape === 'angry') {
+      const inner = cx < 20 ? 1 : -1;                 // o canto de dentro fica mais baixo
+      r.poly([[cx + inner * 7, 13], [cx - inner * 8, 8], [cx - inner * 8, 18], [cx + inner * 7, 18]], color);
+    }
     else {
       r.rect(cx - 7, 9, 14, 10, color);
       if (shape === 'covered') for (let x = -4; x <= 4; x += 4) r.rect(cx + x, 9, 1, 10, 0x18181c);
@@ -324,7 +342,50 @@ function hoodThumb(id) {
   return r.commit();
 }
 
+// Chapa de pintura vermelha no acabamento da opção.
+function finishThumb(id) {
+  const r = new Raster(W, H);
+  paintFinishSample(r, id, 0xb02028, W, H);
+  return r.commit();
+}
+
+// Silhueta do carro com o acessório de teto.
+function roofThumb(id) {
+  const r = new Raster(W, H);
+  carSide(r, 2);
+  wheels(r);
+  const color = 0xe8c040, dark = 0x1a1a1e;
+  if (id === 'rack') { r.rect(14, 7, 15, 2, color); for (const x of [15, 21, 27]) r.rect(x, 9, 1, 1, dark); }
+  else if (id === 'antenna') { r.line(26, 10, 31, 1, 0xa8a8b0); r.rect(31, 1, 6, 4, color); }
+  else if (id === 'fin') r.poly([[27, 10], [19, 10], [26, 5]], color);
+  else if (id === 'scoop') { r.rect(15, 7, 7, 3, color); r.rect(14, 8, 1, 2, dark); }
+  else if (id === 'beacon') { r.rect(15, 8, 10, 2, dark); r.rect(15, 6, 4, 2, 0xe02020); r.rect(21, 6, 4, 2, 0x3a70ff); }
+  return r.commit();
+}
+
+// Carro de lado com o brilho do neon no chão.
+const RAINBOW = [0xff3030, 0xffa020, 0xf0f040, 0x40e060, 0x30b0ff, 0xa050ff];
+function neonThumb(id) {
+  const r = new Raster(W, H);
+  r.rect(0, 0, W, H, 0x101014);
+  const glow = (x, width, color) => {
+    for (let i = 0; i < 3; i++) r.rect(x - i * 2, 22 + i, width + i * 4, 1, mix(color, 0x101014, i * 0.3));
+    r.rect(x, 21, width, 1, mix(color, 0xffffff, 0.4));
+  };
+  if (id === 'under' || id === 'pulse') glow(4, 32, 0x30e0ff);
+  if (id === 'pulse') for (const x of [2, 36]) r.rect(x, 18, 2, 2, 0x30e0ff);
+  if (id === 'wheels') for (const x of [7, 27]) glow(x, 6, 0x30e0ff);
+  if (id === 'rainbow') RAINBOW.forEach((color, i) => glow(4 + i * 5.4, 6, color));
+  carSide(r, -2);
+  for (const x of [10, 30]) { r.disc(x, 21, 4, 0x18181c); r.disc(x, 21, 2, 0x8a8a90); }
+  if (id === 'none') { r.line(8, 4, 32, 24, 0x5a2020, 2); }
+  return r.commit();
+}
+
 const EXTERIOR = {
+  finish: option => finishThumb(option.value),
+  roof: option => roofThumb(option.value),
+  neon: option => neonThumb(option.value),
   body: option => modelThumb(option.value),
   headlight: option => headlightThumb(option.value),
   hood: option => hoodThumb(option.value),
@@ -381,13 +442,6 @@ const INTERIOR = {
 
 export const weaponThumb = (id, custom) => createGunRig(id, custom).snapshot();
 export const trunkItemThumb = id => paintTrapIcon(id);
-
-export function emptyTrunkThumb() {
-  const r = new Raster(W, H);
-  r.rect(13, 7, 14, 14, 0x34343a);
-  r.rect(15, 9, 10, 10, 0x55565c);
-  return r.commit();
-}
 
 export const exteriorThumb = (key, option) => EXTERIOR[key](option);
 export const interiorThumb = (key, option) => INTERIOR[key](option);

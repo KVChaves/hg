@@ -1,4 +1,3 @@
-import * as THREE from 'three';
 import { useModel, modelParts } from '../models.js';
 
 // Peças 3D do jogo original usadas como cenário. Começam a carregar quando o jogo abre; o bioma pede com `partsOf(id, altura)`.
@@ -39,9 +38,3 @@ export function partsOf(id, height, tint = 0xffffff) {
   });
 }
 
-// Pórtico com um modelo (o torii) atravessando a pista; a largura do modelo é que decide o vão.
-export function modelGate(id, height, tint) {
-  const group = new THREE.Group();
-  for (const { geometry, material } of partsOf(id, height, tint)) group.add(new THREE.Mesh(geometry, material));
-  return group;
-}

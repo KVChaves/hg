@@ -238,6 +238,12 @@ class Lobby:
             if client.room is None:
                 client.send({"t": "rooms", "rooms": rooms})
 
+    def publish_online(self):
+        """Quantos jogadores estão conectados agora; o menu inicial mostra o número."""
+        message = {"t": "online", "count": len(self.clients)}
+        for client in self.clients:
+            client.send(message)
+
     def publish_room(self, room):
         state = room.state()
         for member in room.members:
@@ -527,9 +533,11 @@ class Lobby:
         client.send({"t": "welcome", "id": client.id, "token": client.token})
         client.send({"t": "chatlog", "lines": list(self.chat)})
         client.send({"t": "rooms", "rooms": self.room_list()})
+        self.publish_online()
 
     def disconnect(self, client):
         self.clients.discard(client)
+        self.publish_online()
         if client.room is not None and client.room.members:
             # Quem estava numa sala guarda a vaga por alguns segundos: se voltar com o token, retoma de onde parou.
             self.pending[client.token] = client

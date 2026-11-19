@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { enableCulling } from '../instancing.js';
 import { paintGradient } from '../atmosphere.js';
 import { ctxText } from '../../art/font.js';
 import { acrossRoad, alongRoad, archFrame, EDGE, pickFrom, scatter, solid } from './propKit.js';
@@ -20,7 +21,7 @@ function addWaveStands(ctx) {
   const columns = Math.floor(LENGTH / COLUMN), seats = columns * TIERS * 2, tint = new THREE.Color();
   const steps = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), solid(0x6a6c78), TIERS * 2 * columns);
   const crowd = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), solid(0xffffff), seats);
-  steps.frustumCulled = crowd.frustumCulled = false;
+  crowd.frustumCulled = false;                       // a torcida pula a cada quadro; os degraus ficam parados
   const matrix = new THREE.Matrix4(), rotation = new THREE.Quaternion(), euler = new THREE.Euler(), scale = new THREE.Vector3(), place = new THREE.Vector3();
   const seat = [];
   let stepIndex = 0;
@@ -39,6 +40,7 @@ function addWaveStands(ctx) {
       }
     }
   }
+  enableCulling(steps);
   ctx.group.add(steps, crowd);
   ctx.onUpdate(time => {
     seat.forEach((s, i) => {

@@ -1,5 +1,5 @@
 import { Raster } from '../../art/raster.js';
-import { colorRamp, dither, hash, mix, vnoise } from '../../art/shade.js';
+import { bayer, colorRamp, dither, hash, mix, vnoise } from '../../art/shade.js';
 import { rasterText, textWidth } from '../../art/font.js';
 import { ATLAS, frontPixel, REGION, rearPixel, sidePixel, topPixel } from './carAtlas.js';
 import { CAR_SHAPES } from './carShapes.js';
@@ -40,16 +40,61 @@ export const PATTERNS = {
     const lick = Math.sin(x / 6 + seed) * 6 + Math.sin(x / 17) * 7;
     return y > 66 - (x / 256) * 44 + lick;
   },
+  camo: (x, y, seed) => {
+    const blocky = vnoise((((x >> 2) << 2) + seed * 3) / 22, ((y >> 2) << 2) / 11), fine = vnoise((x >> 1) / 6, (y >> 1) / 4 + seed);
+    return blocky * 0.72 + fine * 0.28 > 0.55;
+  },
+  tiger: (x, y, seed) => {
+    const wave = Math.sin((x + vnoise(x / 25 + seed, y / 8) * 28) / 6);
+    return wave > 0.62 + vnoise(x / 9, y / 14 + seed) * 0.34;
+  },
+  racing: (x, y, seed, region) => (region === 'top' ? Math.abs(Math.abs(y - 24) - 6) < 3 : (y >= 39 && y < 43) || (y >= 46 && y < 50)),
+  carbon: (x, y) => {
+    const cell = ((x >> 2) + (y >> 2)) & 1;
+    return cell ? ((x + y) & 2) === 0 : ((x - y + 64) & 2) === 0;
+  },
+  fade: (x, y) => bayer(x >> 1, y >> 1) < (x / 256 - 0.18) * 1.5,
+};
+
+// Acabamento da tinta: muda a paleta de tons e como o brilho se espalha pela lataria.
+// `tone(x, y, brilho)` devolve o tom (0..1) e `dither` a força do pontilhado.
+const FINISHES = {
+  gloss: {
+    palette: shades, dither: 0.6,
+    tone: (x, y, b) => b + (hash(x >> 1, y >> 1) - 0.5) * 0.3,
+  },
+  matte: {
+    palette: color => shades(mix(color, 0x7a7a7a, 0.1)), dither: 0.3,
+    tone: (x, y, b) => 0.56 + (b - 0.56) * 0.4 + (hash(x >> 1, y >> 1) - 0.5) * 0.08,
+  },
+  metallic: {
+    palette: shades, dither: 0.45,
+    tone: (x, y, b) => b + (hash(x, y) - 0.5) * 0.46 + (hash(x * 7 + 3, y * 3 + 1) > 0.965 ? 0.55 : 0),
+  },
+  pearl: {
+    palette: color => [mix(color, 0, 0.5), mix(color, 0, 0.24), color, mix(color, 0xfff8f0, 0.32), mix(color, 0xffffff, 0.62)], dither: 0.5,
+    tone: (x, y, b) => b - 0.06 + Math.sin((x + y * 2) / 15) * 0.2 + (hash(x >> 1, y >> 1) - 0.5) * 0.14,
+  },
+  chrome: {
+    palette: color => [mix(color, 0, 0.86), mix(color, 0, 0.55), mix(color, 0, 0.18), mix(color, 0xffffff, 0.38), mix(color, 0xffffff, 0.82)], dither: 0.5,
+    tone: (x, y, b, ry) => 0.52 + 0.46 * Math.sin(ry / 4.5 + Math.sin(x / 38) * 1.3) + (b - 0.75) * 0.6,
+  },
 };
 
 function paintedShade(spec, seed, brightness, region, regionY = 0) {
-  const primary = shades(spec.primary), secondary = shades(spec.secondary);
-  const isSecondary = PATTERNS[spec.pattern];
+  const finish = FINISHES[spec.finish] ?? FINISHES.gloss;
+  const primary = finish.palette(spec.primary), secondary = finish.palette(spec.secondary);
+  const isSecondary = PATTERNS[spec.pattern] ?? PATTERNS.plain;
   return (x, y) => {
     const palette = isSecondary(x, y - regionY, seed, region) ? secondary : primary;
-    const grain = (hash(x >> 1, y >> 1) - 0.5) * 0.3;
-    return dither(x, y, brightness(x, y) + grain, palette, 0.6);
+    return dither(x, y, finish.tone(x, y, brightness(x, y), y - regionY), palette, finish.dither);
   };
+}
+
+// Amostra do acabamento para a miniatura da garagem: uma chapa curva, clara em cima e escura embaixo.
+export function paintFinishSample(r, finishId, color, width, height) {
+  const finish = FINISHES[finishId] ?? FINISHES.gloss, palette = finish.palette(color);
+  r.rect(0, 0, width, height, (x, y) => dither(x, y, finish.tone(x * 3, y * 2, 0.9 - y / (height * 1.4), y * 2), palette, finish.dither));
 }
 
 function polygonFromSide(points) {
@@ -84,12 +129,32 @@ const DECALS = {
   chevrons({ poly }) {
     for (const i of [-1, 0, 1]) poly([[i * 9 - 6, -8], [i * 9, -8], [i * 9 + 6, 0], [i * 9, 8], [i * 9 - 6, 8], [i * 9, 0]]);
   },
+  heart({ poly, light }) {
+    poly([[0, 9], [-9, 0], [-10, -4], [-7, -8], [-3, -8], [0, -5], [3, -8], [7, -8], [10, -4], [9, 0]]);
+    light([[-7, -5], [-4, -6], [-3, -3], [-6, -2]]);
+  },
+  crown({ poly, light, disc }) {
+    poly([[-10, 7], [10, 7], [10, -6], [5, -1], [0, -9], [-5, -1], [-10, -6]]);
+    light([[-10, 3], [10, 3], [10, 6], [-10, 6]]);
+    for (const x of [-10, 0, 10]) disc(x, x === 0 ? -9 : -6, 2);
+  },
+  target({ disc }) {
+    disc(0, 0, 10); disc(0, 0, 7.5, 'dark'); disc(0, 0, 5); disc(0, 0, 2.5, 'dark');
+  },
+  wings({ poly, light, disc }) {
+    for (const side of [-1, 1]) {
+      poly([[side * 2, -2], [side * 14, -8], [side * 13, -4], [side * 11, -1], [side * 12, 1], [side * 8, 4], [side * 2, 3]]);
+      light([[side * 4, -1], [side * 12, -6], [side * 11, -4], [side * 4, 1]]);
+    }
+    disc(0, 0, 3);
+  },
 };
 
 // Onde cada adesivo ficava antes da escolha de posição (modo "Padrão"): metros na lateral.
 const AUTO_SPOT = {
   crosses: { z: 1.5, y: 0.74 }, number: { z: -0.2, y: 0.67 }, bolt: { z: 0.16, y: 0.65 }, stars: { z: 0.5, y: 0.69 }, bars: { z: 1.41, y: 0.7 },
   skull: { z: 0.2, y: 0.68 }, flag: { z: 0.2, y: 0.68 }, flame: { z: 0.2, y: 0.68 }, chevrons: { z: 1.4, y: 0.7 },
+  heart: { z: 0.2, y: 0.68 }, crown: { z: 0.2, y: 0.69 }, target: { z: 0.15, y: 0.68 }, wings: { z: 0.15, y: 0.7 },
 };
 const SIDE_SPOTS = { door: { z: 0.1, y: 0.68 }, fender: { z: 1.5, y: 0.9 }, nose: { z: -1.5, y: 0.9 } };
 
@@ -114,6 +179,7 @@ function plotDecal(r, spec) {
     dark: (x, y, w, h) => r.rect(Math.round(ox + x * k), Math.round(oy + y * k), Math.max(1, px(w)), Math.max(1, px(h)), 0x101012),
     poly: points => r.poly(points.map(([x, y]) => [ox + x * k, oy + y * k]), color),
     light: points => r.poly(points.map(([x, y]) => [ox + x * k, oy + y * k]), mix(color, 0xffffff, 0.55)),
+    disc: (x, y, radius, tone) => r.disc(ox + x * k, oy + y * k, Math.max(1, radius * k), tone === 'dark' ? 0x101012 : color),
     text() {
       const scale = Math.max(1, Math.round(2 * k)), label = spec.decalNumber ?? '27';
       rasterText(r, label, Math.round(ox - textWidth(label, scale) / 2), Math.round(oy - 3.5 * scale), color, scale, scale);
@@ -136,6 +202,15 @@ function plotTrim(r, spec) {
   if (spec.trim === 'line') r.line(ax, ay, bx, ay, color);
   else if (spec.trim === 'thick') r.line(ax, ay, bx, ay, color, 4);
   else if (spec.trim === 'double') { r.line(ax, ay - 3, bx, ay - 3, color); r.line(ax, ay + 2, bx, ay + 2, color); }
+  else if (spec.trim === 'dashed') {
+    for (let px = bx; px < ax; px += 14) r.rect(Math.round(px), Math.round(ay) - 1, 9, 3, color);
+  } else if (spec.trim === 'zigzag') {
+    for (let px = bx, up = true; px < ax; px += 6, up = !up) r.line(px, ay + (up ? -3 : 3), Math.min(ax, px + 6), ay + (up ? 3 : -3), color, 2);
+  } else if (spec.trim === 'fade') {               // faixa grossa que se dissolve da frente para trás
+    for (let px = Math.floor(bx); px < ax; px++) for (let py = Math.round(ay) - 3; py <= Math.round(ay) + 3; py++) {
+      if (bayer(px >> 1, py >> 1) < (px - bx) / (ax - bx) * 1.2 - 0.1) r.put(px, py, color);
+    }
+  }
 }
 
 function paintSide(r, spec, seed) {
@@ -229,6 +304,19 @@ const HEADLIGHTS = {
     rect(side * 0.34, 0.63, side * 0.76, 0.57, color);
     rect(side * 0.5, 0.61, side * 0.68, 0.59, mix(color, 0xffffff, 0.7));
   },
+  // Bravo: canto de dentro mais baixo, como uma sobrancelha franzida.
+  angry(r, pixel, rect, side, color) {
+    const quad = (x0, y0, x1, y1, x2, y2, x3, y3, c) => r.poly([pixel(side * x0, y0), pixel(side * x1, y1), pixel(side * x2, y2), pixel(side * x3, y3)], c);
+    quad(0.36, 0.6, 0.78, 0.68, 0.76, 0.5, 0.38, 0.5, 0x101012);
+    quad(0.4, 0.58, 0.74, 0.65, 0.73, 0.53, 0.41, 0.53, color);
+    quad(0.52, 0.6, 0.68, 0.63, 0.68, 0.6, 0.52, 0.58, mix(color, 0xffffff, 0.7));
+  },
+  // Faixa de LED de ponta a ponta, com um ponto mais forte em cada canto.
+  led(r, pixel, rect, side, color) {
+    rect(side * 0.02, 0.63, side * 0.82, 0.59, 0x101012);
+    rect(side * 0.04, 0.62, side * 0.8, 0.6, color);
+    rect(side * 0.62, 0.64, side * 0.8, 0.57, mix(color, 0xffffff, 0.75));
+  },
   covered(r, pixel, rect, side, color) {
     rect(side * 0.42, 0.66, side * 0.74, 0.5, 0x0c0c10);
     rect(side * 0.46, 0.62, side * 0.7, 0.57, color);
@@ -259,7 +347,7 @@ function paintCaps(r, spec) {
   };
   frontRect(-1, 1.5, 1, 0.15, (x, y) => dither(x, y, 0.5, shade, 0.7));
   frontRect(-0.5, 0.56, 0.5, 0.42, 0x08080a);
-  for (const side of [-1, 1]) HEADLIGHTS[spec.headlightShape](r, frontPixel, frontRect, side, spec.headlight);
+  for (const side of [-1, 1]) (HEADLIGHTS[spec.headlightShape] ?? HEADLIGHTS.rect)(r, frontPixel, frontRect, side, spec.headlight);
 }
 
 export function paintLivery(spec, seed) {
@@ -277,7 +365,7 @@ export function paintRim(style, color) {
   const r = new Raster(size, size);
   r.disc(c, c, c, 0x0a0a0c);
   r.ring(c, c, 15, 13.6, color);
-  r.disc(c, c, 13, style === 'disc' || style === 'deep' ? mix(color, 0, 0.45) : 0x16181a);
+  r.disc(c, c, 13, style === 'disc' || style === 'deep' ? mix(color, 0, 0.45) : style === 'hubcap' ? 0xb8bcc4 : 0x16181a);
 
   if (style === 'spokes') {
     for (let i = 0; i < 12; i++) {
@@ -306,6 +394,17 @@ export function paintRim(style, color) {
     for (let i = 0; i < 5; i++) {
       const a = i * Math.PI * 2 / 5;
       r.disc(c + Math.cos(a) * 7, c + Math.sin(a) * 7, 1.4, 0x08080a);
+    }
+  } else if (style === 'split') {                 // cinco pares de raios finos
+    for (let i = 0; i < 5; i++) {
+      const a = i * Math.PI * 2 / 5;
+      for (const offset of [-0.13, 0.13]) r.line(c + Math.cos(a) * 5, c + Math.sin(a) * 5, c + Math.cos(a + offset) * 13, c + Math.sin(a + offset) * 13, 0xa8b0aa);
+    }
+  } else if (style === 'hubcap') {                // calota lisa com anel na cor e fendas
+    r.ring(c, c, 11, 9.5, color);
+    for (let i = 0; i < 8; i++) {
+      const a = i * Math.PI / 4;
+      r.line(c + Math.cos(a) * 6.5, c + Math.sin(a) * 6.5, c + Math.cos(a) * 8.5, c + Math.sin(a) * 8.5, 0x3a3e44, 2);
     }
   } else {
     for (let i = 0; i < 6; i++) {

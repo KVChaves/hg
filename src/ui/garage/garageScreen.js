@@ -6,7 +6,8 @@ import { loadSavedCars, SAVED_CAR_SLOTS, storeSavedCars } from '../../game/saved
 import { BUDGET, fitsBudget, loadoutCost, maxUpgradeLevel, trunkUnits, UPGRADES, upgradeFactor, upgradePrice } from '../../game/shop.js';
 import { TRAP_TYPES } from '../../game/trapTypes.js';
 import { WEAPON_TYPES } from '../../game/weaponTypes.js';
-import { CAR_SLOTS, loadCarSelection, resolveCarSpec, saveCarSelection } from '../../world/car/carOptions.js';
+import { Raster } from '../../art/raster.js';
+import { CAR_SLOTS, loadCarSelection, randomizeLook, resolveCarSpec, saveCarSelection } from '../../world/car/carOptions.js';
 import { createNameField } from '../nameField.js';
 import { createOptionStrip } from '../optionStrip.js';
 import { COLOR, drawButton, drawSlotTile, drawTooltip, inside, markClickable, outline, panelBox, pointerOnStage } from '../panelKit.js';
@@ -38,6 +39,16 @@ const NO_COLOR_INTERIOR = new Set(['hands']);
 // As mãos são peça da cabine (a vista mostra o interior), mas o painel CABINE está cheio: ficam ao lado da arma.
 const CABIN_PANEL_KEYS = Object.keys(PARTS).filter(key => key !== 'hands');
 const ORIGINAL_SWATCH = { nitro: 0x8c251a, cabinColor: 0x4b2825 };   // amostra quando a peça está na cor original
+
+// Dado de pixel para o botão de sortear o visual.
+function diceThumb() {
+  const r = new Raster(40, 28);
+  r.rect(11, 3, 20, 20, 0x101012);
+  r.rect(12, 4, 18, 18, 0xf0ece0);
+  r.rect(12, 20, 18, 2, 0xb8b4a8);
+  for (const [x, y] of [[15, 7], [25, 7], [20, 12], [15, 17], [25, 17]]) r.rect(x, y, 2, 2, 0xb01820);
+  return r.commit();
+}
 
 // Opções de arma e do bagageiro: `name` e `detail` aparecem ao passar o mouse.
 const weaponOptions = () => Object.fromEntries(Object.values(WEAPON_TYPES).map(type => [type.id, {
@@ -87,8 +98,16 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
   }
   refreshEquipmentThumbs();
 
+  // Depois das peças de aparência vem o botão que sorteia o visual inteiro (peças grátis e cores).
+  const RANDOM_TILE = {
+    short: 'SORTEAR', image: diceThumb(),
+    x: RIGHT.x + 6 + (lookKeys.length % RIGHT.columns) * TILE.gapX,
+    y: RIGHT.y + 16 + Math.floor(lookKeys.length / RIGHT.columns) * TILE.gapY,
+    width: TILE.width, height: TILE.height,
+  };
+
   const leftRows = Math.ceil(CABIN_PANEL_KEYS.length / LEFT.columns);
-  const rightRows = Math.ceil(lookKeys.length / RIGHT.columns);
+  const rightRows = Math.ceil((lookKeys.length + 1) / RIGHT.columns);
   const leftPanel = { ...LEFT, height: 16 + leftRows * TILE.gapY + 4 };
   const rightPanel = { ...RIGHT, height: 16 + rightRows * TILE.gapY + 4 };
   const equipmentPanel = { ...EQUIPMENT, height: 16 + Math.ceil(equipmentSlots.length / EQUIPMENT.columns) * TILE.gapY + 4 };
@@ -293,6 +312,7 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
     }
     const tab = TABS.find(candidate => inside(candidate, x, y));
     if (tab) { selectTab(tab.id); return; }
+    if (rightTab === 'look' && inside(RANDOM_TILE, x, y)) { randomizeLook(carSelection, lookKeys); refreshCar(); return; }
     const slot = shownSlots().find(candidate => inside(candidate, x, y));
     if (slot) { active = slot; return; }
     strip.click(x, y);
@@ -358,6 +378,7 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
     if (hoveredRow) return upgradeInfo(hoveredRow);
     const fromStrip = strip.hoverInfo(pointer, labelOf(active));
     if (fromStrip) return fromStrip;
+    if (rightTab === 'look' && inside(RANDOM_TILE, pointer.x, pointer.y)) return { title: 'Sortear visual', detail: 'Pecas de aparencia e cores' };
     const slot = shownSlots().find(candidate => inside(candidate, pointer.x, pointer.y));
     return slot ? { title: slot.options ? slot.options[currentId(slot)].name : labelOf(slot), detail: labelOf(slot) } : null;
   }
@@ -383,6 +404,7 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
       });
     }
 
+    if (rightTab === 'look') drawSlotTile(ctx, RANDOM_TILE, { image: RANDOM_TILE.image, chipColor: null, active: false, hovered: inside(RANDOM_TILE, pointer.x, pointer.y) });
     if (rightTab === 'performance') drawPartsSummary(ctx);
     drawUpgrades(ctx);
     strip.draw(ctx, pointer);

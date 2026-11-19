@@ -90,12 +90,12 @@ export function updateCar(car, dt, keys, canAccelerate, nitroHandReady) {
   let forward = car.vx * fx + car.vz * fz;
   let side = car.vx * rx + car.vz * rz;
 
-  const throttle = canAccelerate && (keys.KeyW || keys.ArrowUp);
-  const brake = canAccelerate && (keys.KeyS || keys.ArrowDown);   // antes da largada o carro fica parado: nem ré
-  const handbrake = keys.ShiftLeft || keys.ShiftRight;
-  const left = keys.KeyA || keys.ArrowLeft, right = keys.KeyD || keys.ArrowRight;
-  if (!keys.Space) car.nitroLocked = false;   // esvaziou segurando o botão: só volta a abrir depois de soltar
-  const useNitro = Boolean(canAccelerate && keys.Space && car.nitro > 0 && !car.nitroLocked && nitroHandReady && car.effects.emp <= 0);
+  const throttle = canAccelerate && keys.accelerate;
+  const brake = canAccelerate && keys.brake;   // antes da largada o carro fica parado: nem ré
+  const handbrake = keys.handbrake;
+  const left = keys.left, right = keys.right;
+  if (!keys.nitro) car.nitroLocked = false;   // esvaziou segurando o botão: só volta a abrir depois de soltar
+  const useNitro = Boolean(canAccelerate && keys.nitro && car.nitro > 0 && !car.nitroLocked && nitroHandReady && car.effects.emp <= 0);
   car.nitroActive = useNitro;
 
   const steerTarget = ((right ? 1 : 0) - (left ? 1 : 0));
