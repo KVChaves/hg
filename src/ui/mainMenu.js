@@ -2,7 +2,7 @@ import { MAX_RACERS, VIEW } from '../config.js';
 import { ctxText, textWidth } from '../art/font.js';
 import { PATCH_NOTES } from './patchNotes.js';
 import { saveSettings, SETTINGS_RANGE } from '../game/settings.js';
-import { COLOR, drawButton, drawHeading, drawLogo, drawRowStripe, drawRule, drawSlider, inside, markClickable, MEDALS, panelBox, pointerOnStage } from './panelKit.js';
+import { chamferRect, COLOR, drawButton, drawHeading, drawLogo, drawRowStripe, drawRule, drawSlider, inside, markClickable, MEDALS, outline, panelBox, pointerOnStage } from './panelKit.js';
 
 // Menu inicial: Singleplayer, Multiplayer, Garagem, Ranking, Configurações e Sair.
 
@@ -22,6 +22,17 @@ const RANKING_TABS = [
 const RANKING_TITLES = { ranking: 'RANKING', history: 'HISTORICO', legacy: 'RANKING ANTIGO' };
 const RANKING_BACK = { x: 245, y: 302, width: 150, height: 26 };
 const RANKING_ROWS = 13;
+const HELP_BUTTON = { x: 588, y: 274, width: 16, height: 16 };       // "?" no canto inferior direito do bloco: abre/fecha a explicação da pontuação
+const HELP_PANEL = { x: 44, y: 62, width: 552 };
+const HELP_LINE = 11;
+const HELP_TEXT = [
+  { text: 'COMO FUNCIONA A PONTUACAO', kind: 'title' },
+  { text: 'CADA CORRIDA RENDE UMA NOTA DE 0 A 1 CONFORME A SUA POSICAO: QUEM CHEGA EM 1 TIRA 1, QUEM CHEGA EM ULTIMO TIRA 0 E OS OUTROS FICAM NO MEIO, PROPORCIONAL AO NUMERO DE CORREDORES.' },
+  { text: 'DESEMP. E A MEDIA DAS NOTAS DE TODAS AS SUAS CORRIDAS, NUMA ESCALA DE 0 A 100. 50 E O DESEMPENHO MEDIO.' },
+  { text: 'SO GANHA POSICAO NO RANKING QUEM TEM 5 CORRIDAS OU MAIS. ANTES DISSO O JOGADOR APARECE EM CINZA COM O CONTADOR (EX: 3/5), SEM CLASSIFICACAO.' },
+  { text: 'A ORDEM E PELO DESEMP. EM EMPATE, GANHA QUEM TEM MAIS VITORIAS E DEPOIS MAIS CORRIDAS.' },
+  { text: 'SO CONTAM PARTIDAS ONLINE SEM BOTS E COM PELO MENOS 3 JOGADORES. PODIOS, POS MEDIA, ABATES E PARTIDAS SO INFORMAM, NAO ENTRAM NA NOTA.' },
+];
 const RANKING_COLUMNS = [
   { label: 'JOGADOR', x: 40 }, { label: 'DESEMP.', x: 140, color: '#f0c840' }, { label: 'CORRIDAS', x: 196 }, { label: 'VITORIAS', x: 258 },
   { label: 'PODIOS', x: 322 }, { label: 'POS MEDIA', x: 372 }, { label: 'ABATES', x: 440 }, { label: 'PARTIDAS', x: 492 },
@@ -52,7 +63,7 @@ const sliderBox = index => ({ x: SLIDER.x, y: SLIDER.firstY + index * SLIDER.gap
 const formatTime = seconds => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
 
 export function createMainMenu({ stage, settings, net, onSingleplayer, onMultiplayer, onGarage, onSettingChange, onEffectsPreview, onQuit }) {
-  let page = 'main', notesScroll = 0, pointer = { x: -1, y: -1 }, dragging = null, queued = null, view = 'ranking', selectedRace = null, viewingMatch = null, historyFilter = null;
+  let page = 'main', helpOpen = false, notesScroll = 0, pointer = { x: -1, y: -1 }, dragging = null, queued = null, view = 'ranking', selectedRace = null, viewingMatch = null, historyFilter = null;
 
   const screen = { isOpen: true };
 
@@ -65,6 +76,7 @@ export function createMainMenu({ stage, settings, net, onSingleplayer, onMultipl
       net.requestLegacy();
     }
     page = next;
+    helpOpen = false;
   }
 
   let nextY = BUTTON.y - 10, lastTier = null;
@@ -128,6 +140,9 @@ export function createMainMenu({ stage, settings, net, onSingleplayer, onMultipl
     else if (page === 'ranking' && RANKING_TABS.some(tab => inside(tab, x, y))) {
       view = RANKING_TABS.find(tab => inside(tab, x, y)).view;
       selectedRace = viewingMatch = null;
+      helpOpen = false;
+    } else if (page === 'ranking' && view === 'ranking' && inside(HELP_BUTTON, x, y)) {
+      helpOpen = !helpOpen;
     } else if (inside(page === 'ranking' ? RANKING_BACK : BACK, x, y)) {
       if (page === 'ranking' && viewingMatch) viewingMatch = null;        // voltar fecha, um nível por vez: partida, corrida, lista
       else if (page === 'ranking' && selectedRace) selectedRace = null;
@@ -315,14 +330,32 @@ export function createMainMenu({ stage, settings, net, onSingleplayer, onMultipl
     drawHeading(ctx, view === 'history' ? (viewingMatch ? 'PARTIDA' : selectedRace ? 'CORRIDA' : 'HISTORICO') : RANKING_TITLES[view], RANKING_PANEL.x + 22, RANKING_PANEL.y + 12, { align: 'left' });
     for (const tab of RANKING_TABS) drawButton(ctx, tab, tab.label, inside(tab, pointer.x, pointer.y), { style: 'tab', active: tab.view === view });
     drawButton(ctx, RANKING_BACK, '< VOLTAR', inside(RANKING_BACK, pointer.x, pointer.y));
+    if (view === 'ranking') drawHelp(ctx);
+  }
+
+  // Botão "?" e, aberto por clique (outro clique fecha), o quadro que explica a pontuação.
+  const helpLines = HELP_TEXT.flatMap(({ text, kind }) => kind === 'title'
+    ? [{ text, kind }]
+    : wrap(text, 80).map((line, i) => ({ text: i ? `   ${line}` : `- ${line}`, kind: 'item' })));
+  function drawHelp(ctx) {
+    const hovered = inside(HELP_BUTTON, pointer.x, pointer.y);
+    markClickable(HELP_BUTTON);
+    chamferRect(ctx, HELP_BUTTON, 3, hovered || helpOpen ? COLOR.selected : COLOR.rust);
+    chamferRect(ctx, { x: HELP_BUTTON.x + 1, y: HELP_BUTTON.y + 1, width: HELP_BUTTON.width - 2, height: HELP_BUTTON.height - 2 }, 2, COLOR.tile);
+    ctxText(ctx, '?', HELP_BUTTON.x + 6, HELP_BUTTON.y + 5, hovered || helpOpen ? COLOR.selected : COLOR.text);
+    if (!helpOpen) return;
+    const box = { ...HELP_PANEL, height: helpLines.length * HELP_LINE + 16 };
+    panelBox(ctx, box);
+    outline(ctx, box, COLOR.tooltipEdge);
+    helpLines.forEach(({ text, kind }, i) => ctxText(ctx, text, box.x + 12, box.y + 9 + i * HELP_LINE, kind === 'title' ? COLOR.selected : COLOR.text));
   }
 
   // Quebra o texto em linhas de no máximo NOTES_WRAP caracteres.
-  function wrap(text) {
+  function wrap(text, limit = NOTES_WRAP) {
     const lines = [];
     let line = '';
     for (const word of text.split(' ')) {
-      if (line && (line + ' ' + word).length > NOTES_WRAP) { lines.push(line); line = word; }
+      if (line && (line + ' ' + word).length > limit) { lines.push(line); line = word; }
       else line = line ? `${line} ${word}` : word;
     }
     return [...lines, line];
