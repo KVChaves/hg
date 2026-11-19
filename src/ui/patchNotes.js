@@ -4,6 +4,22 @@
 
 export const PATCH_NOTES = [
   {
+    title: 'AJUDA DE BEIRA DE ESTRADA',
+    items: [
+      'A ajuda mira deixar você a 90 a 110 metros do líder, distância em que ainda dá para se enxergar. Quanto mais longe do líder, maior a ajuda; mais perto que 90 metros ela diminui até sumir aos 30.',
+      'Os dois NPCs da estrada sempre trazem uma oferta, e um deles sempre oferece NITRO. O outro traz o que mais falta a você: munição, armadilha ou extintor.',
+      'O nitro do NPC pode ir de 15% até o tanque cheio, conforme a distância do líder. Acabou o intervalo de 30 segundos sem nitro entre uma oferta e outra.',
+      'O NITRO AZUL do último colocado aparece quando ele está a mais de 110 metros do penúltimo.',
+      'Os suprimentos de cada volta e a recompensa por abater um rival seguem a mesma medida de distância.',
+    ],
+  },
+  {
+    title: 'DENTRO DA CORRIDA',
+    items: [
+      'Olhar para trás pela janela não deixa mais o carro mais lento.',
+    ],
+  },
+  {
     title: 'GARAGEM: APARÊNCIA',
     items: [
       'Nova peça ACABAMENTO: Brilhante, Fosco, Metálico (com purpurina), Perolado e Cromado.',
