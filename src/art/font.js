@@ -28,13 +28,26 @@ const F3 = {
   9: ['###', '#.#', '###', '..#', '###'], R: ['##.', '#.#', '##.', '#.#', '#.#'],
 };
 
-export const textWidth = (text, scale = 1) => text.length * 6 * scale;
+// Minúsculas acentuadas: a letra base com o acento nas duas linhas livres acima dela (bits 0 e 1 de cada coluna).
+// As maiúsculas ocupam a altura toda, então nelas o acento é descartado e fica só a letra.
+const ACCENTS = { '\u0301': [0, 0, 2, 1, 0], '\u0300': [0, 1, 2, 0, 0], '\u0302': [0, 2, 1, 2, 0], '\u0303': [2, 1, 2, 1, 0] };
+for (const ch of 'áàâãéêóôõú') {
+  const [base, mark] = [...ch.normalize('NFD')];
+  if (F5[base] && ACCENTS[mark]) F5[ch] = F5[base].map((column, i) => column | ACCENTS[mark][i]);
+}
+F5['í'] = [0, 0x44, 0x7e, 0x41, 0];                  // sem o pingo do i
+F5['ç'] = [0x38, 0x44, 0xc4, 0xc4, 0x28];             // cedilha na linha de baixo, como a perna do g
+F5['ü'] = [0x3c, 0x41, 0x40, 0x21, 0x7c];
+
+// Letra que a fonte desenha: a própria, se existir, ou a letra sem acento.
+const glyphOf = ch => F5[ch] ?? F5[ch.normalize('NFD').replace(/[\u0300-\u036f]/g, '')] ?? F5[' '];
+
+export const textWidth = (text, scale = 1) => [...text.normalize('NFC')].length * 6 * scale;
 
 // Chama plot(x, y) para cada pixel aceso do texto na fonte 5x7.
 export function plotText(text, plot, scaleX = 1, scaleY = scaleX) {
-  // A fonte não tem acentos: desenha a letra base.
-  [...text.normalize('NFD').replace(/[\u0300-\u036f]/g, '')].forEach((ch, index) => {
-    const glyph = F5[ch] || F5[' '];
+  [...text.normalize('NFC')].forEach((ch, index) => {
+    const glyph = glyphOf(ch);
     glyph.forEach((column, cx) => {
       for (let cy = 0; cy < 8; cy++) {
         if (!(column & (1 << cy))) continue;
