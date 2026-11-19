@@ -27,5 +27,4 @@ export const CAR_MAX_HP = 250;                       // vida inicial de qualquer
 export const LOOK = { maxYaw: 1.3, maxPitchUp: 0.16, maxPitchDown: 0.1 };
 // Visão pela janela (olhar demais para a esquerda): a cabeça sai pela janela do motorista (deslocamento em metros a partir do olho, `head`)
 // e pode virar até olhar para trás por cima do ombro esquerdo (yaw positivo é para a esquerda).
-// `top`: fração da velocidade máxima que sobra dirigindo debruçado.
-export const WINDOW_VIEW = { head: { x: -0.92, y: 0.2, z: 0.15 }, minYaw: -0.45, maxYaw: 3.05, maxPitchUp: 0.45, maxPitchDown: 0.35, top: 0.82 };
+export const WINDOW_VIEW = { head: { x: -0.92, y: 0.2, z: 0.15 }, minYaw: -0.45, maxYaw: 3.05, maxPitchUp: 0.45, maxPitchDown: 0.35 };

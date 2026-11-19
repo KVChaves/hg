@@ -1,7 +1,7 @@
 import { BLUE_NITRO, TRACK_WIDTH } from '../config.js';
 import { EXTINGUISHER_LIFE, TRAP_TYPES } from './trapTypes.js';
 import { isEpic } from '../world/track.js';
-import { FULL_AT_GAP, gapToLeader } from './deficit.js';
+import { HELP_FROM, TARGET_FAR, gapToLeader, helpStrength } from './deficit.js';
 import { styleOf } from './botStyles.js';
 
 // Ajuda de beira de estrada para equilibrar a corrida. Quem ficou muito longe do líder recebe
@@ -10,27 +10,26 @@ import { styleOf } from './botStyles.js';
 
 export const NPC_LANE = TRACK_WIDTH / 2 - 0.7;       // distância do centro da pista até cada NPC (na borda do asfalto)
 
-const GAP_FOR_HELP = 60;                             // metros até o líder
+const GAP_FOR_HELP = HELP_FROM;                      // metros até o líder a partir dos quais há ajuda
 export const PICKUP_WINDOW = 3, PICKUP_REACH = 5;   // metros ao longo da pista e de lado até o NPC
 const EPIC_SKIP = 6, SPAWN_AHEAD = 220, REMOVE_BEHIND = 40;
-const FIRST_OFFER_DELAY = 12, COOLDOWN = 11, NO_NEED_RETRY = 3, MESSAGE_TIME = 1.8;
-const BLUE_GAP = 250, BLUE_COOLDOWN = 40;           // último colocado a mais de BLUE_GAP m do penúltimo ganha um nitro azul; no mínimo BLUE_COOLDOWN s entre um e outro
+const FIRST_OFFER_DELAY = 12, COOLDOWN = 11, MESSAGE_TIME = 1.8;
+const BLUE_GAP = TARGET_FAR, BLUE_COOLDOWN = 40;           // último colocado a mais de BLUE_GAP m do penúltimo ganha um nitro azul; no mínimo BLUE_COOLDOWN s entre um e outro
 const ERRAND_BASE_NEED = 0.2;                        // o bot também quer o que não está faltando, só que menos
 const CHOICE_VARIATION = 0.15;                       // evita que a oferta seja sempre a mesma
 
 const AMMO_GIFT = 0.5;                               // usado quando o item não traz quantidade (abate etc.)
 const AMMO_OFFER = { min: 0.25, max: 0.4 };         // munição do NPC: quase plana, com pouco acréscimo pelo atraso
-const NITRO_GIFT = { min: 0.15, max: 0.5, fullAtGap: FULL_AT_GAP, step: 0.05 };   // quanto mais longe do líder, mais nitro (fração do tanque padrão); no máximo meio tanque
-const NITRO_COOLDOWN = 30;                           // segundos entre duas ofertas com nitro; nesse meio tempo os NPCs oferecem outras coisas
+const NITRO_GIFT = { min: 0.15, max: 1, step: 0.05 };   // fração do tanque padrão: acompanha helpStrength (mais longe do líder, mais nitro)
 
 function ammoGiftFor(gap) {
-  const t = Math.max(0, Math.min(1, gap / FULL_AT_GAP));
+  const t = helpStrength(gap);
   return Math.round((AMMO_OFFER.min + (AMMO_OFFER.max - AMMO_OFFER.min) * t) / 0.05) * 0.05;
 }
 
 function nitroGiftFor(gap) {
-  const { min, max, fullAtGap, step } = NITRO_GIFT;
-  const t = Math.max(0, Math.min(1, (gap - GAP_FOR_HELP) / (fullAtGap - GAP_FOR_HELP)));
+  const { min, max, step } = NITRO_GIFT;
+  const t = helpStrength(gap);
   return Math.round((min + (max - min) * t) / step) * step;
 }
 
@@ -113,20 +112,19 @@ export function itemLabel({ id, slot, amount }) {
   return amount ? `${HELP_ITEMS[id]} ${Math.round(amount * 100)}%` : HELP_ITEMS[id];
 }
 
-function chooseItems(supplies, allowNitro) {
-  const needs = Object.entries(supplies.levels())
-    .filter(([id, level]) => level < 1 && (allowNitro || id !== 'nitro'))
+// Um dos dois NPCs sempre oferece nitro; o outro traz o que mais falta ao piloto (fora o nitro).
+function chooseItems(supplies) {
+  const best = Object.entries(supplies.levels())
+    .filter(([id, level]) => id !== 'nitro' && level < 1)
     .map(([id, level]) => ({ id, score: 1 - level + Math.random() * CHOICE_VARIATION }))
-    .sort((a, b) => b.score - a.score);
-  const ids = needs.slice(0, 2).map(need => need.id);
-  if (ids.length === 1 && ids[0] !== 'trap' && supplies.hasTraps()) ids.push('trap');
-  return ids;
+    .sort((a, b) => b.score - a.score)[0];
+  return ['nitro', best?.id ?? (supplies.hasTraps() ? 'trap' : 'ammo')];
 }
 
 export function createRoadsideHelp({ race, car, weapon, traps, onPlayerOffer, onPlayerPickup }) {
   const states = new Map(race.field.map(racer => [racer, {
     offer: null,
-    cooldown: FIRST_OFFER_DELAY, blueCooldown: FIRST_OFFER_DELAY, nitroCooldown: FIRST_OFFER_DELAY,
+    cooldown: FIRST_OFFER_DELAY, blueCooldown: FIRST_OFFER_DELAY,
     supplies: racer.isPlayer ? playerSupplies(car, weapon, traps) : opponentSupplies(racer),
   }]));
   const help = {
@@ -144,7 +142,7 @@ export function createRoadsideHelp({ race, car, weapon, traps, onPlayerOffer, on
     help.messageTime = 0;
     for (const [racer, state] of states) {
       setOffer(racer, state, null);
-      state.cooldown = state.blueCooldown = state.nitroCooldown = FIRST_OFFER_DELAY;
+      state.cooldown = state.blueCooldown = FIRST_OFFER_DELAY;
       racer.blueNitro = 0;
     }
   }
@@ -171,9 +169,7 @@ export function createRoadsideHelp({ race, car, weapon, traps, onPlayerOffer, on
   }
 
   function createOffer(racer, state, gap) {
-    const [first, second] = chooseItems(state.supplies, state.nitroCooldown <= 0);
-    if (!second) { state.cooldown = NO_NEED_RETRY; return; }
-    if (first === 'nitro' || second === 'nitro') state.nitroCooldown = NITRO_COOLDOWN;
+    const [first, second] = chooseItems(state.supplies);
     const side = Math.random() < 0.5 ? -1 : 1;       // cada item pode aparecer de qualquer lado
     // A oferta já sai definida: o NPC mostra exatamente o que vai entregar. Item de bagageiro pode passar da carga inicial.
     const describe = id => {
@@ -231,7 +227,6 @@ export function createRoadsideHelp({ race, car, weapon, traps, onPlayerOffer, on
       }
       const gapAhead = ordered[position - 1].dist - racer.dist;
       state.blueCooldown -= dt;
-      state.nitroCooldown -= dt;
       const needsBlue = position === ordered.length - 1 && gapAhead > BLUE_GAP && state.blueCooldown <= 0 && racer.dead <= 0 && !(racer.blueNitro > 0);
       if (needsBlue && !state.offer?.blue && !state.offer?.taken) createBlueOffer(racer, state);
       if (state.offer) { updateOffer(racer, state); return; }

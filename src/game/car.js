@@ -1,4 +1,4 @@
-import { ACCEL, BLUE_NITRO, MAX_SPEED, NITRO_ACCEL, NITRO_DRAIN, NITRO_MAX_SPEED, SLIPSTREAM_KMH, TRACK_WIDTH, WHEELBASE, WINDOW_VIEW } from '../config.js';
+import { ACCEL, BLUE_NITRO, MAX_SPEED, NITRO_ACCEL, NITRO_DRAIN, NITRO_MAX_SPEED, SLIPSTREAM_KMH, TRACK_WIDTH, WHEELBASE } from '../config.js';
 import { createRig } from './carRoll.js';
 import { NEUTRAL_STATS } from './carUpgrades.js';
 import { createEffects, tickEffects } from './effects.js';
@@ -24,7 +24,7 @@ export function createCar() {
     trackIndex: -1, offTrack: 0, lateral: 0, nitroActive: false, nitroLocked: false, blueNitro: 0,
     visualSteer: 0, effects: createEffects(), wrecked: 0, flip: null, invulnerable: 0, destroyed: 0, slipping: false,
     capsizes: 0, uprightFor: Infinity, rig: createRig(), overturned: false, spin: 0, drifting: false, slipstream: 0, armor: 1, wx: 0, wy: 0, wz: 0, twist: 0, twistHeading: 0, twistYaw: 0, twistPitch: 0, enclosed: false, roadTurn: 0, nitroCapacity: 1, parts: { ...NEUTRAL_STATS },   // efeitos das peças de desempenho (carUpgrades.js)
-    vy: 0, airborne: false, sunk: 0, jump: null, tube: false, impact: 0, icy: false, boost: 0, boostPad: null, boostKick: false, gust: 0, leaning: false, destroyedBy: null,   // voo nas rampas e queda no rio (flight.js)
+    vy: 0, airborne: false, sunk: 0, jump: null, tube: false, impact: 0, icy: false, boost: 0, boostPad: null, boostKick: false, gust: 0, destroyedBy: null,   // voo nas rampas e queda no rio (flight.js)
   };
 }
 
@@ -111,7 +111,6 @@ export function updateCar(car, dt, keys, canAccelerate, nitroHandReady) {
   const blue = useNitro && car.blueNitro > 0;
   let top = (useNitro ? NITRO_MAX_SPEED * parts.nitroTop * (blue ? BLUE_NITRO.top : 1) : (MAX_SPEED + car.slipstream * SLIPSTREAM_KMH / 3.6) * surface.top) * punctureFactor;
   if (car.boost > 0) { car.boost = Math.max(0, car.boost - dt); top = Math.max(top, BOOST_SPEED); }
-  if (car.leaning) top *= WINDOW_VIEW.top;          // debruçado na janela o piloto não dirige direito
   let accel = 0;
   if (throttle || useNitro) accel += forward < 0 ? 30 : ACCEL * surface.accel * Math.max(0, Math.min(1, (top - forward) / 8));
   if (useNitro) { accel += NITRO_ACCEL * parts.nitroAccel * (blue ? BLUE_NITRO.accel : 1) * Math.max(0, Math.min(1, (top - forward) / 8)); if (blue) car.blueNitro = Math.max(0, car.blueNitro - dt); else car.nitro = Math.max(0, car.nitro - dt * NITRO_DRAIN * parts.nitroDrain / car.nitroCapacity); if (car.nitro <= 0) car.nitroLocked = true; }

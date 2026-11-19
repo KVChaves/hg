@@ -759,7 +759,7 @@ function aimsBackward() { return Math.abs(look.yaw) > Math.PI / 2; }
 function shotBlocked() { return Boolean(online?.active) && net.room?.config?.backShots === false && aimsBackward(); }
 
 // Virar demais para a esquerda (além do limite da cabine) coloca a cabeça para fora da janela: dá para olhar e atirar para trás
-// e o carro fica mais lento. Voltar o olhar para perto da frente da cabine recolhe a cabeça sozinho.
+// sem perder velocidade. Voltar o olhar para perto da frente da cabine recolhe a cabeça sozinho.
 const WINDOW_OPEN_YAW = LOOK.maxYaw + 0.02, WINDOW_CLOSE_YAW = LOOK.maxYaw - 0.2;
 const NORMAL_LOOK = { minYaw: -LOOK.maxYaw, maxYaw: LOOK.maxYaw + 0.1, maxPitchUp: LOOK.maxPitchUp, maxPitchDown: LOOK.maxPitchDown };
 function updateWindowView() {
@@ -768,7 +768,6 @@ function updateWindowView() {
   if (wanted === windowView.active) return;
   windowView.setActive(wanted);
   cabin.setWindowView(wanted);
-  car.leaning = wanted;
   if (!wanted) clampLook();
 }
 
