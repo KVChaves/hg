@@ -30,7 +30,6 @@ HISTORY_FILE = Path(__file__).resolve().parent / "history.jsonl"   # uma linha p
 RANKING_LIMIT = 50
 HISTORY_LIMIT = 40                                  # corridas mais recentes que o ranking mostra
 MIN_RANKED_RACES = 5                                # corridas rankeadas para ganhar posição; antes disso o jogador aparece sem posição
-PRIOR_RACES = 10                                    # corridas "imaginárias" com nota média: seguram quem jogou pouco
 MEDAL_POINTS = {"gold": 3, "silver": 1.5, "bronze": 1}   # só o ranking antigo usa; mesmo peso do campeonato
 PUBLIC_ENTRIES = {"index.html", "css", "src", "vendor", "assets"}   # o resto do projeto não é servido
 
@@ -106,7 +105,7 @@ def legacy_table(players):
 
 class Ranking:
     """Desempenho por corrida de quem jogou de verdade. Cada corrida rende uma nota de 0 (último) a 1 (primeiro),
-    igual para qualquer tamanho de grupo; a nota do jogador é a média, puxada para 0,5 enquanto ele tem poucas corridas."""
+    igual para qualquer tamanho de grupo; o desempenho do jogador é a média das notas; sem as corridas mínimas ele fica sem classificação."""
 
     def __init__(self, path):
         self.path = path
@@ -136,7 +135,7 @@ class Ranking:
 
     def table(self):
         rows = [{
-            "name": name, "rating": round(100 * (entry["score"] + PRIOR_RACES / 2) / (entry["races"] + PRIOR_RACES), 1),
+            "name": name, "rating": round(100 * entry["score"] / entry["races"], 1),
             "races": entry["races"], "wins": entry["wins"], "podiumRate": round(100 * entry["podiums"] / entry["races"]),
             "average": round(entry["positionSum"] / entry["races"], 2), "kills": entry["kills"], "matches": entry["matches"],
             "ranked": entry["races"] >= MIN_RANKED_RACES, "minRaces": MIN_RANKED_RACES,
