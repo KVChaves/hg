@@ -2,6 +2,7 @@
 
 const CAR = 'assets/audio/car';
 const TRAPS = 'assets/audio/traps';
+const EFFECTS = 'assets/audio/effects';
 
 export const SOUND_FILES = {
   engineIdle: `${CAR}/engine-idle.wav`,
@@ -15,6 +16,31 @@ export const SOUND_FILES = {
   raceFinish: 'assets/audio/effects/race-finish.wav',
   itemCollected: 'assets/audio/effects/item-collected.wav',
   uiClick: 'assets/audio/effects/ui-click.mp3',
+  uiHover: `${EFFECTS}/ui-hover.wav`,
+  // Contagem da largada: um bipe em 3, 2 e 1 e um mais agudo no "vai".
+  countdown: `${EFFECTS}/countdown.wav`,
+  countdownGo: `${EFFECTS}/countdown-go.wav`,
+  kill: `${EFFECTS}/kill.wav`,
+  ricochet: `${EFFECTS}/ricochet.wav`,
+  nitro: `${CAR}/nitro.wav`,
+  land: `${CAR}/land.wav`,
+  // Obstáculos quebrando: o material decide o som (veja OBSTACLE_SOUND em game/obstacles.js); o resto usa `crash`.
+  obstacleWood: `${EFFECTS}/obstacles/wood.wav`,
+  obstacleFlesh: `${EFFECTS}/obstacles/flesh.wav`,
+  obstacleIce: `${EFFECTS}/obstacles/ice.wav`,
+  obstacleCrystal: `${EFFECTS}/obstacles/crystal.wav`,
+  obstacleRock: `${EFFECTS}/obstacles/rock.wav`,
+  obstacleMetal: `${EFFECTS}/obstacles/metal.wav`,
+  // Trovão: o raio que cai na pista, o que rola perto e o que ronca longe (relâmpagos do céu).
+  thunderClose: `${EFFECTS}/thunder-close.wav`,
+  thunderRoll: `${EFFECTS}/thunder-roll.wav`,
+  thunderFar: `${EFFECTS}/thunder-far.wav`,
+  buy: `${EFFECTS}/buy.wav`,
+  message: `${EFFECTS}/message.wav`,
+  // Ambientes em laço (sem emenda); quais tocam em cada bioma está em PHASE_AMBIENCE.
+  ambRain: 'assets/audio/ambience/rain.mp3',
+  ambBeach: 'assets/audio/ambience/beach.mp3',
+  ambDesert: 'assets/audio/ambience/desert.mp3',
   drift: `${CAR}/drift.wav`,
   crash: `${CAR}/crash.wav`,
   carHit: `${CAR}/hit.wav`,
@@ -24,7 +50,8 @@ export const SOUND_FILES = {
   bulletHit2: `${CAR}/bullet-hit-2.wav`,
   bulletHit3: `${CAR}/bullet-hit-3.wav`,
   bulletHit4: `${CAR}/bullet-hit-4.wav`,
-  // Armadilhas: o nome é o id em game/trapTypes.js. Os espinhos ainda não têm som.
+  // Armadilhas: o nome é o id em game/trapTypes.js.
+  spikes: `${TRAPS}/spikes.wav`,
   dynamite: `${TRAPS}/dynamite.wav`,
   oil: `${TRAPS}/oil.wav`,
   paint: `${TRAPS}/paint.wav`,
@@ -58,9 +85,20 @@ export const PHASE_MUSIC = {
   neonTokyo: 'assets/audio/music/neon-tokyo.mp3',
   stadium: 'assets/audio/music/stadium.mp3',
   winterMountain: 'assets/audio/music/winter-mountain.mp3',
-  // As fases novas ainda não têm música própria: emprestam a de outro bioma até ganharem a sua.
-  windCanyon: 'assets/audio/music/desert.mp3',
-  saltFlats: 'assets/audio/music/stadium.mp3',
-  stormSwamp: 'assets/audio/music/jungle.mp3',
+  windCanyon: 'assets/audio/music/wind-canyon.mp3',
+  saltFlats: 'assets/audio/music/salt-flats.mp3',
+  stormSwamp: 'assets/audio/music/storm-swamp.mp3',
 };
 
+
+// Ambiente de cada bioma (o nome é o mesmo de PHASE_MUSIC): [som, volume]. Toca por baixo da música durante a corrida.
+// Biomas que não aparecem aqui ficam só com a música. O cânion de vento empresta o vento do deserto, e a chuva
+// cobre os três biomas em que cai chuva (os de `weather.streak`).
+export const PHASE_AMBIENCE = {
+  beach: [['ambBeach', 0.8]],
+  desert: [['ambDesert', 0.8]],
+  windCanyon: [['ambDesert', 1]],
+  jungle: [['ambRain', 0.7]],
+  neonTokyo: [['ambRain', 0.55]],
+  stormSwamp: [['ambRain', 1]],
+};

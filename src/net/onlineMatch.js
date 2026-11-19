@@ -1,8 +1,10 @@
-import { cutByShot } from '../game/tether.js';
 import { CAR_MAX_HP } from '../config.js';
 import { bearingFrom, damagePlayer } from '../game/car.js';
 import { createMatch } from '../game/championship.js';
 import { damageOpponent } from '../game/opponents.js';
+import { drawBotNames, seededRandom } from '../game/opponentProfiles.js';
+import { wakeOf } from '../game/carUpgrades.js';
+import { shakeCar } from '../game/shake.js';
 import { hazardType } from '../game/trapTypes.js';
 import { BIOMES, pickMatchBiome, voteCandidates } from '../world/biomes/index.js';
 import { createHarpoonVisual } from '../world/harpoonVisual.js';
@@ -20,12 +22,12 @@ const BOT_PREFIX = 'bot';
 const round = value => Math.round(value * 100) / 100;
 const isBotId = id => id.startsWith(BOT_PREFIX);
 
-export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = () => {}, net, scene, race, car, opponents, combat, traps, mines, emp, burning, foam, harpoon, pulls, weapon, look, garage, results, podium, voteScreen, getSpec, setRacerCount, setMatch, getMatch, getMatchKills, beginRace, getBiome, playAt, creditKill, rewardKillFor, announceTrapCatch, obstacles, onLateJoin }) {
+export function createOnlineMatch({ onRopeTripped = () => {}, onPlayerKilledBy = () => {}, onPlayerShot = () => {}, net, scene, race, car, opponents, combat, traps, mines, nets, emp, burning, foam, harpoon, pulls, weapon, look, garage, results, podium, voteScreen, getSpec, setRacerCount, setMatch, getMatch, getMatchKills, beginRace, getBiome, playAt, creditKill, rewardKillFor, announceTrapCatch, obstacles, onLateJoin }) {
   const byId = new Map(), harpoonVisuals = new Map(), ready = new Set(), pool = [...opponents], killsOf = new Map();
   let isHost = false, phase = 'idle', phaseTimer = 0, snapshotTimer = 0, finishGrace = 0;
   let vote = null;                                   // votação em andamento: { candidates, played, number, timeLeft, votes }
 
-  const online = { active: false, start, update, markReady, castVote, readyRoster, returnToLobby, onRoomChange, sendKill, sendCaught, sendShot, sendTrap, sendTrapBoom, sendExtinguisher, sendPull, sendMine, sendEmp, sendPullEnd, sendObstacle, sendObstacleBreak };
+  const online = { active: false, start, update, markReady, castVote, readyRoster, returnToLobby, onRoomChange, sendKill, sendCaught, sendShot, sendTrap, sendTrapBoom, sendExtinguisher, sendPull, sendMine, sendNet, sendTrip, sendEmp, sendPullEnd, sendObstacle, sendObstacleBreak };
   const me = () => race.field[0];
   const humanIds = () => race.field.filter(racer => !isBotId(racer.netId)).map(racer => racer.netId);
   const ownerOf = racer => (isBotId(racer.netId) ? net.room.hostId : racer.netId);
@@ -35,9 +37,9 @@ export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = 
     handle(net.id, data);
   }
 
-  function sendHit(target, amount, attacker) {
+  function sendHit(target, amount, attacker, shake = 0) {
     if (amount <= 0) return;
-    net.relay({ k: 'hit', t: target.netId, a: amount, by: attacker?.netId ?? null }, ownerOf(target));
+    net.relay({ k: 'hit', t: target.netId, a: amount, by: attacker?.netId ?? null, ...(shake > 0 && { s: round(shake) }) }, ownerOf(target));
   }
 
   function setUpRacers(room) {
@@ -51,13 +53,14 @@ export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = 
     byId.set(net.id, me());
 
     const taken = new Set(room.players.map(player => player.name));
+    const botNames = drawBotNames(botCount, taken, seededRandom(room.matchId || room.id));   // mesma semente, mesmos nomes em todos os clientes
     opponents.forEach((op, i) => {
       const bot = i < botCount;
       op.netId = bot ? `${BOT_PREFIX}${i}` : others[i - botCount].id;
       op.remote = bot ? !isHost : true;
       op.bumper = null;                                // o dos humanos chega com a aparência deles (k: 'spec')
-      op.name = bot ? (taken.has(op.profile.name) ? `${op.profile.name} Bot` : op.profile.name) : others[i - botCount].name;
-      op.onRemoteDamage = (amount, attacker) => sendHit(op, amount, attacker);
+      op.name = bot ? botNames[i] : others[i - botCount].name;
+      op.onRemoteDamage = (amount, attacker, shake) => sendHit(op, amount, attacker, shake);
       op.onRemoteIgnite = (seconds, attacker) => net.relay({ k: 'burn', t: op.netId, s: seconds, by: attacker?.netId ?? null }, ownerOf(op));
       byId.set(op.netId, op);
     });
@@ -134,7 +137,11 @@ export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = 
       const humans = race.field.filter(racer => !isBotId(racer.netId));
       const done = humans.filter(racer => race.hasFinished(racer)).length;
       if (done > 0) finishGrace += dt;
-      if (done === humans.length || finishGrace >= FINISH_GRACE) broadcast({ k: 'end', r: race.closeForAll() });
+      if (done === humans.length || finishGrace >= FINISH_GRACE) {
+        const finished = race.closeForAll();
+        net.endRace(getBiome()?.id, raceResults(finished));
+        broadcast({ k: 'end', r: finished });
+      }
     } else if (phase === 'results' && (phaseTimer -= dt) <= 0) {
       phase = 'waiting';
       const match = getMatch();
@@ -143,6 +150,15 @@ export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = 
       phase = 'waiting';
       net.endMatch(matchResults());
     }
+  }
+
+  // Ordem de chegada da corrida, com o id de rede de cada humano (os bots vão só com o nome).
+  function raceResults(finished) {
+    return finished.map((entry, i) => {
+      const racer = race.field.find(candidate => candidate.name === entry.name);
+      const human = racer && !isBotId(racer.netId);
+      return { ...(human ? { id: racer.netId } : {}), name: entry.name, position: i + 1, time: entry.time };
+    });
   }
 
   // O que cada humano fez na partida. Troféu é o 1º lugar final; medalhas são os pódios de cada corrida.
@@ -224,7 +240,7 @@ export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = 
     }
   }
 
-  function receiveHit({ t, a, by }) {
+  function receiveHit({ t, a, by, s = 0 }) {
     const target = byId.get(t), attacker = byId.get(by);
     if (!target || target.remote) return;
     let destroyed = false;
@@ -232,6 +248,7 @@ export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = 
       const before = car.wrecked;
       damagePlayer(car, a * car.parts.bullet / CAR_MAX_HP);
       destroyed = car.health <= 0 && before <= 0;
+      if (s > 0 && car.health > 0) shakeCar(car, s);
       if (destroyed) onPlayerKilledBy(attacker);
       if (attacker) {
         onPlayerShot();
@@ -239,7 +256,7 @@ export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = 
         combat.hitAngle = bearingFrom(car, look, attacker.x, attacker.z);
       }
     } else {
-      destroyed = damageOpponent(target, a, attacker);
+      destroyed = damageOpponent(target, a, attacker, s);
     }
     if (destroyed && attacker) sendKill(target, attacker);
   }
@@ -286,7 +303,7 @@ export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = 
       const target = byId.get(data.t);
       if (target && !target.remote) burning.ignite(target, byId.get(data.by) ?? null, data.s);
     },
-    shot: data => { combat.showRemoteShot(data.w, data.f, data.e); cutByShot(data.f, data.e); },
+    shot: data => { learnWeapon(data.w, data.f); combat.showRemoteShot(data.w, data.f, data.e); },
     ob: data => obstacles.spawnFromNetwork(data),
     obx: data => obstacles.removeFromNetwork(data.n),
     trap: data => traps.placeFromNetwork(data.i, data.d, data.l, byId.get(data.by), data.n),
@@ -299,11 +316,21 @@ export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = 
     },
     mine: data => {                                  // outro navegador grudou uma mina: aqui só o aviso e a explosão
       const owner = byId.get(data.o), target = byId.get(data.t);
-      if (owner && target) mines.addGhost(owner, target, data.f);
+      if (owner && target) mines.addGhost(owner, target, data.f, data.n);
+    },
+    net: data => {                                   // alguém prendeu um carro na rede: trava se ele é nosso e mostra a rede
+      const target = byId.get(data.t);
+      if (target) nets.catchFromNetwork(target);
     },
     emp: data => {
       const owner = byId.get(data.r);
       if (owner) emp.receive(owner);
+    },
+    trip: data => {                                  // alguém atravessou um cabo de arpão: aplica o tranco se o carro é nosso
+      const racer = byId.get(data.t);
+      if (!racer || racer.remote) return;
+      pulls.trip(racer, data.s);
+      onRopeTripped(racer);
     },
     pend: data => {                                  // o dono soltou o cabo do arpão
       const owner = byId.get(data.by);
@@ -318,6 +345,7 @@ export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = 
       if (!racer) return;
       racer.model?.apply(data.s);
       racer.bumper = data.s.bumper;                  // o dano que o outro carro leva ao bater depende do para-choque
+      racer.wake = wakeOf(data.s.heightKind);        // e o vácuo que quem vem atrás pega dele, da suspensão
     },
     ready: (data, from) => {
       ready.add(from);
@@ -462,6 +490,19 @@ export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = 
     if (online.active && !isBotId(owner.netId)) net.relay({ k: 'caught', t: victim.netId, i: type.id, by: owner.netId }, owner.netId);
   }
 
+  // Quem é visto atirando revela a arma: os bots daqui passam a levá-la em conta (botStyles.weaponOf).
+  // O tiro não diz quem atirou, então vale o carro remoto mais perto da boca do cano.
+  const SHOOTER_REACH = 5;
+  function learnWeapon(weaponId, start) {
+    let shooter = null, nearest = SHOOTER_REACH;
+    for (const racer of race.field) {
+      if (!racer.remote) continue;
+      const distance = Math.hypot(racer.wx - start[0], racer.wz - start[2]);
+      if (distance < nearest) { nearest = distance; shooter = racer; }
+    }
+    if (shooter) shooter.weaponId = weaponId;
+  }
+
   function sendShot(weaponId, from, end) {
     if (!online.active) return;
     net.relay({ k: 'shot', w: weaponId, f: [round(from.x), round(from.y), round(from.z)], e: [round(end.x), round(end.y), round(end.z)] });
@@ -482,7 +523,13 @@ export function createOnlineMatch({ onPlayerKilledBy = () => {}, onPlayerShot = 
     if (online.active) net.relay({ k: 'ext', r: racer.netId });
   }
   function sendMine(mine) {
-    if (online.active) net.relay({ k: 'mine', o: mine.owner.netId, t: mine.target.netId, f: round(mine.fuse) });
+    if (online.active) net.relay({ k: 'mine', o: mine.owner.netId, t: mine.target.netId, f: round(mine.fuse), n: mine.id });
+  }
+  function sendNet(target) {
+    if (online.active) net.relay({ k: 'net', t: target.netId });
+  }
+  function sendTrip(racer, side) {
+    if (online.active) net.relay({ k: 'trip', t: racer.netId, s: side }, ownerOf(racer));
   }
   function sendEmp(racer) {
     if (online.active) net.relay({ k: 'emp', r: racer.netId });

@@ -1,4 +1,6 @@
-import { ACCEL, CAR_MAX_HP, MAX_SPEED, NITRO_ACCEL, NITRO_DRAIN, NITRO_MAX_SPEED, SLIPSTREAM_KMH } from '../config.js';
+import { shakeOpponent } from './shake.js';
+import { surface } from './surface.js';
+import { ACCEL, BLUE_NITRO, CAR_MAX_HP, MAX_SPEED, NITRO_ACCEL, NITRO_DRAIN, NITRO_MAX_SPEED, SLIPSTREAM_KMH } from '../config.js';
 import { LIVERIES } from '../world/car/carLivery.js';
 import { createCarModel } from '../world/car/carModel.js';
 import { alignToTwist, boostAt, gustAt, hazardAt, jumpBoostAhead, inFlightZone, inGap, onBridge, SHARP_RADIUS, surfaceAt, track, trackAt, turnAt, wrapDistance } from '../world/track.js';
@@ -10,6 +12,8 @@ import { createRig, poseRig, resetRig, rigLean } from './carRoll.js';
 import { createEffects, tickEffects } from './effects.js';
 import { absorbShield } from './shield.js';
 import { OPPONENT_PROFILES } from './opponentProfiles.js';
+import { styleOf } from './botStyles.js';
+import { createTactics, planTactics, steerByTactics } from './botTactics.js';
 import { TRAP_TYPES } from './trapTypes.js';
 import { upgradeFactor } from './shop.js';
 import { WEAPON_TYPES } from './weaponTypes.js';
@@ -17,12 +21,13 @@ import { TRACK_WIDTH } from '../config.js';
 
 const LANE_LIMIT = TRACK_WIDTH / 2 - 1.2, LANE_SPEED = 3.5, DODGE_LANE_SPEED = 7;
 const BLOCK_LANE = 2.4, PASS_STEP = 2.6;            // quem está nesta distância lateral atrapalha; quanto sai para ultrapassar
-const WRECK_SLOWDOWN = 1.2, DODGE_CHANCE = 0.75, DODGE_LOOKAHEAD = 40;
+const WRECK_SLOWDOWN = 1.2, DODGE_LOOKAHEAD = 40, DODGE_LOOKAHEAD_TIME = 1.6;   // vê a armadilha a 40 m ou 1,6 s à frente
 const OIL_LANE_SWING = 11, OIL_SWING_RATE = 5.5, OIL_NOSE_SWING = 0.3, LANE_DRIFT_LIMIT = LANE_LIMIT + 1.5;
 const KNOCK_DECAY = 3, SPIN_DECAY = 3.5, NOSE_RETURN = 3;
 const DRIFT_GRIP = 1.35, DRIFT_MIN_SPEED = 12, DRIFT_NOSE = 0.42, DRIFT_NOSE_RATE = 6;   // nas curvas fechadas a IA também faz drift
 const NITRO_MIN_SPEED = 15, NITRO_BURST = [1, 1.6], NITRO_PAUSE = [12, 24], NITRO_FIRST_WAIT = [8, 20];
 const NITRO_VIEW = 70, NITRO_MAX_CURVE = 1 / 60, NITRO_RIVAL_AHEAD = 90, NITRO_RIVAL_BEHIND = 30;
+const NITRO_URGE_SKIP = 9;                           // a tática (perseguir, fugir, não deixar passar) corta até isso da pausa do nitro
 const REMOTE_BLEND = 12, REMOTE_PREDICTION_TIME = 0.4, REMOTE_SNAP_DISTANCE = 40;
 const GRUDGE_TIME = 8, FIRST_TRAP_DELAY = [6, 14];
 // Vento e turbo (cânion e salar). A rajada desloca a IA de lado (a IA corrige na velocidade de troca de faixa).
@@ -38,7 +43,7 @@ function createArsenal(profile) {
     type, ammo: 0, reserve: maxReserve, maxReserve, cooldown: 0, reloadLeft: 0, loading: 0,
     aimTime: 0, burstLeft: 0, target: null, aimingAt: null, retargetIn: 0,
     traps: profile.traps.map(id => ({ type: TRAP_TYPES[id], charges: TRAP_TYPES[id].charges, capacity: TRAP_TYPES[id].charges })),
-    nextTrap: 0, powerupTimer: 0, trapTimer: FIRST_TRAP_DELAY[0] + Math.random() * (FIRST_TRAP_DELAY[1] - FIRST_TRAP_DELAY[0]),
+    powerupTimer: 0, powerupCheck: 0, idle: 0, curveWait: 0, trapTimer: FIRST_TRAP_DELAY[0] + Math.random() * (FIRST_TRAP_DELAY[1] - FIRST_TRAP_DELAY[0]),
   };
 }
 
@@ -49,10 +54,12 @@ export function resetOpponent(op) {
     hp: op.maxHp, destroyed: 0, protectedFor: 0, grudge: 0, grudgeTarget: null, exploded: false,
     flip: null, overturned: false, spin: 0, nose: 0, knock: 0, laneRate: 0, dead: 0, flash: 0, v: 0, laneHold: 0, dodgeTime: 0, snapshot: null, slipstream: 0,
     vy: 0, airborne: false, flying: false, sunk: 0, jump: null, impact: 0,
+    tactics: createTactics(), quarry: null, errand: null, blocker: null, nitroUrge: false,
+    weaponId: null,                                  // arma vista de um carro remoto: aprende de novo a cada corrida
   });
   resetRig(op.rig);
   for (const name in op.effects) op.effects[name] = 0;
-  Object.assign(op, { nitro: 0, nitroToFill: 1, nitroActive: false, nitroBurst: 0, nitroWait: between(NITRO_FIRST_WAIT), driftAngle: 0 });
+  Object.assign(op, { nitro: 0, nitroToFill: 1, nitroActive: false, nitroBurst: 0, nitroWait: between(NITRO_FIRST_WAIT), driftAngle: 0, blueNitro: 0 });
   op.model.setNitro(false);
   op.model.setFlash(false);
   op.group.visible = true;
@@ -74,8 +81,9 @@ function createOpponent(scene, index) {
     vmax: MAX_SPEED, grip: 25 * skill, acc: ACCEL, brake: 22,
     hp: maxHp, maxHp, nitroCapacity: upgradeFactor('nitro', profile.upgrades.nitro), destroyed: 0, protectedFor: 0, grudge: 0, grudgeTarget: null,
     flip: null, rig: createRig(), overturned: false, spin: 0, nose: 0, knock: 0, laneRate: 0, exploded: false, dead: 0, flash: 0, effects: createEffects(), dodgeTime: 0,
-    nitro: 0, nitroToFill: 1, nitroActive: false, nitroBurst: 0, nitroWait: between(NITRO_FIRST_WAIT), driftAngle: 0,
+    nitro: 0, nitroToFill: 1, nitroActive: false, nitroBurst: 0, nitroWait: between(NITRO_FIRST_WAIT), driftAngle: 0, blueNitro: 0,
     vy: 0, airborne: false, flying: false, sunk: 0, jump: null, impact: 0,   // voo nas rampas e queda no rio (flight.js)
+    tactics: createTactics(), quarry: null, errand: null, blocker: null, nitroUrge: false,   // estilo de jogo (botTactics.js)
   };
   group.traverse(o => { o.userData.opponent = opponent; });
   return opponent;
@@ -91,7 +99,7 @@ function targetSpeedForCurves(op, topSpeed) {
   const start = Math.floor((((op.dist % length) + length) % length) / step);
   const lookahead = Math.ceil((30 + op.v * 2.5) / step);
   for (let k = 0; k <= lookahead; k++) {
-    const bend = curvature[(start + k) % count], grip = bend > 1 / SHARP_RADIUS ? op.grip * DRIFT_GRIP : op.grip;
+    const bend = curvature[(start + k) % count], grip = (bend > 1 / SHARP_RADIUS ? op.grip * DRIFT_GRIP : op.grip) * surface.rain;
     const allowed = Math.sqrt(grip / Math.max(bend, 0.0006) + 2 * op.brake * k * step);
     if (allowed < target) target = allowed;
   }
@@ -109,6 +117,7 @@ function avoidTraffic(op, target, field, dt) {
       blocker = other;
     }
   }
+  op.blocker = blocker;
   if (blocker) {
     const dodge = blocker.lane <= op.lane ? PASS_STEP : -PASS_STEP;
     op.laneTarget = Math.max(-LANE_LIMIT, Math.min(LANE_LIMIT, op.lane + dodge));
@@ -121,12 +130,13 @@ function avoidTraffic(op, target, field, dt) {
 
 // Devolve true se o carro foi destruído. Quem leva dano fica com raiva de quem atacou e revida.
 // `attacker` é outro piloto de race.field.
-export function damageOpponent(op, amount, attacker) {
+export function damageOpponent(op, amount, attacker, shake = 0) {
   if (op.remote) {                                   // quem aplica o dano é o navegador que simula esse carro
-    op.onRemoteDamage(amount, attacker);
+    op.onRemoteDamage(amount, attacker, shake);
     return false;
   }
   if (op.protectedFor > 0 || op.dead > 0) return false;
+  if (shake > 0) shakeOpponent(op, shake);           // escopeta: o carro balança
   op.hp -= absorbShield(op, amount);
   if (attacker && attacker !== op) {
     op.grudge = GRUDGE_TIME;
@@ -144,15 +154,16 @@ export function damageOpponent(op, amount, attacker) {
   return true;
 }
 
-// Na maioria das vezes o piloto vê a armadilha e muda de faixa. Fumaça ocupa a pista inteira.
+// O piloto vê a armadilha (e a dinamite) e muda de faixa; quanto desvia depende do estilo. Fumaça ocupa a pista inteira.
 function dodgeTraps(op, activeTraps) {
+  const sight = Math.max(DODGE_LOOKAHEAD, op.v * DODGE_LOOKAHEAD_TIME), chance = styleOf(op).dodge;
   for (const trap of activeTraps) {
-    const { effect, halfWidth } = trap.type;
-    if (!effect || halfWidth >= LANE_LIMIT) continue;
+    const { halfWidth } = trap.type;
+    if (halfWidth >= LANE_LIMIT || trap.explodedFor >= 0) continue;
     const ahead = wrapDistance(trap.dist - op.dist), clearance = halfWidth + 2;
-    if (ahead <= 0 || ahead > DODGE_LOOKAHEAD || Math.abs(trap.lane - op.lane) >= clearance) continue;
+    if (ahead <= 0 || ahead > sight || Math.abs(trap.lane - op.lane) >= clearance) continue;
 
-    if (!trap.dodgers.has(op)) trap.dodgers.set(op, Math.random() < DODGE_CHANCE);
+    if (!trap.dodgers.has(op)) trap.dodgers.set(op, Math.random() < chance);
     if (!trap.dodgers.get(op)) continue;
     const side = trap.lane >= 0 ? -1 : 1;
     op.laneTarget = Math.max(-LANE_LIMIT, Math.min(LANE_LIMIT, trap.lane + side * clearance));
@@ -163,10 +174,18 @@ function dodgeTraps(op, activeTraps) {
 
 function speedFactorFromEffects({ puncture, oil, paint, smoke }) {
   let factor = 1;
-  if (puncture > 0) factor *= 0.75;
+  if (puncture > 0) factor *= 0.875;
   if (oil > 0) factor *= 0.7;
   if (paint > 0 || smoke > 0) factor *= 0.8;
   return factor;
+}
+
+// Preso na rede o piloto não esterça: segue na direção que ia e a curva o joga para fora da faixa.
+const NET_CURVE_PUSH = 0.35;
+function driftInNet(op, dt) {
+  op.netVel ??= op.laneRate;
+  op.netVel -= turnAt(op.dist) * op.v * op.v * NET_CURVE_PUSH * dt;      // curva à direita (turn > 0) joga para a esquerda (lane menor)
+  if (!op.rig.active && !op.airborne) op.lane += op.netVel * dt;
 }
 
 // Posição no mundo: igual à lógica, menos no tubo, onde a faixa vira parede e teto.
@@ -259,15 +278,20 @@ function hasRivalNear(op, field) {
 }
 
 // Nitro em rajadas curtas nas retas, para passar quem vai à frente ou fugir de quem vem atrás. Não recarrega.
+// Quando a tática pede (`nitroUrge`: alvo fugindo, ameaça atrás, alguém querendo passar), a pausa entre rajadas encurta.
 function updateNitro(op, dt, field) {
   op.nitroBurst -= dt;
   op.nitroWait -= dt;
-  if (op.nitroBurst <= 0 && op.nitroWait <= 0 && op.nitro > 0 && op.v > NITRO_MIN_SPEED && isClearForNitro(op) && hasRivalNear(op, field)) {
+  const blue = op.blueNitro > 0;                     // com nitro azul a IA usa toda reta livre, sem esperar rival por perto
+  const urged = op.nitroUrge && op.nitroWait <= NITRO_URGE_SKIP;
+  if (op.nitroBurst <= 0 && (blue || urged || op.nitroWait <= 0) && op.nitro > 0 && op.v > NITRO_MIN_SPEED && isClearForNitro(op) && (blue || urged || hasRivalNear(op, field))) {
     op.nitroBurst = between(NITRO_BURST);
-    op.nitroWait = between(NITRO_PAUSE);
+    if (!blue) op.nitroWait = between(NITRO_PAUSE);
   }
   op.nitroActive = op.nitroBurst > 0 && op.nitro > 0 && op.effects.emp <= 0;
-  if (op.nitroActive) op.nitro = Math.max(0, op.nitro - dt * NITRO_DRAIN / op.nitroCapacity);
+  if (!op.nitroActive) return;
+  if (blue) op.blueNitro = Math.max(0, op.blueNitro - dt);
+  else op.nitro = Math.max(0, op.nitro - dt * NITRO_DRAIN / op.nitroCapacity);
 }
 
 function updateDrift(op, dt) {
@@ -372,18 +396,25 @@ export function updateOpponent(op, dt, field, racing, activeTraps, time = 0) {
   if (racing) {
     tickEffects(op.effects, dt);
     const laneBefore = op.lane;
+    const tacticCap = planTactics(op, field, dt, time);
     updateNitro(op, dt, field);
     updateDrift(op, dt);
     op.boost = Math.max(0, (op.boost ?? 0) - dt);
-    let target = avoidTraffic(op, targetSpeedForCurves(op, op.nitroActive ? NITRO_MAX_SPEED : op.vmax + op.slipstream * SLIPSTREAM_KMH / 3.6), field, dt) * speedFactorFromEffects(op.effects);
+    const topSpeed = op.nitroActive ? NITRO_MAX_SPEED * (op.blueNitro > 0 ? BLUE_NITRO.top : 1) : op.vmax + op.slipstream * SLIPSTREAM_KMH / 3.6;
+    let target = Math.min(tacticCap, avoidTraffic(op, targetSpeedForCurves(op, topSpeed), field, dt)) * speedFactorFromEffects(op.effects);
     if (op.boost > 0) target = Math.max(target, BOOST_SPEED);
+    steerByTactics(op);
     dodgeTraps(op, activeTraps);
     if (track.boosts.length) steerToJumpBoost(op);
     op.dodgeTime -= dt;
-    const accel = op.acc + (op.nitroActive ? NITRO_ACCEL : 0);
+    const accel = op.acc + (op.nitroActive ? NITRO_ACCEL * (op.blueNitro > 0 ? BLUE_NITRO.accel : 1) : 0);
     if (!op.airborne) op.v = op.v < target ? Math.min(target, op.v + accel * dt) : Math.max(target, op.v - 30 * dt);   // no ar o pé no acelerador não muda nada
     const laneStep = (op.dodgeTime > 0 ? DODGE_LANE_SPEED : LANE_SPEED) * dt;
-    if (!op.rig.active && !op.airborne) op.lane += Math.max(-laneStep, Math.min(laneStep, op.laneTarget - op.lane));
+    if (op.effects.net > 0) driftInNet(op, dt);
+    else {
+      op.netVel = null;
+      if (!op.rig.active && !op.airborne) op.lane += Math.max(-laneStep, Math.min(laneStep, op.laneTarget - op.lane));
+    }
     if (op.effects.paint > 0) op.lane += Math.sin(op.dist * 0.7) * 3 * dt;
     if (op.effects.oil > 0) op.lane += Math.sin(op.effects.oil * OIL_SWING_RATE) * OIL_LANE_SWING * dt;
     op.lane += op.knock * dt;

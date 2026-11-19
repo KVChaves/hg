@@ -1,6 +1,6 @@
 import { ctxText, textWidth } from '../art/font.js';
 import { typedCharacter } from './nameField.js';
-import { COLOR, drawButton, inside, outline, panelBox } from './panelKit.js';
+import { COLOR, drawButton, drawHeading, inside, outline, panelBox } from './panelKit.js';
 
 // Janela que pede um nome: Enter ou o botão confirmam, Esc ou Cancelar desistem.
 
@@ -53,16 +53,16 @@ export function createTextPrompt({ box, title, confirmLabel, maxLength, allowEmp
     },
     draw(ctx, pointer) {
       panelBox(ctx, box);
-      ctxText(ctx, title, centeredX(title, 2), box.y + 10, COLOR.selected, 2);
+      drawHeading(ctx, title, box.x + box.width / 2, box.y + 10);
       if (hint) ctxText(ctx, hint, centeredX(hint), input.y - 16, COLOR.muted);
       panelBox(ctx, input);
       outline(ctx, input, COLOR.selected);
       const cursor = Math.floor(performance.now() / CURSOR_BLINK) % 2 === 0 ? '_' : '';
       ctxText(ctx, `${draft}${cursor}`, centeredX(draft), input.y + 11, COLOR.text);
       if (text() === '' && emptyHint) ctxText(ctx, emptyHint, centeredX(emptyHint), input.y + input.height + 10, COLOR.muted);
-      if (canConfirm()) drawButton(ctx, confirm, confirmLabel, inside(confirm, pointer.x, pointer.y));
+      if (canConfirm()) drawButton(ctx, confirm, confirmLabel, inside(confirm, pointer.x, pointer.y), 'primary');
       else drawDisabled(ctx, confirm, confirmLabel);
-      drawButton(ctx, cancel, 'CANCELAR', inside(cancel, pointer.x, pointer.y));
+      drawButton(ctx, cancel, 'CANCELAR', inside(cancel, pointer.x, pointer.y), 'back');
     },
   };
   return prompt;

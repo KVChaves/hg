@@ -19,11 +19,12 @@ const WHEEL_SIDE = 0.86, WHEEL_REACH = 0.9, WHEEL_LIFT = 0.25;
 
 const SOUND_MIN_IMPACT = 4, SOUND_FULL_IMPACT = 25, SOUND_MIN_STRENGTH = 0.25;
 const BLAST_MIN_IMPACT = 6, BLAST_RADIUS = 6, BLAST_AREA_SHARE = 20 / 45, BLAST_COOLDOWN = 1.5;
+const CONTACT_MIN_IMPACT = 1.5;                      // encostão que já passa a mina grudada para o outro carro
 const DAMAGE_MIN_IMPACT = 4, DAMAGE_PER_SPEED = 0.4, DAMAGE_PER_SPEED_SQUARED = 0.02;
 
 const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
 
-export function createCollisions({ car, field, onCrash, onDestroyed, onBlast = () => {} }) {
+export function createCollisions({ car, field, onCrash, onDestroyed, onBlast = () => {}, onContact = () => {} }) {
   let clock = 0;
   const blastReadyAt = new Map();                    // piloto → instante em que o para-choque explosivo volta a detonar
   const ramOfRacer = racer => (racer.isPlayer ? car.parts.ram : ramOf(racer.bumper));
@@ -152,6 +153,7 @@ export function createCollisions({ car, field, onCrash, onDestroyed, onBlast = (
     applyImpact(a, -nx * change, -nz * change, cx, cz);
     applyImpact(b, nx * change, nz * change, cx, cz);
     reportSound(a, b, nx, nz, impact, cx, cz);
+    if (impact >= CONTACT_MIN_IMPACT) onContact(a.racer, b.racer);
 
     if (impact < DAMAGE_MIN_IMPACT) return;
     const damage = impact * DAMAGE_PER_SPEED + impact * impact * DAMAGE_PER_SPEED_SQUARED;

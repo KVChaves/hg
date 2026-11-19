@@ -1,11 +1,12 @@
-import { MENU_MUSIC, PHASE_MUSIC, SOUND_FILES } from './soundFiles.js';
+import { MENU_MUSIC, PHASE_AMBIENCE, PHASE_MUSIC, SOUND_FILES } from './soundFiles.js';
 import { effectiveRpm, ENGINE_LAYERS, engineMix } from './engineMix.js';
 import { WEAPON_SOUNDS } from './weaponSounds.js';
 import { familyOf } from '../game/weaponTypes.js';
 
 // Som do jogo: efeitos e motor pelo Web Audio; música por streaming, sem carregar tudo na memória.
 
-const VOLUME = { bulletHit: 0.75, burning: 0.55, master: 0.9, engineCoasting: 0.3, engineThrottle: 0.5, accelerate: 0.45, gearShift: 0.3, horn: 0.7, start: 0.8, finish: 0.9, drift: 0.45, uiClick: 0.8, menuMusic: 0.7 };
+const VOLUME = { bulletHit: 0.75, burning: 0.55, master: 0.9, engineCoasting: 0.3, engineThrottle: 0.5, accelerate: 0.45, gearShift: 0.3, horn: 0.7, start: 0.8, finish: 0.9, drift: 0.45, uiClick: 0.8, uiHover: 0.3, menuMusic: 0.7, countdown: 0.6, countdownGo: 0.7, kill: 0.9, nitro: 0.5, buy: 0.6, message: 0.5, ambience: 0.7 };
+const NITRO_SOUND_GAP = 0.4;                               // segundos: soltar e apertar de novo rápido não empilha o arranque
 const ENGINE_DELAY_AFTER_START = 0.9, SMOOTHING = 0.05, FADE_OUT = 0.08, NITRO_PITCH = 1.06;
 const LAUNCH_MAX_KMH = 15, GEAR_SOUND_MIN_KMH = 2;
 const FIRE_PITCH_VARIATION = 0.07;                         // evita que tiros seguidos soem idênticos
@@ -35,6 +36,18 @@ const WORLD_SOUNDS = {
   paint: { volume: 0.9, minGap: 0.3 },
   smoke: { volume: 2, minGap: 0.6 },                      // o arquivo é bem mais baixo que os outros
   fire: { volume: 0.9, minGap: 0.25 },                    // flecha incendiária pegando no carro ou no chão
+  spikes: { volume: 0.8, minGap: 0.3 },                   // pneu estourando nos espinhos
+  land: { volume: 0.6, minGap: 0.3 },                     // rodas tocando o chão depois de um salto
+  ricochet: { volume: 0.6, minGap: 0.35 },                // tiro de bot que passou raspando
+  obstacleWood: { volume: 0.7, minGap: 0.3 },
+  obstacleFlesh: { volume: 0.6, minGap: 0.3 },
+  obstacleIce: { volume: 1.2, minGap: 0.3 },
+  obstacleCrystal: { volume: 1.8, minGap: 0.3 },
+  obstacleRock: { volume: 2.5, minGap: 0.3 },
+  obstacleMetal: { volume: 1, minGap: 0.3 },
+  thunderClose: { volume: 1.8, minGap: 0.5 },
+  thunderRoll: { volume: 1.6, minGap: 1 },
+  thunderFar: { volume: 1.4, minGap: 1 },
 };
 
 // Vários momentos usam o mesmo arquivo; cada um é carregado uma vez só.
@@ -186,6 +199,17 @@ export function createAudioSystem(settings) {
     play(name, sound.volume * strength / (1 + distance / DISTANCE_FALLOFF), { pan });
   }
 
+  // Ambiente do bioma (chuva, vento, mar): laços que duram a corrida inteira, sumindo com um fade ao terminar.
+  let phase = null, ambience = [];
+  function stopAmbience() {
+    ambience.forEach(stop);
+    ambience = [];
+  }
+  function startAmbience() {
+    stopAmbience();
+    ambience = (PHASE_AMBIENCE[phase] ?? []).map(([name, volume]) => play(name, volume * VOLUME.ambience, { loop: true })).filter(Boolean);
+  }
+
   let driftSound = null;
   function updateDrift(drifting) {
     if (drifting && !driftSound) {
@@ -204,6 +228,32 @@ export function createAudioSystem(settings) {
   function updateHorn(pressed) {
     if (pressed && !hornSound) hornSound = play('horn', VOLUME.horn, { loop: true });
     if (!pressed && hornSound) { stop(hornSound); hornSound = null; }
+  }
+
+  // Nitro: o arranque toca quando o registro abre.
+  let wasNitro = false, nextNitroSound = 0;
+  function updateNitro(nitroOpen) {
+    const now = performance.now() / 1000;
+    if (nitroOpen && !wasNitro && now >= nextNitroSound) {
+      play('nitro', VOLUME.nitro);
+      nextNitroSound = now + NITRO_SOUND_GAP;
+    }
+    wasNitro = nitroOpen;
+  }
+
+  // Largada: bipe a cada número que a tela mostra (3, 2, 1) e um agudo no "vai".
+  // O "vai" só toca depois de ouvir o 1, para quem entra numa corrida já andando não ouvir um bipe solto.
+  let lastCount = 0;
+  function updateCountdown(race) {
+    if (!race.started) {
+      if (race.intro > 0) return;
+      const count = Math.min(3, Math.ceil(race.countdown));
+      if (count > 0 && count !== lastCount) play('countdown', VOLUME.countdown);
+      lastCount = count;
+      return;
+    }
+    if (lastCount === 1) play('countdownGo', VOLUME.countdownGo);
+    lastCount = 0;
   }
 
   function updateGear(gear) {
@@ -233,10 +283,12 @@ export function createAudioSystem(settings) {
     clearTimeout(engineTimer);
     if (engine) engine.forEach(stop);
     engine = null;
+    stopAmbience();
     for (const sound of [launch, hornSound, driftSound, burningSound]) stop(sound);
     launch = hornSound = driftSound = burningSound = null;
-    wasThrottle = finished = false;
+    wasThrottle = finished = wasNitro = false;
     lastGear = null;
+    lastCount = 0;
   }
 
   return {
@@ -244,9 +296,11 @@ export function createAudioSystem(settings) {
     stopRace,
     setMusicVolume(volume) { music.volume = volume; },
     setMenuMusicVolume(volume) { menuMusic.volume = volume * VOLUME.menuMusic; },
-    setPhase(phase) {
-      const url = new URL(PHASE_MUSIC[phase], location.href).href;
+    setPhase(next) {
+      phase = next;
+      const url = new URL(PHASE_MUSIC[next], location.href).href;
       if (music.src !== url) music.src = url;
+      if (raceOn) startAmbience();
     },
     setEffectsVolume(volume) { master.gain.value = VOLUME.master * volume; },
     // `wanted`: o jogador está fora da corrida. A faixa continua de onde parou.
@@ -264,6 +318,10 @@ export function createAudioSystem(settings) {
     },
     musicElements: () => ({ menu: menuMusic, race: music }),
     playUiClick() { play('uiClick', VOLUME.uiClick); },
+    playUiHover() { play('uiHover', VOLUME.uiHover); },
+    playKill() { play('kill', VOLUME.kill); },
+    playBuy() { play('buy', VOLUME.buy); },
+    playMessage() { play('message', VOLUME.message); },
     playWeaponSound,
     playEnemyShot,
     playWorldSound,
@@ -273,6 +331,7 @@ export function createAudioSystem(settings) {
       raceOn = raceTheme = true;
       resume();
       play('start', VOLUME.start);
+      startAmbience();
       music.currentTime = 0;                         // biomas com a mesma música também recomeçam do início
       music.play().catch(() => { /* bloqueado pelo navegador: toca sem música */ });
       engineTimer = setTimeout(startEngine, ENGINE_DELAY_AFTER_START * 1000);
@@ -286,6 +345,8 @@ export function createAudioSystem(settings) {
       updateHorn(Boolean(keys.KeyH));
       updateGear(gear);
       updateDrift(drifting);
+      updateNitro(Boolean(nitroOpen));
+      updateCountdown(race);
       if (race.finished && !finished) {
         finished = true;
         play('raceFinish', VOLUME.finish);

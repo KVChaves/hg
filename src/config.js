@@ -9,6 +9,9 @@ export const NITRO_MAX_SPEED = 160 / 3.6;   // m/s
 export const ACCEL = 18;
 export const SLIPSTREAM_KMH = 8;            // velocidade máxima extra no vácuo total
 export const NITRO_ACCEL = 16;              // m/s² somados à aceleração
+// Nitro azul (ajuda para o último colocado, ver roadsideHelp.js): enche o tanque e, por `time` segundos de nitro aberto, o tanque não gasta,
+// a velocidade máxima do nitro sobe `top` vezes e a aceleração extra `accel` vezes.
+export const BLUE_NITRO = { time: 6, top: 1.2, accel: 1.6 };
 export const NITRO_DRAIN = 0.25;            // fração do tanque por segundo
 export const WHEELBASE = 2.6;
 
@@ -22,7 +25,7 @@ export const EYE = { x: -0.38, y: 1.12, z: 0.1 };
 // Até onde a cabeça gira. Os limites escondem a parte vazia do carro (bancos, piso e traseira).
 export const CAR_MAX_HP = 250;                       // vida inicial de qualquer carro
 export const LOOK = { maxYaw: 1.3, maxPitchUp: 0.16, maxPitchDown: 0.1 };
-// Visão pela janela (Q): a cabeça sai pela janela do motorista (deslocamento em metros a partir do olho, `head`)
+// Visão pela janela (olhar demais para a esquerda): a cabeça sai pela janela do motorista (deslocamento em metros a partir do olho, `head`)
 // e pode virar até olhar para trás por cima do ombro esquerdo (yaw positivo é para a esquerda).
 // `top`: fração da velocidade máxima que sobra dirigindo debruçado.
 export const WINDOW_VIEW = { head: { x: -0.92, y: 0.2, z: 0.15 }, minYaw: -0.45, maxYaw: 3.05, maxPitchUp: 0.45, maxPitchDown: 0.35, top: 0.82 };

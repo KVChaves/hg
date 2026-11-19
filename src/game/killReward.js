@@ -1,29 +1,31 @@
-// Recompensa por abate: o que o jogador ganha depende da posição na corrida.
-// Quem lidera ganha pouco (munição); quem está atrás ganha o que ajuda a recuperar o terreno.
+// Recompensa por abate. O abate já é uma vantagem por si só, então o bônus é pequeno e quem está atrás só ganha um pouco mais:
+// o nitro e a munição maiores vêm dos suprimentos da volta e do NPC de estrada. Derrubar o líder rende um extra, porque fecha a distância.
 
-const MID_FROM = 0.34, BACK_FROM = 0.67;          // fração da posição (0 = líder, 1 = último)
-const AMMO_LEADER = 0.35, AMMO_OTHERS = 0.5, NITRO_BACK = 0.5;
+const AMMO_BASE = 0.3, AMMO_BEHIND = 0.4;         // fração da reserva padrão
+const BEHIND_FROM = 0.34, FAR_BEHIND_FROM = 0.67;  // atraso (0 a 1, ver deficit.js) a partir do qual conta como atrás / muito atrás
+const NITRO_FAR_BEHIND = 0.2, NITRO_LEADER_KILL = 0.3;
 
-// `supplies` é o que roadsideHelp.suppliesFor(jogador) devolve. Entrega os itens e devolve os nomes.
-export function giveKillReward(supplies, rank, fieldSize) {
-  const place = fieldSize > 1 ? (rank - 1) / (fieldSize - 1) : 0;
+// `supplies` é o que roadsideHelp.suppliesFor(piloto) devolve; `deficit` é o atraso de quem abateu para o líder;
+// `victimLeads` diz se a vítima era o líder. Entrega os itens e devolve os nomes.
+export function giveKillReward(supplies, { deficit, victimLeads }) {
   const labels = [];
 
-  supplies.give.ammo({ amount: place < MID_FROM ? AMMO_LEADER : AMMO_OTHERS });
+  supplies.give.ammo({ amount: deficit >= BEHIND_FROM ? AMMO_BEHIND : AMMO_BASE });
   labels.push('MUNICAO');
 
-  if (place >= MID_FROM && supplies.hasTraps()) {
+  if (deficit >= BEHIND_FROM && supplies.hasTraps()) {
     const slot = supplies.pickTrap();
     supplies.give.trap({ slot });
     labels.push(slot.type.label);
   }
-  if (place >= BACK_FROM) {
-    supplies.give.nitro({ amount: NITRO_BACK });
-    labels.push(`NITRO ${Math.round(NITRO_BACK * 100)}%`);
-    if (supplies.levels().extinguisher < 1) {
-      supplies.give.extinguisher();
-      labels.push('EXTINTOR');
-    }
+  const nitro = (deficit >= FAR_BEHIND_FROM ? NITRO_FAR_BEHIND : 0) + (victimLeads && deficit > 0 ? NITRO_LEADER_KILL : 0);
+  if (nitro > 0) {
+    supplies.give.nitro({ amount: nitro });
+    labels.push(`NITRO ${Math.round(nitro * 100)}%`);
+  }
+  if (deficit >= FAR_BEHIND_FROM && supplies.levels().extinguisher < 1) {
+    supplies.give.extinguisher();
+    labels.push('EXTINTOR');
   }
   return labels;
 }

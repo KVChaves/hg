@@ -44,7 +44,12 @@ function paintRows(ctx, race) {
     if (i - previous > 1) ctxText(ctx, '----', MARGIN, FIRST_ROW + row++ * ROW_HEIGHT, '#dddddd');
     const entry = race.order[i];
     const text = `${i + 1}. ${entry.name.slice(0, 10)}`;
-    ctxText(ctx, text, MARGIN, FIRST_ROW + row++ * ROW_HEIGHT, entry.isPlayer ? '#f01818' : '#e8e8e8');
+    const y = FIRST_ROW + row++ * ROW_HEIGHT, color = entry.isPlayer ? '#f01818' : '#e8e8e8';
+    ctxText(ctx, text, MARGIN, y, color);
+    if (race.hasFinished(entry)) {                   // já cruzou a chegada: risca o nome
+      ctx.fillStyle = color;
+      ctx.fillRect(MARGIN - 1, y + 3, textWidth(text) + 2, 1);
+    }
     previous = i;
   }
   return row;                                        // quantas linhas ficaram ocupadas (com os "----" entre elas)
@@ -70,6 +75,13 @@ function paintRivals(ctx, rivals, top) {
   });
 }
 
+const SKULL = ['.#####.', '#######', '##.#.##', '##.#.##', '#######', '.#####.', '.#.#.#.'];
+
+function paintSkull(ctx, x, y, color) {
+  ctx.fillStyle = color;
+  SKULL.forEach((row, j) => [...row].forEach((cell, i) => { if (cell === '#') ctx.fillRect(x + i, y + j, 1, 1); }));
+}
+
 export function createScoreboard(parent) {
   const canvas = document.createElement('canvas');
   canvas.width = WIDTH;
@@ -81,14 +93,15 @@ export function createScoreboard(parent) {
   let lastKey = '';
   return (race, kills, rivals) => {
     const meters = rival => (rival ? Math.min(MAX_METERS, Math.round(Math.abs(rival.meters))) : '-');
-    const key = `${race.order.map(entry => entry.name).join()}|${race.lap}|${kills}|${meters(rivals?.ahead)}|${meters(rivals?.behind)}`;
+    const key = `${race.order.map(entry => entry.name + (race.hasFinished(entry) ? '*' : '')).join()}|${race.lap}|${kills}|${meters(rivals?.ahead)}|${meters(rivals?.behind)}`;
     if (key === lastKey) return;
     lastKey = key;
 
     paintFrame(ctx);
     const rows = paintRows(ctx, race);
     paintRivals(ctx, rivals, FIRST_ROW + rows * ROW_HEIGHT + 3);   // sempre logo abaixo da última linha, sem cobrir nenhum nome
-    ctxText(ctx, `K ${kills}`, MARGIN, FOOTER_Y, '#e8e8e8');
+    paintSkull(ctx, MARGIN, FOOTER_Y, '#e8e8e8');
+    ctxText(ctx, `X ${kills}`, MARGIN + 10, FOOTER_Y, '#e8e8e8');
     const laps = `${race.lap} / ${LAPS}`;
     ctxText(ctx, laps, WIDTH - MARGIN - textWidth(laps), FOOTER_Y, '#e8e8e8');
     sprite.refresh();

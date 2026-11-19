@@ -8,7 +8,8 @@ import { Sprite } from './sprite.js';
 const W = 18, H = 30, FRAMES_PER_SECOND = 18;
 const GROW_SPEED = 8, SHRINK_SPEED = 10;
 
-function flameColor(heat, nearBase) {
+function flameColor(heat, nearBase, blue) {
+  if (blue) return nearBase || heat > 0.72 ? 0xe8f4ff : heat > 0.5 ? 0x8cc8ff : heat > 0.3 ? 0x3a8cff : 0x1c4ed8;   // nitro azul
   if (nearBase) return 0x9ac8ff;
   if (heat > 0.72) return 0xfff6c0;
   if (heat > 0.5) return 0xffd040;
@@ -16,7 +17,7 @@ function flameColor(heat, nearBase) {
   return 0xd83a10;
 }
 
-function paintFlame(r, frame, size) {
+function paintFlame(r, frame, size, blue) {
   r.data.fill(0);
   const height = size * (0.8 + 0.2 * hash(frame, 1));
 
@@ -34,7 +35,7 @@ function paintFlame(r, frame, size) {
       const noise = hash(x, y + frame * 5);
       if (across > 0.7 && noise > 0.6) continue;
       const heat = 1 - across * 0.7 - along * 0.7 + (noise - 0.5) * 0.25;
-      r.put(x, y, flameColor(heat, along < 0.12 && across < 0.6));
+      r.put(x, y, flameColor(heat, along < 0.12 && across < 0.6, blue));
     }
   }
 }
@@ -46,19 +47,20 @@ export function createNitroFlame(parent, nozzle) {
   });
   sprite.mesh.visible = false;
 
-  let clock = 0, lastFrame = -1, size = 0;
+  let clock = 0, lastFrame = -1, size = 0, lastBlue = false;
 
-  return (active, dt) => {
+  return (active, dt, blue = false) => {
     size = active ? Math.min(1, size + dt * GROW_SPEED) : Math.max(0, size - dt * SHRINK_SPEED);
     sprite.mesh.visible = size > 0.05;
     if (!sprite.mesh.visible) return;
 
     clock += dt;
     const frame = Math.floor(clock * FRAMES_PER_SECOND);
-    if (frame === lastFrame && size === 1) return;
+    if (frame === lastFrame && size === 1 && blue === lastBlue) return;
     lastFrame = frame;
+    lastBlue = blue;
 
-    paintFlame(r, frame, size);
+    paintFlame(r, frame, size, blue);
     r.commit();
     sprite.refresh();
   };

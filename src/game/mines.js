@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { CAR_MAX_HP } from '../config.js';
 import { damagePlayer } from './car.js';
 import { damageOpponent } from './opponents.js';
+import { inAim } from './aim.js';
 import { MINE_CONE, MINE_DAMAGE, MINE_FLIGHT_MAX, MINE_FUSE, MINE_RANGE, MINE_SPEED } from './trapTypes.js';
 
 // Mina teleguiada: sai da frente do carro, persegue o carro mais bem alinhado à frente (até MINE_RANGE), gruda nele
@@ -9,11 +10,13 @@ import { MINE_CONE, MINE_DAMAGE, MINE_FLIGHT_MAX, MINE_FUSE, MINE_RANGE, MINE_SP
 // recebem só uma cópia "fantasma" ao grudar (aviso e explosão, sem dano). O pulso EMP de quem está com a mina a desarma.
 const NOSE_FORWARD = 2.3, LAUNCH_HEIGHT = 0.8, HIT_RADIUS = 1.6, STICK_HEIGHT = 1.0, STICK_FORWARD = 0.6;
 const TARGET_HEIGHT = 0.8;
-const MINE_LOCK_CONE = 0.5, MINE_TURN = 6;   // cosseno do cone de trava (~60°) e quão rápido ela curva (1/s)
+const MINE_TURN = 6;   // quão rápido a mina curva até o carro travado (1/s); o carro precisa estar na linha de visada do arremesso (aim.js)
+const TRANSFER_COOLDOWN = 1.5;                       // segundos até a mina poder trocar de carro outra vez (não quica entre dois carros colados)
 const HIT_SPEED_LOSS = 0.65, HIT_SPIN = 2.5, BOT_HIT_KNOCK = 8;
 
-// `onExplode(x, y, z)`: desenha a explosão. `onAttach(mine)`: avisa a rede. `onKill(vítima, dono)`: derrubou um carro.
-export function createMines({ scene, race, car, onSound, onExplode, onAttach = () => {}, onKill = () => {} }) {
+// `onExplode(x, y, z)`: desenha a explosão. `onAttach(mine)`: avisa a rede (de novo a cada troca de carro). `onKill(vítima, dono)`: derrubou um carro.
+// `onTransfer(mine, novoAlvo)`: a mina grudada passou para outro carro numa batida (ver `transfer`).
+export function createMines({ scene, race, car, onSound, onExplode, onAttach = () => {}, onKill = () => {}, onTransfer = () => {} }) {
   const mines = [];
   const bodyGeometry = new THREE.SphereGeometry(0.28, 10, 8), lightGeometry = new THREE.SphereGeometry(0.11, 8, 6);
   const bodyMaterial = new THREE.MeshBasicMaterial({ color: 0x2a2c32, fog: false });
@@ -48,6 +51,7 @@ export function createMines({ scene, race, car, onSound, onExplode, onAttach = (
 
   const api = {
     hasTarget: owner => Boolean(findTarget(owner)),
+    targetFor: owner => findTarget(owner),         // em quem a mina lançada agora travaria (a IA confere antes de gastar)
 
     launch(owner) {
       const target = findTarget(owner);
@@ -61,21 +65,59 @@ export function createMines({ scene, race, car, onSound, onExplode, onAttach = (
       return true;
     },
 
+    // Em quem a mina arremessada para `yaw` travaria agora (a mesma regra do voo, a partir do nariz do carro); nulo se ninguém.
+    aimTarget(owner, yaw) {
+      const aimX = -Math.sin(yaw), aimZ = -Math.cos(yaw);
+      const x = owner.wx + aimX * NOSE_FORWARD, y = owner.wy + LAUNCH_HEIGHT, z = owner.wz + aimZ * NOSE_FORWARD;
+      let best = Infinity, found = null;
+      for (const racer of race.field) {
+        if (racer === owner || racer.dead > 0 || racer.protectedFor > 0) continue;
+        const dx = racer.wx - x, dy = racer.wy + TARGET_HEIGHT - y, dz = racer.wz - z, d = Math.hypot(dx, dy, dz) || 1;
+        if (d > MINE_RANGE || !inAim(x, z, yaw, racer.wx, racer.wz, MINE_RANGE) || d >= best) continue;
+        best = d;
+        found = racer;
+      }
+      return found;
+    },
+
     // Arremesso do jogador: a mina sai para onde ele mira (`yaw`), trava o carro mais perto do cone e o persegue; sem alvo, segue reta.
     throwStraight(owner, yaw) {
       const { group, light } = makeMesh();
       const dirX = -Math.sin(yaw), dirZ = -Math.cos(yaw);
       mines.push({
-        owner, target: null, dirX, dirZ, group, light, ghost: false, phase: 'flying', age: 0, fuse: MINE_FUSE, beep: 0, lit: 0, travelled: 0, id: Math.random().toString(36).slice(2, 8),
+        owner, target: null, dirX, dirZ, aimX: dirX, aimZ: dirZ, aimYaw: yaw, group, light, ghost: false, phase: 'flying', age: 0, fuse: MINE_FUSE, beep: 0, lit: 0, travelled: 0, id: Math.random().toString(36).slice(2, 8),
         x: owner.wx + dirX * NOSE_FORWARD, y: owner.wy + LAUNCH_HEIGHT, z: owner.wz + dirZ * NOSE_FORWARD,
       });
       onSound('mineLaunch', owner.x, owner.z);
     },
 
     // Mina de outro navegador que acabou de grudar: só aviso e explosão aqui.
-    addGhost(owner, target, fuse) {
+    // Se a cópia desse `id` já existe (a mina trocou de carro), só atualiza o alvo e o pavio.
+    addGhost(owner, target, fuse, id = null) {
+      const known = id && mines.find(mine => mine.ghost && mine.id === id);
+      if (known) {
+        known.target = target;
+        known.fuse = fuse;
+        onTransfer(known, target);
+        return;
+      }
       const { group, light } = makeMesh();
-      mines.push({ owner, target, group, light, ghost: true, phase: 'stuck', age: 0, fuse, beep: 0, lit: 0, x: 0, y: 0, z: 0 });
+      mines.push({ owner, target, group, light, ghost: true, id, phase: 'stuck', age: 0, fuse, beep: 0, lit: 0, x: 0, y: 0, z: 0 });
+    },
+
+    // Batida entre `a` e `b`: a mina grudada em um deles passa para o outro, com o pavio de onde estava. Só quem simulou
+    // a mina (o navegador do dono) decide; os outros recebem a troca pela rede. Não volta para o dono nem logo de cara.
+    transfer(a, b) {
+      for (const mine of mines) {
+        if (mine.ghost || mine.phase !== 'stuck' || mine.transferWait > 0) continue;
+        const next = mine.target === a ? b : mine.target === b ? a : null;
+        if (!next || next === mine.owner || next.dead > 0 || next.sunk > 0 || next.protectedFor > 0) continue;
+        mine.target = next;
+        mine.transferWait = TRANSFER_COOLDOWN;
+        onSound('mineStick', next.x, next.z);
+        onAttach(mine);
+        onTransfer(mine, next);
+      }
     },
 
     // Segundos até explodir da mina que está grudada em `racer` (0 se não há).
@@ -135,7 +177,7 @@ export function createMines({ scene, race, car, onSound, onExplode, onAttach = (
     mine.light.material = onMaterial;
   }
 
-  // Teleguiada: trava o carro mais perto dentro do cone da direção atual e curva a mina até ele (3D). Sem alvo, segue reta.
+  // Teleguiada: trava o carro mais perto na linha de visada do arremesso (a direção dada no tiro, não a da curva atual) e curva a mina até ele (3D). Sem alvo, segue reta.
   function steer(mine, dt) {
     const { owner } = mine;
     const len = Math.hypot(mine.dirX, mine.dirY ?? 0, mine.dirZ) || 1;
@@ -147,7 +189,7 @@ export function createMines({ scene, race, car, onSound, onExplode, onAttach = (
       for (const racer of race.field) {
         if (racer === owner || !alive(racer)) continue;
         const dx = racer.wx - mine.x, dy = racer.wy + TARGET_HEIGHT - mine.y, dz = racer.wz - mine.z, d = Math.hypot(dx, dy, dz) || 1;
-        if (d > MINE_RANGE || (dx * dir[0] + dy * dir[1] + dz * dir[2]) / d < MINE_LOCK_CONE || d >= best) continue;
+        if (d > MINE_RANGE || !inAim(mine.x, mine.z, mine.aimYaw, racer.wx, racer.wz, MINE_RANGE) || d >= best) continue;
         best = d;
         mine.lock = racer;
       }
@@ -191,6 +233,7 @@ export function createMines({ scene, race, car, onSound, onExplode, onAttach = (
     mine.y = target.wy + STICK_HEIGHT;
     mine.z = target.wz - Math.cos(target.yaw) * STICK_FORWARD;
     mine.fuse -= dt;
+    mine.transferWait = Math.max(0, (mine.transferWait ?? 0) - dt);
     // O pisca acelera conforme o pavio acaba.
     mine.beep -= dt;
     mine.lit = Math.max(0, mine.lit - dt);

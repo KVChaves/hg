@@ -1,6 +1,6 @@
 import { VIEW } from '../config.js';
 import { ctxText, textWidth } from '../art/font.js';
-import { COLOR, MEDALS, panelBox } from './panelKit.js';
+import { COLOR, drawHeading, MEDALS, panelBox } from './panelKit.js';
 
 // Tabela da partida (segure TAB): classificação da competição e, durante a corrida, a posição de cada piloto agora.
 // Aparece em qualquer tela depois que a partida começou, menos nos menus que ainda montam a partida.
@@ -21,12 +21,12 @@ export function createMatchTable({ getMatch, race, localName, isBlocked }) {
 
     const height = TOP_ROWS_Y + 12 + standings.length * ROW + 22;
     const box = { x: Math.round((VIEW.width - WIDTH) / 2), y: Math.round((VIEW.height - height) / 2), width: WIDTH, height };
-    ctx.fillStyle = 'rgba(8, 8, 12, 0.55)';
+    ctx.fillStyle = 'rgba(24, 10, 5, 0.55)';
     ctx.fillRect(0, 0, VIEW.width, VIEW.height);
     panelBox(ctx, box);
 
     const title = `PARTIDA: CORRIDA ${match.currentRace} DE ${match.raceCount}`;
-    ctxText(ctx, title, box.x + Math.round((WIDTH - textWidth(title, 2)) / 2), box.y + 12, COLOR.selected, 2);
+    drawHeading(ctx, title, box.x + WIDTH / 2, box.y + 12);
 
     const headY = box.y + 38;
     ctxText(ctx, 'PILOTO', box.x + COLUMNS.name, headY, COLOR.muted);

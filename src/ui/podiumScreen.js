@@ -97,7 +97,7 @@ export function createPodiumScreen({ stage, localName, getRoster, onReady, onKic
     });
 
     readyPanel.draw(ctx, pointer, READY_PANEL.top, READY_PANEL.x);
-    drawButton(ctx, BUTTON, confirmed ? 'AGUARDANDO...' : 'PRONTO', inside(BUTTON, pointer.x, pointer.y));
+    drawButton(ctx, BUTTON, confirmed ? 'AGUARDANDO...' : 'PRONTO', inside(BUTTON, pointer.x, pointer.y), confirmed ? 'normal' : 'primary');
   };
   return screen;
 }

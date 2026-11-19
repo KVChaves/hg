@@ -1,6 +1,6 @@
 import { inGap, surfaceAt, trackAt, wrapDistance } from '../world/track.js';
 import { createTrapVisual } from '../world/trapVisuals.js';
-import { lifeAfterDestruction } from './carFlip.js';
+import { shockedByLightning } from './effects.js';
 import { raiseShield } from './shield.js';
 import { EXTINGUISHER_LIFE, GROUND_FIRE, hazardType, TRAP_TYPES, TRAPS_UNLOCK_TIME } from './trapTypes.js';
 
@@ -12,14 +12,16 @@ const THROW_BACK = 9, THROW_SIDE = 5, THROW_TIME = 0.5, THROW_SPEED_LOSS = 0.25,
 const BLAST_PUSH = 8, BOT_BLAST_KNOCK = 12, BLAST_FALLOFF = 0.6;   // m/s; o bot volta para a faixa sozinho, então o empurrão lateral nele é maior
 
 // O bagageiro: armadilhas e power-ups, usados com a tecla E.
-export function createTraps({ scene, car, race, harpoon, burning, mines, emp, onSound, onExtinguisher, onPlaced, onCaught, onDetonated = () => {} }) {
+export function createTraps({ scene, car, race, harpoon, burning, mines, nets, emp, onSound, onExtinguisher, onPlaced, onCaught, onDetonated = () => {} }) {
   const traps = { slots: [], selected: 0, active: [], notice: { text: '', time: 0, good: false } };
   const throws = [];
-  traps.aiming = false;                               // mira de arremesso aberta (arpão e mina)
-  const THROWN = new Set(['harpoon', 'mine']);                                  // carros sendo jogados por uma explosão
+  traps.aiming = false;                               // mira de arremesso aberta (arpão, mina e rede)
+  traps.aimYaw = () => car.yaw;                       // para onde o jogador mira (main.js põe a direção do olhar)
+  traps.aimLock = null;                               // com a mira aberta: o carro que o item travaria agora (nulo: sem alvo)
+  const THROWN = new Set(['harpoon', 'mine', 'net']);                                  // carros sendo jogados por uma explosão
 
-  // Vidro e pneus do jogador encurtam alguns efeitos (game/carUpgrades.js).
-  const effectScale = (racer, effect) => (racer.isPlayer ? { puncture: car.parts.punctureTime, paint: car.parts.paint, smoke: car.parts.smoke }[effect] ?? 1 : 1);
+  // O vidro do jogador encurta o que tapa a visão (game/carUpgrades.js).
+  const effectScale = (racer, effect) => (racer.isPlayer ? { paint: car.parts.blind, smoke: car.parts.blind }[effect] ?? 1 : 1);
 
   Object.defineProperty(traps, 'current', { get: () => traps.slots[traps.selected] });
 
@@ -40,7 +42,7 @@ export function createTraps({ scene, car, race, harpoon, burning, mines, emp, on
   // O botão do painel acende só quando o item selecionado pode ser usado.
   traps.isReady = () => traps.isUnlocked() && Boolean(traps.current) && traps.current.charges > 0;
 
-  const lifeCap = () => lifeAfterDestruction(car.destroyed);
+  const lifeCap = () => 1;                           // o extintor ignora a vida reduzida por destruições
   const showNotice = (text, good = false) => Object.assign(traps.notice, { text, time: NOTICE_TIME, good });
 
   // Motivo de o item selecionado não poder ser usado agora; nulo se puder.
@@ -48,7 +50,7 @@ export function createTraps({ scene, car, race, harpoon, burning, mines, emp, on
     if (!traps.isUnlocked()) return `BAGAGEIRO EM ${Math.ceil(traps.unlockIn())}`;
     if (type.id === 'extinguisher' && car.health >= lifeCap()) return 'VIDA CHEIA';
     if (type.id === 'harpoon' && harpoon.busy) return 'ARPAO EM USO';
-    if (car.effects.emp > 0) return 'EMP: SEM ITENS';
+    if (car.effects.emp > 0) return shockedByLightning(car.effects) ? 'SEM ITENS' : 'EMP: SEM ITENS';
     if (type.id === 'shield' && car.effects.shield > 0) return 'ESCUDO ATIVO';
     return null;
   }
@@ -67,7 +69,7 @@ export function createTraps({ scene, car, race, harpoon, burning, mines, emp, on
   // Vale para qualquer piloto: devolve uma fração da vida total, até o teto atual dele.
   traps.extinguish = racer => {
     if (racer.isPlayer) car.health = Math.min(lifeCap(), car.health + EXTINGUISHER_LIFE);
-    else racer.hp = Math.min(racer.maxHp * lifeAfterDestruction(racer.destroyed), racer.hp + racer.maxHp * EXTINGUISHER_LIFE);
+    else racer.hp = Math.min(racer.maxHp, racer.hp + racer.maxHp * EXTINGUISHER_LIFE);
     racer.effects.burning = 0;                       // e apaga o fogo
     onSound('extinguisher', racer.x, racer.z);
     onExtinguisher(racer);
@@ -91,6 +93,9 @@ export function createTraps({ scene, car, race, harpoon, burning, mines, emp, on
     } else if (id === 'mine') {
       if (!mines.launch(racer)) return false;
       if (racer.isPlayer) showNotice('MINA LANCADA', true);
+    } else if (id === 'net') {
+      if (!nets.fire(racer)) { if (racer.isPlayer) showNotice('SEM ALVO A FRENTE'); return false; }
+      if (racer.isPlayer) showNotice('REDE LANCADA', true);
     }
     return true;
   };
@@ -104,6 +109,7 @@ export function createTraps({ scene, car, race, harpoon, burning, mines, emp, on
     shield() { traps.usePower('shield', race.field[0]); },
     emp() { traps.usePower('emp', race.field[0]); },
     mine() { traps.usePower('mine', race.field[0]); },
+    net() { return traps.usePower('net', race.field[0]); },   // sem alvo à frente devolve false e a carga não se gasta
   };
 
   // `owner` é o piloto que soltou; nulo quando foi o jogador deste navegador. `dropper` é sempre quem soltou:
@@ -134,11 +140,19 @@ export function createTraps({ scene, car, race, harpoon, burning, mines, emp, on
     const slot = traps.current;
     if (THROWN.has(slot.type.id)) { traps.aiming = !traps.aiming; return; }   // E abre/fecha a mira; o clique esquerdo lança
     slot.charges--;
-    if (slot.type.powerup) POWERUPS[slot.type.id]();
+    if (slot.type.powerup) { if (POWERUPS[slot.type.id]() === false) slot.charges++; }
     else {
       const trap = place(slot.type, race.playerDist - DROP_DISTANCE_BEHIND, car.lateral, null, race.field[0]);
       onPlaced(slot.type, race.playerDist - DROP_DISTANCE_BEHIND, car.lateral, race.field[0], trap.id);
     }
+  };
+
+  // O carro que o item de arremesso travaria agora, mirando para `yaw` (nulo se ninguém está na área da mira).
+  const aimTarget = (id, yaw) => {
+    const me = race.field[0];
+    if (id === 'harpoon') return harpoon.targetAt(yaw);
+    if (id === 'mine') return mines.aimTarget(me, yaw);
+    return nets.targetFor(me, yaw);
   };
 
   // Clique esquerdo com a mira aberta: arremessa o item na direção do olhar (`yaw`). Devolve se lançou.
@@ -146,9 +160,11 @@ export function createTraps({ scene, car, race, harpoon, burning, mines, emp, on
     const slot = traps.current;
     if (!traps.aiming) return false;
     if (!slot || !THROWN.has(slot.type.id) || slot.charges <= 0 || !traps.canDrop()) { traps.aiming = false; return false; }
+    if (!aimTarget(slot.type.id, yaw)) { showNotice('SEM ALVO NA MIRA'); return false; }   // a mira continua aberta e a carga não se gasta
     traps.aiming = false;
     slot.charges--;
     if (slot.type.id === 'harpoon') harpoon.fire();
+    else if (slot.type.id === 'net') { nets.fire(race.field[0], yaw); showNotice('REDE LANCADA', true); }
     else { mines.throwStraight(race.field[0], yaw); showNotice('MINA LANCADA', true); }
     return true;
   };
@@ -295,6 +311,7 @@ export function createTraps({ scene, car, race, harpoon, burning, mines, emp, on
 
   traps.update = dt => {
     if (traps.aiming && !traps.canDrop()) traps.aiming = false;
+    traps.aimLock = traps.aiming && THROWN.has(traps.current?.type.id) ? aimTarget(traps.current.type.id, traps.aimYaw()) : null;
     traps.notice.time = Math.max(0, traps.notice.time - dt);
     updateThrows(dt);
     for (const trap of [...traps.active]) {

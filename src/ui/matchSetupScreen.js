@@ -1,7 +1,7 @@
 import { LAPS, MAX_RACERS, VIEW } from '../config.js';
 import { ctxText, textWidth } from '../art/font.js';
 import { BIOMES } from '../world/biomes/index.js';
-import { COLOR, drawButton, inside, panelBox, pointerOnStage } from './panelKit.js';
+import { COLOR, drawButton, drawHeading, inside, panelBox, pointerOnStage } from './panelKit.js';
 
 // Configuração da partida do singleplayer. Campeonato: quantos carros e quantas corridas, depois a garagem.
 // Corrida rápida: quantos carros e em qual bioma; vai direto para a pista com o carro e as compras salvos.
@@ -81,7 +81,7 @@ export function createMatchSetupScreen({ stage, onContinue, onBack }) {
   screen.draw = ctx => {
     panelBox(ctx, PANEL);
     const title = 'NOVA PARTIDA';
-    ctxText(ctx, title, Math.round(VIEW.width / 2 - textWidth(title, 2) / 2), PANEL.y + 16, COLOR.selected, 2);
+    drawHeading(ctx, title, VIEW.width / 2, PANEL.y + 16);
 
     rows().forEach((field, row) => {
       const y = ROW_Y[row], value = field.show ? field.show(config[field.key]) : String(config[field.key]);
@@ -95,7 +95,7 @@ export function createMatchSetupScreen({ stage, onContinue, onBack }) {
     ctxText(ctx, note, Math.round(VIEW.width / 2 - textWidth(note) / 2), 240, COLOR.muted);
 
     drawButton(ctx, BACK, '< MENU', inside(BACK, pointer.x, pointer.y));
-    drawButton(ctx, CONTINUE, config.mode === 'quick' ? 'CORRER >' : 'CONTINUAR >', inside(CONTINUE, pointer.x, pointer.y));
+    drawButton(ctx, CONTINUE, config.mode === 'quick' ? 'CORRER >' : 'CONTINUAR >', inside(CONTINUE, pointer.x, pointer.y), 'primary');
   };
   return screen;
 }

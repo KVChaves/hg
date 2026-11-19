@@ -7,6 +7,8 @@ nos navegadores, e ele apenas repassa as mensagens entre quem está na mesma sal
 Uso: python3 server/server.py [porta] [--host ENDERECO]
 """
 import asyncio
+import collections
+import math
 import base64
 import hashlib
 import json
@@ -22,9 +24,14 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parent.parent
-RANKING_FILE = Path(__file__).resolve().parent / "ranking.json"
+RANKING_FILE = Path(__file__).resolve().parent / "ranking_v2.json"        # ranking atual: desempenho por corrida
+LEGACY_RANKING_FILE = Path(__file__).resolve().parent / "ranking.json"    # ranking antigo (medalhas): congelado, só leitura
+HISTORY_FILE = Path(__file__).resolve().parent / "history.jsonl"   # uma linha por corrida disputada, só acrescenta
 RANKING_LIMIT = 50
-MEDAL_POINTS = {"gold": 3, "silver": 1.5, "bronze": 1}   # mesmo peso do campeonato; as demais posições não somam
+HISTORY_LIMIT = 40                                  # corridas mais recentes que o ranking mostra
+MIN_RANKED_RACES = 5                                # corridas rankeadas para ganhar posição; antes disso o jogador aparece sem posição
+PRIOR_RACES = 10                                    # corridas "imaginárias" com nota média: seguram quem jogou pouco
+MEDAL_POINTS = {"gold": 3, "silver": 1.5, "bronze": 1}   # só o ranking antigo usa; mesmo peso do campeonato
 PUBLIC_ENTRIES = {"index.html", "css", "src", "vendor", "assets"}   # o resto do projeto não é servido
 
 WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
@@ -36,6 +43,12 @@ SEND_QUEUE_SIZE = 512
 MIN_RACERS, MAX_RACERS = 2, 8                      # MAX_RACERS é o número de vagas da sala
 MIN_RACES, MAX_RACES = 1, 10
 MAX_ROOMS = 64
+RESUME_GRACE = 20                                   # segundos que a vaga fica guardada depois de a conexão cair
+CHAT_LENGTH = 60
+CHAT_INTERVAL = 0.6                                 # segundos mínimos entre mensagens de chat de um jogador
+CHAT_LOG = 30                                       # mensagens do chat global guardadas para quem entra depois
+BACK_SHOT_COS = -0.15                               # tiro que aponta mais de ~99° do carro conta como tiro para trás
+MIN_RANKED_PLAYERS = 3                             # com menos humanos que isso a partida não conta para ranking nem histórico
 MAX_RESULT_COUNT = 999
 NAME_LENGTH = 12
 ROOM_NAME_LENGTH = 20
@@ -49,28 +62,72 @@ def clean_text(value, length):
     return re.sub(r" +", " ", text)[:length].strip()
 
 
+def clean_chat(value):
+    """Texto de chat: o que a fonte do jogo desenha, com pontuação básica."""
+    text = unicodedata.normalize("NFKD", value if isinstance(value, str) else "")
+    text = re.sub(r"[^A-Za-z0-9 .,!?:()/+*%\-]", "", text).strip()
+    return re.sub(r" +", " ", text)[:CHAT_LENGTH].strip()
+
+
 def clean_name(value):
     return clean_text(value, NAME_LENGTH) or DEFAULT_NAME
 
 
+def load_players(path):
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        data = {}
+    return data if isinstance(data, dict) else {}
+
+
+def merged(players):
+    """Nomes que só mudam em maiúsculas/minúsculas são o mesmo jogador: os registros são somados."""
+    result, keys = {}, {}
+    for name, entry in players.items():
+        key = keys.setdefault(name.casefold(), name)
+        if key not in result:
+            result[key] = dict(entry)
+            continue
+        for field, value in entry.items():
+            result[key][field] = result[key].get(field, 0) + value
+    return result
+
+
+def legacy_table(players):
+    """Ranking antigo: soma de pontos de medalha. Só leitura, o arquivo não é mais gravado."""
+    rows = [{"name": name, **{key: value for key, value in entry.items() if key not in ("positionSum", "races")}, "average": round(entry["positionSum"] / entry["matches"], 2)}
+            for name, entry in merged(players).items() if entry.get("matches", 0) > 0]
+    for row in rows:
+        row["points"] = row["gold"] * MEDAL_POINTS["gold"] + row["silver"] * MEDAL_POINTS["silver"] + row["bronze"] * MEDAL_POINTS["bronze"]
+    rows.sort(key=lambda row: (-row["points"], -row["gold"], -row["silver"], -row["bronze"], row["average"]))
+    return rows[:RANKING_LIMIT]
+
+
 class Ranking:
-    """Histórico de quem jogou de verdade: só jogadores da sala entram, bots não."""
+    """Desempenho por corrida de quem jogou de verdade. Cada corrida rende uma nota de 0 (último) a 1 (primeiro),
+    igual para qualquer tamanho de grupo; a nota do jogador é a média, puxada para 0,5 enquanto ele tem poucas corridas."""
 
     def __init__(self, path):
         self.path = path
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            data = {}
-        self.players = data if isinstance(data, dict) else {}
+        self.players = merged(load_players(path))
 
-    def record(self, name, result):
-        entry = self.players.setdefault(name, {"trophies": 0, "gold": 0, "silver": 0, "bronze": 0, "kills": 0, "matches": 0, "positionSum": 0})
-        entry["trophies"] += 1 if result["position"] == 1 else 0
-        for key in ("gold", "silver", "bronze", "kills"):
-            entry[key] += result[key]
+    def entry(self, name):
+        known = next((key for key in self.players if key.casefold() == name.casefold()), name)
+        return self.players.setdefault(known, {"races": 0, "score": 0.0, "wins": 0, "podiums": 0, "positionSum": 0, "kills": 0, "matches": 0})
+
+    def record_race(self, name, position, racers):
+        entry = self.entry(name)
+        entry["races"] += 1
+        entry["score"] += (racers - position) / (racers - 1)
+        entry["wins"] += 1 if position == 1 else 0
+        entry["podiums"] += 1 if position <= 3 else 0
+        entry["positionSum"] += position
+
+    def record_match(self, name, kills):
+        entry = self.entry(name)
         entry["matches"] += 1
-        entry["positionSum"] += result["position"]
+        entry["kills"] += kills
 
     def save(self):
         temporary = self.path.with_suffix(".tmp")
@@ -78,17 +135,22 @@ class Ranking:
         temporary.replace(self.path)
 
     def table(self):
-        rows = [{"name": name, **{key: value for key, value in entry.items() if key != "positionSum"}, "average": round(entry["positionSum"] / entry["matches"], 2)}
-                for name, entry in self.players.items() if entry["matches"] > 0]
-        for row in rows:
-            row["points"] = row["gold"] * MEDAL_POINTS["gold"] + row["silver"] * MEDAL_POINTS["silver"] + row["bronze"] * MEDAL_POINTS["bronze"]
-        rows.sort(key=lambda row: (-row["points"], -row["gold"], -row["silver"], -row["bronze"], row["average"]))
+        rows = [{
+            "name": name, "rating": round(100 * (entry["score"] + PRIOR_RACES / 2) / (entry["races"] + PRIOR_RACES), 1),
+            "races": entry["races"], "wins": entry["wins"], "podiumRate": round(100 * entry["podiums"] / entry["races"]),
+            "average": round(entry["positionSum"] / entry["races"], 2), "kills": entry["kills"], "matches": entry["matches"],
+            "ranked": entry["races"] >= MIN_RANKED_RACES, "minRaces": MIN_RANKED_RACES,
+        } for name, entry in self.players.items() if entry["races"] > 0]
+        rows.sort(key=lambda row: (not row["ranked"], -row["rating"], -row["wins"], -row["races"]))      # sem posição por último
         return rows[:RANKING_LIMIT]
 
 
 class Client:
     def __init__(self, writer):
         self.id = secrets.token_hex(4)
+        self.token = secrets.token_hex(8)       # só quem tem o token retoma a vaga depois de uma queda
+        self.yaw = None                         # último rumo informado nos snapshots, para validar tiros
+        self.last_chat = 0.0
         self.name = DEFAULT_NAME
         self.writer = writer
         self.queue = asyncio.Queue(SEND_QUEUE_SIZE)
@@ -118,16 +180,29 @@ class Room:
         self.members = []
         self.bots = 0                       # a sala tem sempre MAX_RACERS vagas; bots só existem se o admin pedir
         self.races = 3
+        self.match_id = ""
+        self.race_no = 0
+        self.back_shots = True              # liberar tiro com o olhar virado para trás (Q)
         self.phase = "lobby"
+        self.ranked = True                  # partida com bots ou com poucos humanos não conta para ranking nem histórico; decidido na largada
         self.banned = set()
 
     def public_info(self):
         return {"id": self.id, "name": self.name, "players": len(self.members), "cars": MAX_RACERS, "phase": self.phase}
 
+    def ranked_status(self):
+        """Só conta para ranking e histórico quem joga sem bots e com humanos suficientes."""
+        if self.bots > 0:
+            return {"ok": False, "reason": "bots"}
+        if len(self.members) < MIN_RANKED_PLAYERS:
+            return {"ok": False, "reason": "players", "min": MIN_RANKED_PLAYERS}
+        return {"ok": True, "reason": ""}
+
     def state(self):
         return {
-            "id": self.id, "name": self.name, "hostId": self.host.id, "phase": self.phase,
-            "config": {"cars": MAX_RACERS, "bots": self.bots, "races": self.races},
+            "id": self.id, "name": self.name, "hostId": self.host.id, "phase": self.phase, "matchId": self.match_id,
+            "config": {"cars": MAX_RACERS, "bots": self.bots, "races": self.races, "backShots": self.back_shots},
+            "ranked": self.ranked_status(),
             "players": [{"id": member.id, "name": member.name} for member in self.members],
         }
 
@@ -150,7 +225,10 @@ class Lobby:
     def __init__(self):
         self.clients = set()
         self.rooms = {}
+        self.pending = {}                   # token -> cliente que caiu e ainda pode voltar
         self.ranking = Ranking(RANKING_FILE)
+        self.legacy_rows = legacy_table(load_players(LEGACY_RANKING_FILE))
+        self.chat = collections.deque(maxlen=CHAT_LOG)   # chat global: todos os conectados leem tudo, em sala ou fora dela
 
     def room_list(self):
         return [room.public_info() for room in self.rooms.values()]
@@ -247,6 +325,8 @@ class Lobby:
             room.bots = max(0, min(MAX_RACERS - len(room.members), bots))
         if isinstance(races, int):
             room.races = max(MIN_RACES, min(MAX_RACES, races))
+        if isinstance(message.get("backShots"), bool):
+            room.back_shots = message["backShots"]
         self.publish_room(room)
 
     def on_start(self, client, _message):
@@ -256,6 +336,8 @@ class Lobby:
         if len(room.members) + room.bots < MIN_RACERS:    # sozinho na sala, precisa de ao menos um bot
             return client.send({"t": "error", "code": "need_racers"})
         room.phase = "playing"
+        room.match_id, room.race_no = secrets.token_hex(3), 0
+        room.ranked = room.bots == 0 and len(room.members) >= MIN_RANKED_PLAYERS
         state = room.state()
         for member in room.members:
             member.send({"t": "started", "room": state})
@@ -267,17 +349,99 @@ class Lobby:
         return all(isinstance(result.get(key), int) and 0 <= result[key] <= MAX_RESULT_COUNT for key in ("gold", "silver", "bronze", "kills"))
 
     def record_results(self, room, results):
-        if not isinstance(results, list):
+        if not room.ranked or not isinstance(results, list):
             return
         members = {member.id: member for member in room.members}
         recorded = False
         for result in results:
             member = members.get(result.get("id")) if isinstance(result, dict) else None
             if member is not None and self.valid_result(result, MAX_RACERS):
-                self.ranking.record(member.name, result)
+                self.ranking.record_match(member.name, result["kills"])
                 recorded = True
         if recorded:
             self.ranking.save()
+
+    @staticmethod
+    def append_history(entry):
+        try:
+            with HISTORY_FILE.open("a", encoding="utf-8") as file:
+                file.write(json.dumps(entry, ensure_ascii=False, separators=(",", ":")) + "\n")
+        except OSError:
+            pass                                  # histórico é extra: falhar ao gravar não derruba a sala
+
+    def on_race(self, client, message):
+        """O admin reporta cada corrida que termina: quem correu, em que posição e em que mapa."""
+        room = self.admin_room(client)
+        results = message.get("results")
+        if room is None or room.phase != "playing" or not room.ranked or not isinstance(results, list) or not 0 < len(results) <= MAX_RACERS:
+            return
+        members = {member.id: member for member in room.members}
+        racers, humans = [], []
+        if len(results) < 2 or sorted(result.get("position") if isinstance(result, dict) else 0 for result in results) != list(range(1, len(results) + 1)):
+            return                                # posições têm de ser 1..N sem repetir, senão a nota não faz sentido
+        for result in results:
+            if not isinstance(result, dict) or not isinstance(result.get("position"), int) or not 1 <= result["position"] <= MAX_RACERS:
+                return
+            member = members.get(result.get("id"))
+            seconds = result.get("time")
+            racers.append({
+                "name": member.name if member else clean_text(result.get("name"), NAME_LENGTH) or "Bot",
+                "human": member is not None, "position": result["position"],
+                "time": round(seconds, 2) if isinstance(seconds, (int, float)) and not isinstance(seconds, bool) and 0 <= seconds < 36000 else None,
+            })
+            if member:
+                humans.append((member.name, result["position"]))
+        if not humans:
+            return
+        for name, position in humans:
+            self.ranking.record_race(name, position, len(results))
+        self.ranking.save()
+        room.race_no += 1
+        self.append_history({"at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "room": room.name, "match": room.match_id, "n": room.race_no,
+                             "biome": clean_text(message.get("biome"), 20), "racers": sorted(racers, key=lambda racer: racer["position"])})
+
+    @staticmethod
+    def recent_history(player=None, match=None):
+        recent = collections.deque(maxlen=MAX_RACES if match else HISTORY_LIMIT)
+        wanted = player.casefold() if player else None
+        try:
+            with HISTORY_FILE.open(encoding="utf-8") as file:
+                for line in file:
+                    try:
+                        entry = json.loads(line)
+                    except ValueError:
+                        continue                  # linha cortada por uma queda: ignora e segue
+                    if match and entry.get("match") != match:
+                        continue
+                    if wanted and not any(racer.get("name", "").casefold() == wanted for racer in entry.get("racers", [])):
+                        continue
+                    recent.append(entry)
+        except OSError:
+            pass
+        return list(recent) if match else list(reversed(recent))   # a partida em ordem de corrida; o resto, a mais nova primeiro
+
+    def on_history(self, client, message):
+        player, match = clean_text(message.get("player"), NAME_LENGTH), clean_text(message.get("match"), 12)
+        reply = {"t": "history", "races": self.recent_history(player or None, match or None)}
+        if player:
+            reply["player"] = player
+        if match:
+            reply["match"] = match
+        client.send(reply)
+
+    def on_chat(self, client, message):
+        text = clean_chat(message.get("text"))
+        now = time.monotonic()
+        if not text or now - client.last_chat < CHAT_INTERVAL:
+            return
+        client.last_chat = now
+        line = {"name": client.name, "text": text}
+        self.chat.append(line)
+        for member in self.clients:
+            member.send({"t": "chat", **line})
+
+    def on_legacy(self, client, _message):
+        client.send({"t": "legacy", "players": self.legacy_rows})
 
     def on_ranking(self, client, _message):
         client.send({"t": "ranking", "players": self.ranking.table()})
@@ -292,9 +456,34 @@ class Lobby:
         for member in room.members:
             member.send({"t": "ended", "room": state})
 
+    @staticmethod
+    def allow_game_message(client, room, data):
+        """Guarda o rumo de cada carro (snapshots) e barra tiro para trás quando a sala proíbe."""
+        if not isinstance(data, dict):
+            return True
+        if data.get("k") == "s":
+            for entry in data.get("r") if isinstance(data.get("r"), list) else []:
+                if isinstance(entry, list) and len(entry) > 6 and entry[0] == client.id and isinstance(entry[6], (int, float)):
+                    client.yaw = entry[6]
+            return True
+        if data.get("k") != "shot" or room.back_shots or client.yaw is None:
+            return True
+        try:
+            (fx, _, fz), (ex, _, ez) = data["f"], data["e"]
+            dx, dz = ex - fx, ez - fz
+            length = math.hypot(dx, dz)
+            if length < 0.01:
+                return True
+            cosine = (dx * -math.sin(client.yaw) + dz * -math.cos(client.yaw)) / length
+        except (KeyError, TypeError, ValueError):
+            return True
+        return cosine >= BACK_SHOT_COS
+
     def on_game(self, client, message):
         room = client.room
         if room is None or room.phase != "playing" or "d" not in message:
+            return
+        if not self.allow_game_message(client, room, message["d"]):
             return
         outgoing = {"t": "g", "from": client.id, "d": message["d"]}
         target = message.get("to")
@@ -302,8 +491,22 @@ class Lobby:
             if member is not client and (target is None or member.id == target):
                 member.send(outgoing)
 
+    def on_resume(self, client, message):
+        old = self.pending.pop(message.get("token"), None) if client.room is None else None
+        room = old.room if old is not None else None
+        if room is None or old not in room.members:
+            return client.send({"t": "resume_failed"})
+        old.grace.cancel()
+        client.id, client.token, client.name, client.yaw = old.id, old.token, old.name, old.yaw
+        room.members[room.members.index(old)] = client
+        if room.host is old:
+            room.host = client
+        client.room, old.room = room, None
+        client.send({"t": "resumed", "id": client.id, "room": room.state(), "chat": list(self.chat)})
+        self.publish_room(room)
+
     HANDLERS = {"create": on_create, "join": on_join, "name": on_name, "leave": on_leave,
-                "kick": on_kick, "config": on_config, "start": on_start, "end": on_end_match, "ranking": on_ranking, "g": on_game}
+                "kick": on_kick, "config": on_config, "start": on_start, "race": on_race, "end": on_end_match, "ranking": on_ranking, "history": on_history, "legacy": on_legacy, "chat": on_chat, "resume": on_resume, "g": on_game}
 
     def handle(self, client, text):
         try:
@@ -322,13 +525,25 @@ class Lobby:
 
     def connect(self, client):
         self.clients.add(client)
-        client.send({"t": "welcome", "id": client.id})
+        client.send({"t": "welcome", "id": client.id, "token": client.token})
+        client.send({"t": "chatlog", "lines": list(self.chat)})
         client.send({"t": "rooms", "rooms": self.room_list()})
 
     def disconnect(self, client):
         self.clients.discard(client)
+        if client.room is not None and client.room.members:
+            # Quem estava numa sala guarda a vaga por alguns segundos: se voltar com o token, retoma de onde parou.
+            self.pending[client.token] = client
+            client.grace = asyncio.get_running_loop().call_later(RESUME_GRACE, self.expire, client)
+            return
         self.remove_from_room(client)
         self.publish_rooms()
+
+    def expire(self, client):
+        if self.pending.pop(client.token, None) is client:
+            self.remove_from_room(client)
+            self.publish_rooms()
+
 
 
 lobby = Lobby()

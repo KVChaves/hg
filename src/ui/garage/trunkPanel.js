@@ -1,6 +1,6 @@
 import { ctxText, textWidth } from '../../art/font.js';
 import { TRAP_TYPES } from '../../game/trapTypes.js';
-import { clearClickable, COLOR, drawButton, fitImage, inside, markClickable, panelBox } from '../panelKit.js';
+import { clearClickable, COLOR, drawButton, drawHeading, fitImage, inside, markClickable, panelBox } from '../panelKit.js';
 import { trunkItemThumb } from './garageThumbs.js';
 
 // Janela do bagageiro: todos os itens numa lista, cada um com a sua quantidade, preço por unidade e limite próprio.
@@ -47,7 +47,7 @@ export function createTrunkPanel({ getTrunk, canSet, setCount, funds, onClose = 
     draw(ctx, pointer) {
       clearClickable();                              // o que está por trás da janela não recebe clique
       panelBox(ctx, BOX);
-      ctxText(ctx, 'BAGAGEIRO', BOX.x + 12, BOX.y + 10, COLOR.selected, 2);
+      drawHeading(ctx, 'BAGAGEIRO', BOX.x + 20, BOX.y + 10, { align: 'left' });
       const balance = `SALDO R$ ${funds()}`;
       ctxText(ctx, balance, BOX.x + BOX.width - 12 - textWidth(balance), BOX.y + 13, COLOR.selected);
       ctxText(ctx, 'ITEM', BOX.x + 40, BOX.y + 24, COLOR.muted);
@@ -74,7 +74,7 @@ export function createTrunkPanel({ getTrunk, canSet, setCount, funds, onClose = 
         const total = count > 0 ? `R$ ${type.price * count}` : '-';
         ctxText(ctx, total, BOX.x + BOX.width - 12 - textWidth(total), y + 9, count > 0 ? COLOR.text : COLOR.muted);
       }
-      drawButton(ctx, CLOSE, 'FECHAR', inside(CLOSE, pointer.x, pointer.y));
+      drawButton(ctx, CLOSE, 'FECHAR', inside(CLOSE, pointer.x, pointer.y), 'back');
     },
   };
   return panel;

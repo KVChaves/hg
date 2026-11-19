@@ -44,6 +44,13 @@ const PLOTTERS = {
     r.line(ox, oy + 12, ox + 11, oy + 4, dim(0x9a7a50), 2);
     r.poly([[ox + 17, oy], [ox + 9, oy + 2], [ox + 12, oy + 3], [ox + 11, oy + 7], [ox + 14, oy + 5], [ox + 15, oy + 8]], dim(0xd0d4dc));
   },
+  net(r, ox, oy, dim) {
+    const rope = dim(0xe8dcb0), knot = dim(0xb8a878);
+    for (const x of [3, 7, 11, 15]) r.line(ox + x, oy + 1, ox + x, oy + 13, rope, 1);
+    for (const y of [2, 6, 10]) r.line(ox + 2, oy + y, ox + 16, oy + y, rope, 1);
+    for (const x of [3, 11]) for (const y of [2, 10]) r.rect(ox + x - 1, oy + y - 1, 2, 2, knot);
+    r.rect(ox + 7, oy + 5, 2, 2, knot);
+  },
   shield(r, ox, oy, dim) {
     r.poly([[ox + 2, oy + 1], [ox + 16, oy + 1], [ox + 16, oy + 7], [ox + 9, oy + 13], [ox + 2, oy + 7]], dim(0x4a8ad8));
     r.poly([[ox + 4, oy + 3], [ox + 14, oy + 3], [ox + 14, oy + 7], [ox + 9, oy + 11], [ox + 4, oy + 7]], dim(0x8cc4f8));

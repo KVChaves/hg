@@ -18,6 +18,14 @@ const RESPAWN_CLEAR = 150;                           // o que fica esperando (á
 const FALL_TIME = 0.55, TOPPLE_TIME = 0.9, TOPPLE_SOLID_AT = 0.65, TOPPLE_LEAN = 0.12, WOBBLE = 0.06, WOBBLE_RATE = 18;
 const SHAKE = 0.25, SHAKE_RATE = 30, DUST_COLORS = { rock: [0x8a867e, 0x6a665e], stalactite: [0xd8f4ff, 0x9ad8f0], barrels: [0xe8c020, 0x5a5a5a], crates: [0x9a7038, 0x5a5a5a], pillar: [0xe0b078, 0xc88a50], meteor: [0x8a8480, 0x5a5450], coconut: [0xd8c090, 0xa89a70], cactus: [0xd8c090, 0x9a8a60] };
 const LEAF_COLORS = [0x2f7a2a, 0x3a8c30, 0x5a3a20];
+// Som de quebrar por material (nomes em audio/soundFiles.js); o que não está aqui usa `crash`.
+const OBSTACLE_SOUND = {
+  tree: 'obstacleWood', crates: 'obstacleWood', umbrella: 'obstacleWood', cactus: 'obstacleWood', coconut: 'obstacleWood', tumbleweed: 'obstacleWood',
+  animal: 'obstacleFlesh', camel: 'obstacleFlesh', crab: 'obstacleFlesh', kaiju: 'obstacleFlesh',
+  stalactite: 'obstacleIce', snowball: 'obstacleIce', crystal: 'obstacleCrystal',
+  rock: 'obstacleRock', pillar: 'obstacleRock', meteor: 'obstacleRock',
+  barrels: 'obstacleMetal', antenna: 'obstacleMetal', rover: 'obstacleMetal',
+};
 const CAR_HALF_WIDTH = 0.95, CAR_HALF_LENGTH = 1.8, HIT_SLOWDOWN = 0.55, LEADER_HIT_SLOWDOWN = 0.2, LEADER_SPIN = 2.5;   // fração da velocidade que sobra
 const PASSED_MARGIN = 35, LINGER = 8, CLEAR_VIEW = 120;   // caído na pista sem ninguém por perto, some depois de LINGER s
 const EDGE_LANE = TRACK_WIDTH / 2 - 1.2, CROSS_FROM = TRACK_WIDTH / 2 + 4, BOT_LANE_LIMIT = TRACK_WIDTH / 2 - 1.2;
@@ -116,7 +124,7 @@ export function createObstacles({ scene, race, car, isAuthority, onSound, onPlay
     ob.group.getWorldPosition(position);
     debris.push(createDebris(scene, position, ob.type.debris));
     remove(ob);
-    onSound('crash', position.x, position.z, 0.7);
+    onSound(OBSTACLE_SOUND[ob.type.id] ?? 'crash', position.x, position.z, 0.7);
     if (announce) onBroken(ob);
   }
 
@@ -140,17 +148,18 @@ export function createObstacles({ scene, race, car, isAuthority, onSound, onPlay
   }
 
   function crash(racer, ob) {
-    const leading = leaderOf(alive()) === racer, keep = leading ? LEADER_HIT_SLOWDOWN : HIT_SLOWDOWN;
+    const leading = leaderOf(alive()) === racer, keep = Math.min(ob.type.keep ?? HIT_SLOWDOWN, leading ? LEADER_HIT_SLOWDOWN : 1);
+    const kick = (ob.type.spin ?? 0) + (leading ? LEADER_SPIN : 0), side = Math.random() < 0.5 ? -1 : 1;
     if (racer.isPlayer) {
       crashDamage(car, ob.type.damage);
       car.vx *= keep;
       car.vz *= keep;
-      if (leading) car.spin += (Math.random() < 0.5 ? -1 : 1) * LEADER_SPIN;
+      car.spin += side * kick;
       onPlayerHit(ob.type);
     } else {
       damageOpponent(racer, ob.type.damage * CAR_MAX_HP, null);
       racer.v *= keep;
-      if (leading) racer.spin += (Math.random() < 0.5 ? -1 : 1) * LEADER_SPIN;
+      racer.spin += side * kick;
     }
     destroy(ob);
   }

@@ -4,7 +4,7 @@ import { projectCabinPixel } from '../cabin/sprite.js';
 import { createGunAnimator, MAGAZINE_SEAT_AT } from './guns/gunAnimator.js';
 import { createGunEffects } from './guns/gunEffects.js';
 import { createGunRig } from './guns/gunRig.js';
-import { paintFistHolding, paintGunHand, paintLeftFist, paintRightFist } from './handArt.js';
+import { drawHandImage, paintHandSet } from './handArt.js';
 
 // Mãos do piloto e arma. A esquerda fica sempre no volante; a direita segue a ação:
 // volante (parado), alavanca (trocando marcha), registro do nitro, botão da armadilha,
@@ -34,11 +34,10 @@ const lerp = (a, b, t) => a + (b - a) * t;
 const ease = (current, target, speed, dt) => current + (target - current) * (1 - Math.exp(-speed * dt));
 
 export function createHands({ weapon, traps, look, cabin, customs, isAiming, wantsFire, wantsNitro, onGunSound }) {
-  const leftFist = paintLeftFist();
-  const rightFist = paintRightFist();
-  const fists = { round: paintFistHolding('round'), shell: paintFistHolding('shell'), magazine: paintFistHolding('magazine'), bolt: paintFistHolding('bolt'), grenade: paintFistHolding('grenade') };
-  const gunHand = paintGunHand(false);
-  const gunHandFiring = paintGunHand(true);
+  // Estilo das mãos escolhido na garagem (peça `hands` da cabine); cada estilo é pintado uma vez só.
+  const handSets = {};
+  const handSet = () => (handSets[cabin.loadout.hands] ??= paintHandSet(cabin.loadout.hands));
+  let styleClock = 0;
 
   const rigs = {};
   const rigFor = id => (rigs[id] ??= createGunRig(id, customs[id]));
@@ -150,6 +149,7 @@ export function createHands({ weapon, traps, look, cabin, customs, isAiming, wan
     lastGear = gear.index;
     shiftTimer -= dt;
     nitroClock += dt;
+    styleClock += dt;
     fireRequest = Math.max(0, fireRequest - dt);
     trapRequest = Math.max(0, trapRequest - dt);
     buttonPress = Math.max(0, buttonPress - dt);
@@ -236,6 +236,7 @@ export function createHands({ weapon, traps, look, cabin, customs, isAiming, wan
   }
 
   function poseImage() {
+    const { rightFist, fists, gunHand, gunHandFiring } = handSet();
     if (travel < 0.75) return rightFist;
     if (state === 'gun') {
       if (handOnAction() && animator.pose.actionHand > 0.5) return rightFist;
@@ -249,10 +250,11 @@ export function createHands({ weapon, traps, look, cabin, customs, isAiming, wan
   }
 
   function drawCentered(ctx, image, x, y, angle) {
+    const set = handSet();
     ctx.save();
     ctx.translate(Math.round(x), Math.round(y));
     ctx.rotate(angle);
-    ctx.drawImage(image, -Math.floor(image.width / 2), -Math.floor(image.height / 2));
+    drawHandImage(ctx, image, -Math.floor(image.width / 2), -Math.floor(image.height / 2), set.alpha(styleClock), set.pulse(styleClock));
     ctx.restore();
   }
 
@@ -273,7 +275,7 @@ export function createHands({ weapon, traps, look, cabin, customs, isAiming, wan
 
     if (!outside) {
       const left = rimPoint(GRIP_LEFT_ANGLE, grips);
-      drawCentered(ctx, leftFist, left.x, left.y, left.angle);
+      drawCentered(ctx, handSet().leftFist, left.x, left.y, left.angle);
     }
 
     drawGun(ctx);

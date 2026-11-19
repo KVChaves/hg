@@ -6,7 +6,6 @@ import { createAmmoRack } from './ammoRack.js';
 import { createNitroFlame } from './nitroFlame.js';
 import { createTrapButton, createTrapDisplay } from './trapDisplay.js';
 import { Sprite } from './sprite.js';
-import { loadPng } from './pngPixels.js';
 
 // Mostradores do painel. Cada um guarda a arte fixa e só redesenha quando o valor muda.
 
@@ -21,7 +20,6 @@ function plotNeedle(r, cx, cy, radius, value) {
 
 // Mostradores do jogo original (Dial.png, 32x32) com os ponteiros e o visor digital desenhados por cima.
 const DIAL = 'assets/cabin/dial.png';
-const SHIFT_LIGHTS = 'assets/cabin/shift-lights.png', LIGHTS_W = 53, LIGHTS_H = 17;
 
 function createInstruments(parent) {
   const W = 144, H = 34, LEFT = [16, 16], RIGHT = [128, 16], DIAL_R = 13;   // um mostrador de cada lado do volante
@@ -45,29 +43,6 @@ function createInstruments(parent) {
     rasterTiny(r, shown, RIGHT[0] - (shown.length * 4 - 1) / 2 | 0, 22, 0xc8c8c8);   // km/h no fundo do velocímetro
     r.commit();
     sprite.refresh();
-  };
-}
-
-// Luzes de troca de marcha: 6 quadros acendem das pontas para o centro conforme o giro; o 7º é o nitro aberto.
-function createShiftLights(parent) {
-  const canvas = document.createElement('canvas');
-  canvas.width = LIGHTS_W; canvas.height = LIGHTS_H;
-  const ctx = canvas.getContext('2d');
-  const sprite = new Sprite(parent, canvas, { ...LAYOUT.shiftLights, depth: DEPTH.gauges });
-  let sheet = null, last = -1, wanted = 0;
-
-  const show = () => {
-    if (!sheet) return;
-    ctx.clearRect(0, 0, LIGHTS_W, LIGHTS_H);
-    ctx.drawImage(sheet, 0, wanted * LIGHTS_H, LIGHTS_W, LIGHTS_H, 0, 0, LIGHTS_W, LIGHTS_H);
-    sprite.refresh();
-    last = wanted;
-  };
-  loadPng(SHIFT_LIGHTS).then(image => { sheet = image; show(); });
-
-  return (rpm, nitroOpen) => {
-    wanted = nitroOpen ? 6 : rpm < 0.55 ? 0 : Math.min(5, 1 + Math.floor((rpm - 0.55) / 0.09));
-    if (wanted !== last) show();
   };
 }
 
@@ -137,8 +112,8 @@ function createNitro(parent) {
   const updateFlame = createNitroFlame(parent, LAYOUT.nitroNozzle);
   let base = r.snapshot(), last = '';
 
-  function update(level, open, dt) {
-    updateFlame(open, dt);
+  function update(level, open, dt, blue = false) {
+    updateFlame(open, dt, blue);
     const filled = Math.round(NITRO_BAR.height * level);
     const key = `${filled}|${open}`;
     if (key === last) return;
@@ -170,18 +145,16 @@ function rasterRotated(r, text, x, y) {
 
 export function createDashboard(parent) {
   const instruments = createInstruments(parent);
-  const shiftLights = createShiftLights(parent);
   const updateTrapDisplay = createTrapDisplay(parent);
   const trapButton = createTrapButton(parent);
   const nitro = createNitro(parent);
   const ammoRack = createAmmoRack(parent);
 
-  function update({ gear, nitroLevel, nitroOpen, reserveAmmo, trapSlot, trapReady, dt }) {
+  function update({ gear, nitroLevel, nitroOpen, nitroBlue, reserveAmmo, trapSlot, trapReady, dt }) {
     instruments(gear.kmh, gear.rpm);
-    shiftLights(gear.rpm, nitroOpen);
     updateTrapDisplay(trapSlot);
     trapButton.setLit(trapReady);
-    nitro.update(nitroLevel, nitroOpen, dt);
+    nitro.update(nitroLevel, nitroOpen, dt, nitroBlue);
     ammoRack.update(reserveAmmo);
   }
 

@@ -258,6 +258,6 @@ const BASE_GRIP = {
 };
 
 export function buildGunArt(id, custom) {
-  const m = materials(BASE_METAL[id], custom, BASE_GRIP[id]);
+  const m = materials(BASE_METAL[id] ?? BASE_METAL[familyOf(id)] ?? STEEL, custom, BASE_GRIP[id]);
   return { ...(BUILDERS[id] ?? BUILDERS[familyOf(id)])(custom, m), flash: m.flash };
 }

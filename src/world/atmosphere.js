@@ -29,6 +29,19 @@ export function createAtmosphere(scene) {
   streaks.frustumCulled = false;
   scene.add(streaks);
 
+  // Chuva ou neve do clima dinâmico (game/dynamicWeather.js): outra camada de partículas, por cima das do bioma.
+  const PRECIP_COUNT = 650;
+  const rainPositions = new Float32Array(PRECIP_COUNT * 6), snowPositions = new Float32Array(PRECIP_COUNT * 3);
+  const rainGeometry = new THREE.BufferGeometry(), snowGeometry = new THREE.BufferGeometry();
+  rainGeometry.setAttribute('position', new THREE.BufferAttribute(rainPositions, 3));
+  snowGeometry.setAttribute('position', new THREE.BufferAttribute(snowPositions, 3));
+  const rain = new THREE.LineSegments(rainGeometry, new THREE.LineBasicMaterial({ color: 0xa8b8c8, fog: false, transparent: true, opacity: 0.5 }));
+  const snow = new THREE.Points(snowGeometry, new THREE.PointsMaterial({ color: 0xffffff, size: 2, sizeAttenuation: false, fog: false }));
+  for (const layer of [rain, snow]) { layer.frustumCulled = false; layer.visible = false; scene.add(layer); }
+  const dropOffsets = new Float32Array(PRECIP_COUNT * 3), dropSway = new Float32Array(PRECIP_COUNT);
+  for (let i = 0; i < PRECIP_COUNT; i++) { dropOffsets.set([Math.random() * BOX.x, Math.random() * BOX.y, Math.random() * BOX.z], i * 3); dropSway[i] = Math.random() * Math.PI * 2; }
+  let precip = null, precipLevel = 0, precipVisible = true;
+
   const offsets = new Float32Array(MAX_PARTICLES * 3), sway = new Float32Array(MAX_PARTICLES);
   let weather = null, time = 0, active = 0, storm = 0, wind = 0, gustX = 0, gustZ = 0;
   const tint = new THREE.Color();
@@ -78,10 +91,41 @@ export function createAtmosphere(scene) {
     }
     geometry.attributes.position.needsUpdate = true;
     streakGeometry.attributes.position.needsUpdate = true;
+    updatePrecip(dt, x, y, z);
+  }
+
+  const RAIN_FALL = 48, RAIN_STREAK = 2.4, SNOW_FALL = 7, SNOW_SWAY = 2.6;
+  function updatePrecip(dt, x, y, z) {
+    if (!precip || precipLevel <= 0.01) return;
+    const count = Math.ceil(PRECIP_COUNT * precipLevel), wrap = (value, size) => ((value % size) + size) % size - size / 2;
+    const fall = precip === 'rain' ? RAIN_FALL : SNOW_FALL;
+    for (let i = 0; i < count; i++) {
+      dropOffsets[i * 3 + 1] -= fall * dt;
+      const swing = precip === 'snow' ? Math.sin(time * 1.6 + dropSway[i]) * SNOW_SWAY : 0;
+      const px = x + wrap(dropOffsets[i * 3] - x, BOX.x) + swing, py = y + wrap(dropOffsets[i * 3 + 1], BOX.y) + BOX.y * 0.35, pz = z + wrap(dropOffsets[i * 3 + 2] - z, BOX.z);
+      if (precip === 'rain') rainPositions.set([px, py, pz, px, py + RAIN_STREAK, pz], i * 6);
+      else snowPositions.set([px, py, pz], i * 3);
+    }
+    const geometryInUse = precip === 'rain' ? rainGeometry : snowGeometry;
+    geometryInUse.setDrawRange(0, precip === 'rain' ? count * 2 : count);
+    geometryInUse.attributes.position.needsUpdate = true;
+  }
+
+  // Clima dinâmico: `kind` é 'rain', 'snow' ou null; `level` de 0 a 1 é quantas gotas ou flocos aparecem. `dim` escurece o céu pintado.
+  function setPrecipitation(kind, level, dim = 0) {
+    precip = level > 0.01 ? kind : null;
+    precipLevel = level;
+    rain.visible = precipVisible && precip === 'rain';
+    snow.visible = precipVisible && precip === 'snow';
+    const shade = 1 - dim * level;
+    domeMaterial.color.setRGB(shade, shade, shade);
   }
 
   // No escuro (caverna, túnel) a chuva e a neve somem: elas ignoram a neblina e acenderiam o breu.
   function setWeatherVisible(visible) {
+    precipVisible = visible;
+    rain.visible = visible && precip === 'rain';
+    snow.visible = visible && precip === 'snow';
     points.visible = visible && Boolean(weather) && !weather.streak;
     streaks.visible = visible && Boolean(weather?.streak);
   }
@@ -98,7 +142,7 @@ export function createAtmosphere(scene) {
     gustZ = z;
   }
 
-  return { setBiome, update, setWeatherVisible, setStorm, setGust };
+  return { setBiome, update, setWeatherVisible, setStorm, setGust, setPrecipitation };
 }
 
 // Ajudas para pintar céu: gradiente até a cor do horizonte (`sky` do bioma) e uma serra no meio da altura.

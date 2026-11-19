@@ -18,6 +18,8 @@ const HIT_SLOWDOWN = 0.55, HIT_SPIN = 2.4, PLAYER_SHARE = 0.55;
 const BOT_DODGE_CHANCE = 0.6, BOT_DODGE_SIGHT = 70, BOT_DODGE_CLEARANCE = 2.6;
 const BOLT_TIME = 0.28, BOLT_HEIGHT = 60, BOLT_SEGMENTS = 9, BOLT_JITTER = 2.4, FLASH_RANGE = 260;
 const SKY_FLASH_EVERY = [4, 9], FLASH_DECAY = 7;
+const THUNDER_DELAY = [0.4, 2.2], THUNDER_NEAR = 40;   // o trovão do relâmpago do céu chega depois do clarão
+const SKY_THUNDER = ['thunderFar', 'thunderRoll'];
 const RING_COLOR = 0x70d8ff, BOLT_COLOR = 0xe8f4ff, PILLAR_HEIGHT = 26;
 
 const between = ([low, high]) => low + Math.random() * (high - low);
@@ -25,7 +27,7 @@ const clamp = (value, limit) => Math.max(-limit, Math.min(limit, value));
 
 export function createLightning({ scene, race, car, isAuthority, onSound, onPlayerHit }) {
   let config = null, wait = 0, skyWait = 0, flash = 0;
-  const strikes = [];
+  const strikes = [], thunders = [];                 // thunders: trovões esperando a hora de tocar
   const up = new THREE.Vector3(0, 1, 0), direction = new THREE.Vector3();
 
   function groundPoint(dist, lane) {
@@ -136,7 +138,7 @@ export function createLightning({ scene, race, car, isAuthority, onSound, onPlay
     const { at } = s.marker, distance = Math.hypot(at.x - car.x, at.z - car.z);
     flash = Math.max(flash, 1 - Math.min(1, distance / FLASH_RANGE) * 0.7);
     onSound('emp', at.x, at.z, 1);
-    onSound('dynamite', at.x, at.z, 0.8);
+    onSound('thunderClose', at.x, at.z, 1);
     for (const racer of race.field) {
       if (racer.remote || racer.dead > 0) continue;
       if (!racer.isPlayer && !isAuthority()) continue;
@@ -149,12 +151,14 @@ export function createLightning({ scene, race, car, isAuthority, onSound, onPlay
         car.vz *= HIT_SLOWDOWN;
         car.spin += spin;
         car.effects.emp = Math.max(car.effects.emp, config.emp);
+        car.effects.shock = Math.max(car.effects.shock, config.emp);
         onPlayerHit();
       } else {
         damageOpponent(racer, config.damage * CAR_MAX_HP, null);
         racer.v *= HIT_SLOWDOWN;
         racer.spin += spin;
         racer.effects.emp = Math.max(racer.effects.emp, config.emp);
+        racer.effects.shock = Math.max(racer.effects.shock, config.emp);
       }
     }
   }
@@ -165,6 +169,7 @@ export function createLightning({ scene, race, car, isAuthority, onSound, onPlay
       if (s.bolt) disposeGroup(s.bolt);
     }
     strikes.length = 0;
+    thunders.length = 0;
     wait = config ? between(config.interval) + 3 : 0;
     skyWait = between(SKY_FLASH_EVERY);
     flash = 0;
@@ -182,6 +187,12 @@ export function createLightning({ scene, race, car, isAuthority, onSound, onPlay
     update(dt) {
       flash *= Math.exp(-FLASH_DECAY * dt);
       if (!config || dt <= 0) return;
+      for (let n = thunders.length - 1; n >= 0; n--) {
+        const thunder = thunders[n];
+        if ((thunder.delay -= dt) > 0) continue;
+        onSound(thunder.name, thunder.x, thunder.z, 0.6);
+        thunders.splice(n, 1);
+      }
       if (race.started && !race.finished) {
         if ((wait -= dt) <= 0) {
           const list = candidates(), player = list.find(racer => racer.isPlayer), bots = list.filter(racer => !racer.isPlayer);
@@ -192,7 +203,7 @@ export function createLightning({ scene, race, car, isAuthority, onSound, onPlay
       if ((skyWait -= dt) <= 0) {                    // relâmpago distante, sem raio na pista
         skyWait = between(SKY_FLASH_EVERY);
         flash = Math.max(flash, 0.35 + Math.random() * 0.3);
-        onSound('dynamite', car.x + between([-200, 200]), car.z + between([-200, 200]), 0.25);
+        thunders.push({ delay: between(THUNDER_DELAY), name: SKY_THUNDER[Math.floor(Math.random() * SKY_THUNDER.length)], x: car.x + between([-THUNDER_NEAR, THUNDER_NEAR]), z: car.z + between([-THUNDER_NEAR, THUNDER_NEAR]) });
       }
       for (let n = strikes.length - 1; n >= 0; n--) {
         const s = strikes[n];

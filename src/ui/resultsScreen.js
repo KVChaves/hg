@@ -1,6 +1,6 @@
 import { VIEW } from '../config.js';
 import { ctxText, textWidth } from '../art/font.js';
-import { COLOR, drawButton, inside, MEDALS, panelBox, pointerOnStage } from './panelKit.js';
+import { COLOR, drawButton, drawHeading, inside, MEDALS, panelBox, pointerOnStage } from './panelKit.js';
 
 // Depois de cada corrida: a ordem de chegada e a classificação da competição.
 
@@ -90,7 +90,7 @@ export function createResultsScreen({ stage, onNext, onFinished, localName, getU
   screen.draw = ctx => {
     ctx.fillStyle = COLOR.backdrop;
     ctx.fillRect(0, 0, VIEW.width, VIEW.height);
-    centered(ctx, `CORRIDA ${match.racesDone} DE ${match.raceCount}`, 24, COLOR.selected, 2);
+    drawHeading(ctx, `CORRIDA ${match.racesDone} DE ${match.raceCount}`, VIEW.width / 2, 24);
     drawFinish(ctx);
     drawTable(ctx);
     if (match.isOver) {
@@ -100,7 +100,7 @@ export function createResultsScreen({ stage, onNext, onFinished, localName, getU
     const upcoming = !match.isOver && getUpcomingBiome();
     if (upcoming) centered(ctx, `PROXIMO MAPA: ${upcoming}`, 290, '#f0d060', 2);
     if (waitsForHost) centered(ctx, match.isOver ? 'O PODIO ABRE EM INSTANTES' : 'A GARAGEM ABRE EM INSTANTES', BUTTON.y + 10, COLOR.muted);
-    else drawButton(ctx, BUTTON, match.isOver ? 'VER PODIO >' : 'PROXIMA CORRIDA >', inside(BUTTON, pointer.x, pointer.y));
+    else drawButton(ctx, BUTTON, match.isOver ? 'VER PODIO >' : 'PROXIMA CORRIDA >', inside(BUTTON, pointer.x, pointer.y), 'primary');
   };
   return screen;
 }

@@ -3,7 +3,7 @@
 
 export const RESPAWN_PROTECTION = 2.5;              // segundos sem levar dano depois de voltar
 
-const LIFE_LOST_PER_DESTRUCTION = 0.2, MIN_LIFE = 0.2;
+const LIFE_LOST_PER_DESTRUCTION = 0.165, MIN_LIFE = 0.5;
 
 // Meia altura e meia largura do carro: a altura do centro depende de qual lado encosta no chão.
 const HALF_HEIGHT = 0.71, HALF_WIDTH = 0.97;
@@ -17,7 +17,8 @@ const WRECK = { duration: 5, rollingEnd: 3.4, landedAt: 4.25, turns: 3, bounces:
 const SETTLE_LIFT = 0.22, SETTLE_ROLL = 0.18, SETTLE_DECAY = 5, SETTLE_LIFT_RATE = 9, SETTLE_ROLL_RATE = 11;
 
 // Fração da vida total com que o carro volta depois de ser destruído `times` vezes.
-export const lifeAfterDestruction = times => Math.max(MIN_LIFE, 1 - times * LIFE_LOST_PER_DESTRUCTION);
+// `wreck` (game/carUpgrades.js) multiplica o que cada destruição tira da vida máxima; o piso não muda.
+export const lifeAfterDestruction = (times, wreck = 1) => Math.max(MIN_LIFE, 1 - times * LIFE_LOST_PER_DESTRUCTION * wreck);
 
 // `direction` 1 tomba para a esquerda; `startRoll` é a inclinação que o carro já tinha.
 export function createFlip({ direction = 1, startRoll = 0 } = {}) {

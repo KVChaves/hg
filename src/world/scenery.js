@@ -273,6 +273,15 @@ export function createWorldScene() {
     atmosphere.setStorm(level, zone?.wind ?? 0);
   };
 
+  // Clima dinâmico (game/dynamicWeather.js): `type` é o tipo do evento (ou null) e `level` de 0 a 1 quanto dele está no ar.
+  // Aperta e tinge a neblina e escurece o céu; chame antes de setDarkness.
+  let weatherType = null, weatherLevel = 0;
+  scene.setWeather = (type, level) => {
+    weatherType = level > 0 ? type : null;
+    weatherLevel = level;
+    atmosphere.setPrecipitation(type?.precip ?? null, level, type?.dim ?? 0);
+  };
+
   scene.setDarkness = (level, fog) => {
     if (!currentBiome) return;
     const [near, far] = currentBiome.fog;
@@ -286,6 +295,12 @@ export function createWorldScene() {
       scene.background.copy(scene.fog.color);
       scene.fog.near += (stormZone.fog[0] - scene.fog.near) * stormLevel;
       scene.fog.far += (stormZone.fog[1] - scene.fog.far) * stormLevel;
+    }
+    if (weatherLevel > 0 && weatherType) {
+      scene.fog.color.lerp(stormColor.setHex(weatherType.color), weatherLevel * 0.7);
+      scene.background.copy(scene.fog.color);
+      scene.fog.near += (weatherType.fog[0] - scene.fog.near) * weatherLevel;
+      scene.fog.far += (Math.min(weatherType.fog[1], scene.fog.far) - scene.fog.far) * weatherLevel;
     }
     atmosphere.setWeatherVisible(level < 0.3);
   };

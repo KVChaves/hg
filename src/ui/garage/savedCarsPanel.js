@@ -1,6 +1,6 @@
 import { ctxText, textWidth } from '../../art/font.js';
 import { CAR_NAME_LENGTH } from '../../game/savedCars.js';
-import { clearClickable, COLOR, drawButton, inside, panelBox } from '../panelKit.js';
+import { clearClickable, COLOR, drawButton, drawHeading, inside, panelBox } from '../panelKit.js';
 import { createTextPrompt } from '../textPrompt.js';
 
 // Janela "Meus carros": guarda o carro atual em uma vaga, sempre com um nome, e traz de volta depois.
@@ -53,17 +53,17 @@ export function createSavedCarsPanel({ slotCount, describe, nameOf, isActive, on
       if (namePrompt.isOpen()) { namePrompt.draw(ctx, pointer); return; }
       panelBox(ctx, BOX);
       const title = 'MEUS CARROS';
-      ctxText(ctx, title, BOX.x + Math.floor((BOX.width - textWidth(title, 2)) / 2), BOX.y + 10, COLOR.selected, 2);
+      drawHeading(ctx, title, BOX.x + BOX.width / 2, BOX.y + 10);
       for (const row of rows) {
         const info = describe(row.index);
         ctxText(ctx, nameOf(row.index) || `CARRO ${row.index + 1}`, BOX.x + 12, row.y + 3, info ? COLOR.text : COLOR.muted);
         ctxText(ctx, info ?? 'VAZIO', BOX.x + 12, row.y + 14, COLOR.muted);
-        drawButton(ctx, row.save, 'SALVAR', inside(row.save, pointer.x, pointer.y));
+        drawButton(ctx, row.save, 'SALVAR', inside(row.save, pointer.x, pointer.y), 'primary');
         if (!info) continue;
         drawButton(ctx, row.load, 'USAR', inside(row.load, pointer.x, pointer.y));
-        drawButton(ctx, row.remove, 'APAGAR', inside(row.remove, pointer.x, pointer.y));
+        drawButton(ctx, row.remove, 'APAGAR', inside(row.remove, pointer.x, pointer.y), { style: 'danger', quiet: true });
       }
-      drawButton(ctx, CLOSE, 'FECHAR', inside(CLOSE, pointer.x, pointer.y));
+      drawButton(ctx, CLOSE, 'FECHAR', inside(CLOSE, pointer.x, pointer.y), 'back');
     },
   };
   return panel;

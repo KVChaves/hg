@@ -1,65 +1,56 @@
 import { LAPS } from '../config.js';
 import { track } from '../world/track.js';
+import { deficitOf } from './deficit.js';
+import { TRAP_TYPES } from './trapTypes.js';
 
-// Ao cruzar a linha de chegada (fim de uma volta que não é a última), cada piloto recebe os suprimentos na hora: o líder
-// nada de nitro, o último o máximo, e quem está no meio, uma parte. Vale para qualquer piloto; online, cada navegador
-// cuida dos carros que simula.
-// O líder não recebe esses suprimentos, mas ao cruzar a linha liderando ganha uma armadilha e um pouco de munição:
-// liderar também rende algo, sem abrir mais vantagem (nada de nitro).
+// Ao cruzar a linha de chegada (fim de uma volta que não é a última), cada piloto é reabastecido até um piso que depende do
+// atraso para o líder: quem já tem mais que o piso não ganha nada, então a ajuda nunca se acumula. Vale para qualquer piloto;
+// online, cada navegador cuida dos carros que simula.
+// - Nitro: o líder não recebe; quem está atrás sobe até NITRO_FLOOR * atraso do tanque (mínimo simbólico para quem está colado).
+// - Munição: do piso do líder (AMMO_FLOOR.leader) ao do último (AMMO_FLOOR.last), contando carregador e reserva.
+// - Armadilhas: todos ganham uma; quem está muito atrás ganha duas. O líder ganha a dele sem abrir vantagem em nitro.
 
-const MAX_NITRO = 0.6, MAX_AMMO = 0.6, MAX_ITEMS = 2;   // o que o último recebe: frações do tanque e da reserva padrão
-const STEP = 0.05;
+const NITRO_FLOOR = { least: 0.1, most: 0.6 };      // frações do tanque: de quem está colado (nunca o líder) ao último
+const AMMO_FLOOR = { leader: 0.3, last: 0.7 };      // frações da capacidade total de munição
+const TRAPS_FAR_BEHIND = 2, FAR_BEHIND_FROM = 0.67; // atraso (0 a 1) a partir do qual ganha a segunda armadilha
 const FIRST_CRATE_LAP = 1;                           // antes da volta 1 os carros ainda estão no grid de largada
-const LEADER_AMMO = 0.25;                            // fração da reserva padrão que o líder ganha na linha
 
-const roundedShare = (maximum, share) => Math.max(STEP, Math.round(maximum * share / STEP) * STEP);
+const nitroFloor = deficit => deficit > 0 ? Math.max(NITRO_FLOOR.least, NITRO_FLOOR.most * deficit) : 0;
+const ammoFloor = deficit => AMMO_FLOOR.leader + (AMMO_FLOOR.last - AMMO_FLOOR.leader) * deficit;
+const roundUp = value => Math.ceil(value * 100 - 1e-6) / 100;   // 1% de passo, para nunca ficar abaixo do piso
 
-// Reparte os itens entre os compartimentos mais vazios, considerando o que já foi separado.
-function plannedSlots(slots, count) {
-  if (!slots.length) return [];
-  const planned = new Map(), fillOf = slot => (slot.charges + (planned.get(slot) ?? 0)) / slot.capacity, chosen = [];
-  for (let i = 0; i < count; i++) {
-    const slot = [...slots].sort((a, b) => fillOf(a) - fillOf(b))[0];
-    planned.set(slot, (planned.get(slot) ?? 0) + 1);
-    chosen.push(slot);
-  }
-  return chosen;
+// Sorteia `count` itens, sem repetir enquanto houver opção: entre os que o piloto levou na largada (compartimentos do bagageiro)
+// e, se ele não levou nada, entre todos os tipos.
+function randomItems(allSlots, count) {
+  const slots = allSlots.filter(slot => !slot.gifted);   // compartimentos abertos por presentes não contam como compra
+  const pool = (slots.length ? slots.map(slot => ({ slot, type: slot.type })) : Object.values(TRAP_TYPES).map(type => ({ type })))
+    .map(entry => ({ entry, order: Math.random() })).sort((a, b) => a.order - b.order).map(({ entry }) => entry);
+  return Array.from({ length: count }, (_, i) => pool[i % pool.length]);
 }
 
 export function createLapSupplies({ race, suppliesFor, onPlayerSupplied, onLeaderReward = () => {} }) {
   const lapOf = new Map();
 
-  function positionShare(racer) {
-    const position = race.order.findIndex(entry => entry.name === racer.name);
-    return race.order.length > 1 ? Math.max(0, position) / (race.order.length - 1) : 0;
-  }
-
-  function contentsFor(racer, share) {
-    return {
-      nitro: roundedShare(MAX_NITRO, share),
-      ammo: roundedShare(MAX_AMMO, share),
-      slots: plannedSlots(suppliesFor(racer).slots(), Math.ceil(MAX_ITEMS * share)),
-    };
+  // Quanto falta para chegar ao piso, na unidade que `give` espera (fração do tanque padrão / da reserva padrão).
+  function contentsFor(racer, deficit, isLeader) {
+    const supplies = suppliesFor(racer), levels = supplies.levels(), space = supplies.ammoSpace();
+    const missingNitro = Math.max(0, nitroFloor(isLeader ? 0 : deficit) - levels.nitro) * (racer.nitroCapacity ?? 1);
+    const missingAmmo = Math.max(0, ammoFloor(isLeader ? 0 : deficit) - levels.ammo) * space.total / space.standard;
+    const traps = isLeader || deficit < FAR_BEHIND_FROM ? 1 : TRAPS_FAR_BEHIND;
+    return { nitro: roundUp(missingNitro), ammo: roundUp(missingAmmo), items: randomItems(supplies.slots(), traps) };
   }
 
   function deliver(racer, contents) {
     const { give } = suppliesFor(racer);
-    give.nitro({ amount: contents.nitro });
-    give.ammo({ amount: contents.ammo });
-    for (const slot of contents.slots) give.trap({ slot });
-    if (racer.isPlayer) onPlayerSupplied({ nitro: contents.nitro, ammo: contents.ammo, items: contents.slots.map(slot => slot.type.label) });
+    if (contents.nitro > 0) give.nitro({ amount: contents.nitro });
+    if (contents.ammo > 0) give.ammo({ amount: contents.ammo });
+    for (const item of contents.items) (item.slot ? give.trap : give.trapOfType)(item);
+    return contents;
   }
 
   function rewardLeader(racer) {
-    const supplies = suppliesFor(racer), labels = [];
-    supplies.give.ammo({ amount: LEADER_AMMO });
-    labels.push('MUNICAO');
-    if (supplies.hasTraps()) {
-      const slot = supplies.pickTrap();
-      supplies.give.trap({ slot });
-      labels.push(slot.type.label);
-    }
-    if (racer.isPlayer) onLeaderReward({ ammo: LEADER_AMMO, items: labels.slice(1) });
+    const contents = deliver(racer, contentsFor(racer, 0, true));
+    if (racer.isPlayer) onLeaderReward({ ammo: contents.ammo, items: contents.items.map(item => item.type.label) });
   }
 
   function updateRacer(racer) {
@@ -68,7 +59,10 @@ export function createLapSupplies({ race, suppliesFor, onPlayerSupplied, onLeade
     lapOf.set(racer, Math.max(lap, previous ?? lap));
     if (!crossed || lap <= FIRST_CRATE_LAP || lap > LAPS || racer.dead > 0) return;
     if (race.order[0]?.name === racer.name) rewardLeader(racer);
-    else deliver(racer, contentsFor(racer, positionShare(racer)));
+    else {
+      const contents = deliver(racer, contentsFor(racer, deficitOf(racer, race.field), false));
+      if (racer.isPlayer) onPlayerSupplied({ nitro: contents.nitro, ammo: contents.ammo, items: contents.items.map(item => item.type.label) });
+    }
   }
 
   return {

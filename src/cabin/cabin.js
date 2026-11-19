@@ -6,6 +6,7 @@ import { colorRamp } from '../art/shade.js';
 import { EYE, VIEW, WINDOW_VIEW } from '../config.js';
 import { createCharmPendulum } from './charmPendulum.js';
 import { createDashboard } from './dashboard.js';
+import { createHandoff } from './handoff.js';
 import { DEPTH, LAYOUT } from './layout.js';
 import { saveLoadout } from './loadout.js';
 import { createMirror } from './mirror.js';
@@ -53,6 +54,7 @@ export function createCabin({ camera, car, loadout }) {
   const updateCracks = createWindshieldCracks(cockpit);
   const renderMirror = createMirror(cockpit, car, cockpit);
   const updateScoreboard = createScoreboard(cockpit);
+  const handoff = createHandoff(cockpit, { arm: DEPTH.handoffArm, item: DEPTH.handoffItem });
 
   const mounted = {};
   const options = {};
@@ -78,6 +80,10 @@ export function createCabin({ camera, car, loadout }) {
     },
     nitro(option, color) {
       dashboard.setNitroPalette(color === null ? option.palette : colorRamp(color), option.style);
+      return { dispose() {} };
+    },
+    // As mãos não são sprite da cabine: hands.js lê `loadout.hands` e desenha o estilo escolhido.
+    hands() {
       return { dispose() {} };
     },
     cabinColor(option, color) {
@@ -155,10 +161,11 @@ export function createCabin({ camera, car, loadout }) {
       mounted.health.draw(car.health);
     }
 
-    dashboard.update({ gear, nitroLevel: car.nitro, nitroOpen: car.nitroActive, reserveAmmo: weapon.reserve, trapSlot: traps.current, trapReady: traps.isReady(), dt });
+    dashboard.update({ gear, nitroLevel: car.nitro, nitroOpen: car.nitroActive, nitroBlue: car.blueNitro > 0, reserveAmmo: weapon.reserve, trapSlot: traps.current, trapReady: traps.isReady(), dt });
     updateWindshield(car.effects, dt);
     updateCracks(Math.round(car.capsizes * car.parts.crack));   // vidro blindado racha menos
     swingCharm(dt, frameTime);
+    handoff.update(dt);
     updateScoreboard(race, weapon.kills, rivals);
   }
 
@@ -194,11 +201,18 @@ export function createCabin({ camera, car, loadout }) {
     return screenY < ROOF_LINE || screenY > DASH_LINE;
   }
 
+  // Um NPC da beira da pista entrega `item` pela janela do lado em que está (`giver`: roupa e posição no mundo).
+  const giverInCockpit = new THREE.Vector3();
+  function handOff(item, giver) {
+    cockpit.worldToLocal(giverInCockpit.set(giver.x, giver.y, giver.z));
+    handoff.start(item, giver, Math.sign(giverInCockpit.x) || 1);
+  }
+
   // Visão pela janela: a cabeça sai pela janela do motorista. O interior não é desenhado (ver main.js).
   function setWindowView(on) {
     const { x, y, z } = WINDOW_VIEW.head;
     head.position.set(on ? x : 0, on ? y : 0, on ? z : 0);
   }
 
-  return { scene, update, setAmbient, isBehindCabin, setWindowView, renderMirror, setPart, setPartColor, loadout, grips, setTrapButtonPressed: dashboard.setTrapButtonPressed, setWeapon: dashboard.setWeapon, ammoSlot: dashboard.ammoSlot };
+  return { scene, update, handOff, setAmbient, isBehindCabin, setWindowView, renderMirror, setPart, setPartColor, loadout, grips, setTrapButtonPressed: dashboard.setTrapButtonPressed, setWeapon: dashboard.setWeapon, ammoSlot: dashboard.ammoSlot };
 }

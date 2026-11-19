@@ -1,7 +1,7 @@
 import { VIEW } from '../config.js';
 import { ctxText, textWidth } from '../art/font.js';
 import { BIOMES } from '../world/biomes/index.js';
-import { clamp, COLOR, inside, markClickable, outline, panelBox, pointerOnStage, toCss } from './panelKit.js';
+import { clamp, COLOR, drawHeading, inside, markClickable, outline, panelBox, pointerOnStage, toCss } from './panelKit.js';
 
 // Votação do próximo mapa (multiplayer): um grafo de corridas, como o mapa de percurso do jogo original. As
 // corridas já feitas ficam para trás, as próximas são "?" e a de agora mostra as opções para votar.
@@ -67,7 +67,7 @@ export function createVoteScreen({ stage, onVote }) {
       ctx.fillStyle = 'rgba(0,0,0,.55)';
       ctx.fillRect(box.x + 1, box.y + box.height - 15, box.width - 2, 14);
       ctxText(ctx, biome.name, Math.round(center.x - textWidth(biome.name) / 2), box.y + box.height - 12, '#ffffff');
-      if (dim) { ctx.fillStyle = 'rgba(10,10,16,.55)'; ctx.fillRect(box.x + 1, box.y + 1, box.width - 2, box.height - 2); }
+      if (dim) { ctx.fillStyle = 'rgba(24,10,5,.55)'; ctx.fillRect(box.x + 1, box.y + 1, box.width - 2, box.height - 2); }
     }
     outline(ctx, box, winner ? GOLD : mine ? GOLD : hovered ? COLOR.selected : COLOR.edge);
     if (winner || mine) outline(ctx, { x: box.x - 1, y: box.y - 1, width: box.width + 2, height: box.height + 2 }, winner ? GOLD : '#a88a30');
@@ -90,7 +90,7 @@ export function createVoteScreen({ stage, onVote }) {
     boxes = [];
     ctx.fillStyle = COLOR.backdrop;
     ctx.fillRect(0, 0, VIEW.width, VIEW.height);
-    centered(ctx, state.winner ? 'MAPA ESCOLHIDO' : 'VOTE NO PROXIMO MAPA', 14, COLOR.selected, 2);
+    drawHeading(ctx, state.winner ? 'MAPA ESCOLHIDO' : 'VOTE NO PROXIMO MAPA', VIEW.width / 2, 14);
     centered(ctx, `CORRIDA ${state.number} DE ${state.total}`, 38, COLOR.muted);
     panelBox(ctx, { x: 8, y: 52, width: VIEW.width - 16, height: 252 });
 

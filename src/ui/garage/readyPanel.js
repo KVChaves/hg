@@ -35,7 +35,7 @@ export function createReadyPanel({ getRoster, onKick }) {
         if (!roster.canKick || player.isMe || player.ready) return;
         const kick = { id: player.id, x: x + WIDTH - 56, y: y - 1, width: 52, height: 12 };
         kicks.push(kick);
-        drawButton(ctx, kick, 'EXPULSAR', inside(kick, pointer.x, pointer.y));
+        drawButton(ctx, kick, 'EXPULSAR', inside(kick, pointer.x, pointer.y), { style: 'danger', quiet: true });
       });
     },
   };

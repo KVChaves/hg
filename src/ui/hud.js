@@ -27,7 +27,7 @@ function centered(ctx, text, y, color, scale = 1) {
 
 const CONTROLS = [
   ['W / S', 'ACELERA / FREIA E RE'], ['A / D', 'DIRECAO'], ['ESPACO', 'NITRO'], ['SHIFT', 'DRIFT NAS CURVAS'],
-  ['E', 'USA ITEM DO BAGAGEIRO'], ['RODA DO MOUSE', 'TROCA ITEM'], ['Q (SEGURE)', 'OLHA PELA JANELA'], ['H', 'BUZINA'],
+  ['E', 'USA ITEM DO BAGAGEIRO'], ['RODA DO MOUSE', 'TROCA ITEM'], ['MOUSE P/ ESQUERDA', 'OLHA PELA JANELA'], ['H', 'BUZINA'],
   ['MOUSE', 'OLHA'], ['CLIQUE', 'ATIRA'], ['BOTAO DIREITO', 'SEGURA A ARMA'], ['R', 'RECARREGA'], ['C', 'CENTRALIZA A CAMERA'],
 ];
 const NPC_HELP = ['SE VOCE ESTIVER MUITO ATRAS, UM NPC ACENA', 'NA BEIRA DA PISTA COM UM ITEM ACIMA DA CABECA:', 'MUNICAO, NITRO, EXTINTOR OU ARMADILHA.', 'PASSE PERTO DELE PARA PEGAR O ITEM.'];
@@ -75,7 +75,7 @@ function paintDamageBand(width, height, edgeAt) {
   return band;
 }
 
-export function createHud(canvas, { matchTable, isTableHeld, killFeed, pause, scope, featFeed, mainMenu, multiplayer, podium, matchSetup, results, voteScreen, matchLabel, biomeName, biomeChallenge = () => [], race, weapon, hands, garage, workshop, windowView, spectator, spectatorExit, isLocked, combat, car, activeCamera, opponents, isBehindCabin, isInSmoke, roadsideHelp, traps, powerStatus = () => [] }) {
+export function createHud(canvas, { chat, matchTable, isTableHeld, killFeed, pause, scope, featFeed, mainMenu, multiplayer, podium, matchSetup, results, voteScreen, matchLabel, biomeName, biomeChallenge = () => [], race, weapon, hands, garage, workshop, windowView, spectator, spectatorExit, isLocked, combat, car, activeCamera, opponents, isBehindCabin, isInSmoke, roadsideHelp, traps, powerStatus = () => [] }) {
   canvas.width = VIEW.width;
   canvas.height = VIEW.height;
   const ctx = canvas.getContext('2d');
@@ -161,19 +161,21 @@ export function createHud(canvas, { matchTable, isTableHeld, killFeed, pause, sc
     ctx.fillRect(CENTER_X - 1, CENTER_Y + 2, 2, 5);
   }
 
-  // Mira de arremesso (arpão e mina): anel com cantos, bem diferente da mira da arma.
+  // Mira de arremesso (arpão, mina e rede): anel com cantos, bem diferente da mira da arma.
+  // Fecha os cantos e fica verde quando há um carro na área de mira; sem ninguém, avisa e o clique não gasta a carga.
   function drawThrowReticle() {
-    const pulse = 0.65 + 0.35 * Math.sin(performance.now() / 120), color = traps.current?.type.id === 'mine' ? '#ff6a50' : '#ffd060';
+    const kind = traps.current?.type.id, locked = Boolean(traps.aimLock);
+    const pulse = 0.65 + 0.35 * Math.sin(performance.now() / (locked ? 70 : 120)), color = locked ? '#a0ff9c' : ({ mine: '#ff6a50', net: '#b890ff' }[kind] ?? '#ffd060');
     ctx.globalAlpha = pulse;
     ctx.fillStyle = color;
-    const r = 14;
+    const r = locked ? 10 : 14;
     for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
       ctx.fillRect(CENTER_X + sx * r - (sx > 0 ? 6 : 0), CENTER_Y + sy * r - (sy > 0 ? 2 : 0), 6, 2);
       ctx.fillRect(CENTER_X + sx * r - (sx > 0 ? 2 : 0), CENTER_Y + sy * r - (sy > 0 ? 6 : 0), 2, 6);
     }
     ctx.fillRect(CENTER_X - 1, CENTER_Y - 1, 2, 2);
     ctx.globalAlpha = 1;
-    centered(ctx, 'CLIQUE: ARREMESSAR  E: CANCELAR', CENTER_Y + 34, color);
+    centered(ctx, locked ? `CLIQUE: ${kind === 'net' ? 'LANCAR REDE' : 'ARREMESSAR'}  E: CANCELAR` : 'SEM ALVO NA MIRA  E: CANCELAR', CENTER_Y + 34, color);
   }
 
   // Riscos de vento na direção do centro e o ganho atual; a força acompanha o vácuo.
@@ -295,5 +297,6 @@ export function createHud(canvas, { matchTable, isTableHeld, killFeed, pause, sc
   return () => {
     drawScreen();
     if (isTableHeld()) matchTable.draw(ctx);
+    chat.draw(ctx);
   };
 }

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { damageOpponent } from './opponents.js';
-import { damageAtDistance, WEAPON_TYPES } from './weaponTypes.js';
+import { damageAtDistance, shakeAtDistance, WEAPON_TYPES } from './weaponTypes.js';
 import { partHit } from './carParts.js';
 import { groundHit } from '../world/track.js';
 
@@ -109,7 +109,7 @@ export function createWeapon({ scene, camera, targets, extraTargets = () => [], 
         onHit(target);
         const part = partHit(hits[0].object, target.group.worldToLocal(hits[0].point.clone()));
         if (part.label) { weapon.hitPart = part.label; weapon.hitPartTime = HIT_PART_TIME; }
-        if (damageOpponent(target, damageAtDistance(type, hits[0].distance) * part.multiplier, shooter)) {
+        if (damageOpponent(target, damageAtDistance(type, hits[0].distance) * part.multiplier, shooter, shakeAtDistance(type, hits[0].distance))) {
           onKill(target, 'shot');
           weapon.hitMarker = 0.4;
         }

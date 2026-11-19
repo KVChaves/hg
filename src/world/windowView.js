@@ -3,7 +3,7 @@ import { alignToTwist } from './track.js';
 import { poseRig } from '../game/carRoll.js';
 import { createCarModel } from './car/carModel.js';
 
-// Visão pela janela (enquanto Q estiver pressionada): o piloto põe a cabeça para fora da janela dele e pode olhar
+// Visão pela janela (ao virar demais para a esquerda): o piloto põe a cabeça para fora da janela dele e pode olhar
 // para trás e atirar em quem vem atrás. A câmera continua sendo a da cabine, só que com a cabeça deslocada para
 // fora (cabin.setWindowView) e sem desenhar o interior; daqui mostramos o próprio carro, que agora fica à vista.
 // Debruçado na janela o piloto dirige pior: o carro perde velocidade máxima (car.leaning, ver game/car.js).

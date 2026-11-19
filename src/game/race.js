@@ -22,6 +22,7 @@ const NITRO_FILL_TIME = 10;
 const SLIPSTREAM_RESPONSE = 4;                       // o vácuo entra e sai aos poucos
 const MIN_TIME_GAP = 0.05;                           // segundos entre tempos estimados consecutivos
 const IMPACT_DAMAGE = 0.4;                           // pontos de vida por m/s de batida
+const SOFT_LANDING = 2;                                // m/s de descida a partir dos quais o pouso faz barulho de suspensão
 const HARD_LANDING = 11, LANDING_DAMAGE = 3;         // a partir de 11 m/s de descida o pouso tira 3 pontos de vida por m/s (suspensão aguenta o resto)
 const AIR_PITCH_RATE = 3, BANK_RATE = 8;             // no ar o bico acompanha a trajetória aos poucos
 const BOOST_MIN_SPEED = 3;                           // de ré ou parado a placa de turbo não faz nada
@@ -31,14 +32,14 @@ const GRID_ROW_GAP = 16, GRID_STAGGER = 7;           // metros entre as filas e 
 const gridDistance = slot => track.length - 8 - (slot >> 1) * GRID_ROW_GAP - (slot & 1) * GRID_STAGGER;
 const gridLane = slot => (slot & 1 ? 1 : -1) * TRACK_WIDTH * 0.27;   // duas filas, uma de cada lado do centro
 
-export function createRace(car, opponents, { onCrash, onDestroyed, onBlast }) {
+export function createRace(car, opponents, { onCrash, onDestroyed, onBlast, onContact }) {
   const playerProxy = { name: 'Player', netId: 'player', sunk: 0, slipstream: 0, wx: 0, wy: 0, wz: 0, twist: 0, y: 0, yaw: 0, dist: 0, lane: 0, v: 0, dead: 0, protectedFor: 0, x: 0, z: 0, isPlayer: true, effects: car.effects };
   const field = [playerProxy, ...opponents];
   const finishTimes = new Map();                     // nome -> tempo em que cruzou a linha final
   let playerStart = 0, wrongWayTime = 0;
   const allOpponents = [...opponents];               // `opponents` e `field` guardam só quem corre nesta partida
 
-  const collisions = createCollisions({ car, field, onCrash, onDestroyed, onBlast });
+  const collisions = createCollisions({ car, field, onCrash, onDestroyed, onBlast, onContact });
 
   const race = {
     intro: INTRO_TIME, countdown: 3.8, started: false, goTimer: 0, time: 0,
@@ -222,6 +223,7 @@ export function createRace(car, opponents, { onCrash, onDestroyed, onBlast }) {
     const result = stepFlight(car, ground, groundRate, dt);
     if (result === 'blocked' && car.jump) bounceOffBank(t);
     if (result === 'landed') {
+      if (car.impact >= SOFT_LANDING) onCrash('land', car.x, car.z, Math.min(1, car.impact / HARD_LANDING));
       reportWallCrash(car.impact);
       damagePlayer(car, Math.max(0, car.impact - HARD_LANDING) * LANDING_DAMAGE * car.parts.landing / CAR_MAX_HP);
     }
@@ -274,6 +276,8 @@ export function createRace(car, opponents, { onCrash, onDestroyed, onBlast }) {
 
   function updateSlipstreams(dt) {
     const blend = Math.min(1, dt * SLIPSTREAM_RESPONSE);
+    playerProxy.draftRange = car.parts.draftRange;   // as peças do jogador valem nos dois lados do vácuo
+    playerProxy.wake = car.parts.wake;
     for (const racer of field) {
       if (!racer.remote) racer.slipstream += (slipstreamStrength(racer, field) - racer.slipstream) * blend;
     }
@@ -297,7 +301,7 @@ export function createRace(car, opponents, { onCrash, onDestroyed, onBlast }) {
     car.z = t.z;
     car.yaw = Math.atan2(-t.tx, -t.tz);
     car.vx = car.vz = car.spin = 0;
-    car.health = lifeAfterDestruction(car.destroyed);
+    car.health = lifeAfterDestruction(car.destroyed, car.parts.wreck);
     car.invulnerable = RESPAWN_PROTECTION;
     car.flip = null;
     car.destroyedBy = null;
@@ -325,6 +329,8 @@ export function createRace(car, opponents, { onCrash, onDestroyed, onBlast }) {
     playerProxy.dead = Math.max(0, car.wrecked);
     playerProxy.sunk = car.sunk;
     playerProxy.protectedFor = car.invulnerable;
+    playerProxy.health = car.health;                 // a IA escolhe alvo pela vida (botStyles.healthOf)
+    playerProxy.overturned = car.overturned;
   }
 
   // A corrida termina quando o jogador cruza a linha. Quem já chegou fica na ordem real de chegada;

@@ -370,6 +370,7 @@ const INTERIOR = {
   wheel: resolveImage,
   shifter: resolveImage,
   charm: resolveImage,
+  hands: resolveImage,
   nitro: nitroThumb,
   health: option => {
     const meter = option.create(null);

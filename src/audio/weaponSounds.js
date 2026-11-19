@@ -90,7 +90,7 @@ WEAPON_SOUNDS.crossbow = {
 WEAPON_SOUNDS.grenade = {
   fire: own('grenade/fire', 0.9, BASE.shotgun.fire, 0.9),
   dry: DRY_FIRE,
-  reloadStart: own('grenade/port-open', 0.5, BASE.shotgun.reloadStart),
+  reloadStart: own('grenade/port-open', 1.2, BASE.shotgun.reloadStart),
   roundIn: own('grenade/round-in', 0.8, ROUND_IN),
   reloadEnd: own('grenade/pump', 0.6, BASE.shotgun.reloadEnd),
   pump: own('grenade/pump', 0.6, BASE.shotgun.reloadEnd),

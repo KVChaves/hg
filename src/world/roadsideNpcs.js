@@ -1,105 +1,45 @@
 import * as THREE from 'three';
 import { Raster } from '../art/raster.js';
 import { rasterText, textWidth } from '../art/font.js';
-import { plotTrapIcon } from '../art/trapIcons.js';
-import { HELP_ITEMS, itemLabel, NPC_LANE } from '../game/roadsideHelp.js';
-import { TRAP_TYPES } from '../game/trapTypes.js';
+import { dither, vnoise } from '../art/shade.js';
+import { CREW_SIZE, CREW_SKINS, SIGN_HAND, paintCrewMember, plotHelpIcon, roleIdFor } from '../art/roadsideCrew.js';
+import { itemLabel, NPC_LANE } from '../game/roadsideHelp.js';
 import { pixelTexture } from './textures.js';
 import { trackAt } from './track.js';
 
-// Os dois NPCs que o jogador vê na beira da pista, acenando com o item oferecido acima da cabeça.
+// Os dois NPCs que o jogador vê na beira da pista. Cada um se veste conforme o item que oferece
+// (ver art/roadsideCrew.js) e ergue num cabo uma placa de papelão com o nome exato do que vai entregar.
 
-const PLATE_WIDTH = 58, PLATE_HEIGHT = 38, CRATE_SIZE = 30;
-const NPC_SIZE = [1.35, 1.9], ITEM_SIZE = [3.24, 2.12], ITEM_HEIGHT = 3.2, ITEM_BOB = 0.12, ITEM_BOB_SPEED = 3;
-const FRAMES_PER_SECOND = 9, WAVE_LOOP = [0, 1, 2, 1];  // quadros do aceno, indo e voltando
+const NPC_SIZE = [1.35, 1.9], NPC_PIXEL = NPC_SIZE[0] / CREW_SIZE.width;
+const SIGN_PIXEL = 0.056;                            // a placa é desenhada maior que o NPC para ler de longe
+const SIGN_MIN_WIDTH = 44, SIGN_HEIGHT = 38, STICK = 8;
+const FRAMES_PER_SECOND = 9, STEP_LOOP = [0, 1, 2, 1];
 const HOP_SPEED = 7, HOP_HEIGHT = 0.16, CHEER_HOP_SPEED = 11, CHEER_HOP_HEIGHT = 0.5;
-const SWAY_SPEED = 3.5, SWAY_TILT = 0.09;
+const SWAY_SPEED = 3.5, SWAY_TILT = 0.06, SIGN_SWAY_SPEED = 5, SIGN_SWAY = 0.16;
 const DODGE_START = 16, DODGE_END = 6, DODGE_DISTANCE = 1.8;  // metros: o NPC pula para fora quando o carro chega
 
-// Cores dos dois NPCs: jaqueta, calça, pele e chapéu.
-const OUTFITS = [
-  [0x3060b0, 0x2a2a34, 0xd8a878, 0xb04020],
-  [0xc08020, 0x384028, 0xb88058, 0x204868],
-];
+// Mão da placa em relação ao pé do NPC, em metros: para o lado (direita da tela) e para cima.
+const HAND_SIDE = (SIGN_HAND[0] - CREW_SIZE.width / 2) * NPC_PIXEL;
+const HAND_UP = (CREW_SIZE.height - SIGN_HAND[1]) * NPC_PIXEL;
 
-// Ângulos do braço que acena, em radianos; negativo é para cima.
-const WAVE_ANGLES = [-1.25, -0.8, -0.35];
-const SHOULDER = [23, 17], ARM_LENGTH = 13, X = 4;   // X centraliza o corpo na imagem, que é larga por causa do braço
+const CARDBOARD = [0x8a6232, 0xa87a40, 0xc09454, 0xd4ac6c];
 
-function paintNpc([jacket, pants, skin, hat], { armAngle, step, cheering = false }) {
-  const r = new Raster(36, 50);
-  r.rect(X + 9, 32, 4, 17 - Math.max(0, step) * 2, pants);        // pernas: uma levanta de cada vez
-  r.rect(X + 15, 32, 4, 17 - Math.max(0, -step) * 2, pants);
-  r.rect(X + 8, 47 - Math.max(0, step) * 2, 5, 3, 0x141010);
-  r.rect(X + 15, 47 - Math.max(0, -step) * 2, 5, 3, 0x141010);
-  r.rect(X + 8, 15, 12, 18, jacket);                              // tronco
-  r.rect(X + 8, 15, 2, 18, 0x101018);
-
-  if (cheering) {                                                 // os dois braços para o alto
-    r.line(X + 9, 17, X + 3, 3, jacket, 3);
-    r.disc(X + 3, 3, 2, skin);
-  } else {
-    r.line(X + 9, 17, X + 5, 30, jacket, 3);
-  }
-  const hand = [SHOULDER[0] + Math.cos(armAngle) * ARM_LENGTH, SHOULDER[1] + Math.sin(armAngle) * ARM_LENGTH];
-  r.line(SHOULDER[0], SHOULDER[1], hand[0], hand[1], jacket, 3);
-  r.disc(hand[0], hand[1], 2, skin);
-
-  r.disc(X + 14, 10, 5, skin);                                    // cabeça
-  r.rect(X + 9, 3, 10, 3, hat);                                   // chapéu
-  r.rect(X + 7, 6, 14, 2, hat);
-  r.rect(X + 12, 10, 1, 1, 0x101010);
-  r.rect(X + 16, 10, 1, 1, 0x101010);
+// Placa de papelão com o ícone e o nome do item, presa num cabo de madeira que desce até a mão.
+function paintSign(item) {
+  const label = itemLabel(item);
+  const width = Math.max(SIGN_MIN_WIDTH, textWidth(label) + 7), height = SIGN_HEIGHT + STICK;
+  const r = new Raster(width, height), mid = Math.floor(width / 2);
+  r.rect(mid - 1, SIGN_HEIGHT - 2, 3, STICK + 2, 0x4a3018);
+  r.rect(mid - 1, SIGN_HEIGHT - 2, 1, STICK + 2, 0x7a5430);
+  r.poly([[0, 1], [width - 2, 0], [width, SIGN_HEIGHT - 2], [1, SIGN_HEIGHT]], 0x3a2410);
+  r.poly([[2, 3], [width - 3, 2], [width - 2, SIGN_HEIGHT - 4], [3, SIGN_HEIGHT - 2]],
+    (x, y) => dither(x, y, 0.6 + (vnoise(x / 6, y / 9) - 0.5) * 0.3, CARDBOARD, 0.5));
+  r.poly([[width - 9, 2], [width - 3, 2], [width - 3, 7]], 0x6a4826);      // canto rasgado
+  plotHelpIcon(r, item, mid - 12, 1);
+  r.rect(3, 26, width - 6, 10, 0xf4ead0);                                 // etiqueta de papel com o nome, para ler de longe
+  r.rect(3, 35, width - 6, 1, 0xb89a68);
+  rasterText(r, label, Math.floor((width - textWidth(label)) / 2) + 1, 28, 0x100804);
   return r.commit();
-}
-
-// Desenho de cada item, com o círculo centrado em (cx, cy).
-const ITEM_ICONS = {
-  ammo(r, ox, oy) {
-    for (const x of [4, 10, 16]) {
-      r.rect(ox + x, oy + 9, 5, 12, 0xd0a040);
-      r.poly([[ox + x, oy + 9], [ox + x + 2.5, oy + 3], [ox + x + 5, oy + 9]], 0xa86a30);
-      r.rect(ox + x, oy + 18, 5, 3, 0x8a6020);
-    }
-  },
-  nitro(r, ox, oy) {
-    r.rect(ox + 8, oy + 5, 8, 16, 0xe8c020);
-    r.rect(ox + 8, oy + 5, 2, 16, 0xfff0a0);
-    r.rect(ox + 10, oy + 2, 4, 3, 0x9a9aa2);
-    r.rect(ox + 8, oy + 11, 8, 4, 0x1a1a22);
-    r.rect(ox + 11, oy + 12, 2, 2, 0xe8e8e8);
-  },
-};
-
-// Placa com o ícone e, embaixo, o nome exato do que o NPC vai entregar.
-function paintItemPlate(plotIcon, label) {
-  const r = new Raster(PLATE_WIDTH, PLATE_HEIGHT), ox = (PLATE_WIDTH - 24) / 2;
-  r.disc(ox + 12, 12, 12, 0x101014);
-  r.disc(ox + 12, 12, 10.5, 0xe8e0c8);
-  plotIcon(r, ox, 0);
-  r.rect(0, 25, PLATE_WIDTH, 13, 0x101014);
-  rasterText(r, label, Math.floor((PLATE_WIDTH - textWidth(label)) / 2), 28, 0xffe9a0);
-  return r.commit();
-}
-
-// Caixa de madeira que o NPC segura acima da cabeça.
-function paintCrate() {
-  const r = new Raster(CRATE_SIZE, CRATE_SIZE);
-  r.rect(0, 0, CRATE_SIZE, CRATE_SIZE, 0x2a1a0c);
-  r.rect(2, 2, CRATE_SIZE - 4, CRATE_SIZE - 4, 0xb07a3c);
-  for (const y of [10, 19]) r.rect(2, y, CRATE_SIZE - 4, 1, 0x7a5024);
-  r.line(2, 2, CRATE_SIZE - 3, CRATE_SIZE - 3, 0x7a5024, 2);
-  r.rect(2, 2, CRATE_SIZE - 4, 1, 0xd8a868);
-  return r.commit();
-}
-
-function createPlates() {
-  const plates = { crate: pixelTexture(paintCrate()) };
-  for (const [id, plot] of Object.entries(ITEM_ICONS)) plates[id] = pixelTexture(paintItemPlate(plot, HELP_ITEMS[id]));
-  for (const type of Object.values(TRAP_TYPES)) {
-    plates[type.id] = pixelTexture(paintItemPlate((r, ox) => plotTrapIcon(r, type.id, ox + 3, 5), type.label));
-  }
-  return plates;
 }
 
 function sprite(scene, map, center) {
@@ -110,34 +50,36 @@ function sprite(scene, map, center) {
   return object;
 }
 
-let sharedPlates = null;                             // as placas são iguais para todas as duplas de NPCs
+// Texturas são iguais para todas as duplas de NPCs; cada uma é feita na primeira vez que aparece.
+const looks = new Map(), signs = new Map();
+
+function lookFor(roleId, skin) {
+  const key = `${roleId}|${skin}`;
+  if (!looks.has(key)) {
+    const frames = pose => [-1, 0, 1].map(step => pixelTexture(paintCrewMember(roleId, CREW_SKINS[skin], { pose, step })));
+    looks.set(key, { sign: frames('sign'), lowered: frames('lowered'), cheer: pixelTexture(paintCrewMember(roleId, CREW_SKINS[skin], { pose: 'cheer' })) });
+  }
+  return looks.get(key);
+}
+
+function signFor(item) {
+  const key = itemLabel(item) + (item.slot ? `|${item.slot.type.id}` : '');
+  if (!signs.has(key)) signs.set(key, pixelTexture(paintSign(item)));
+  return signs.get(key);
+}
 
 export function createRoadsideNpcs(scene) {
-  const icons = sharedPlates ??= createPlates();
-
-  // Placas com quantia (como o nitro) são criadas na primeira vez que aparecem.
-  function plateFor(item) {
-    if (item.slot) return icons[item.slot.type.id];
-    if (!item.amount) return icons[item.id];
-    const label = itemLabel(item);
-    icons[label] ??= pixelTexture(paintItemPlate(ITEM_ICONS[item.id], label));
-    return icons[label];
-  }
-  const npcs = OUTFITS.map(outfit => {
-    const wave = WAVE_ANGLES.map((armAngle, i) => pixelTexture(paintNpc(outfit, { armAngle, step: i - 1 })));
-    const cheer = pixelTexture(paintNpc(outfit, { armAngle: -1.25, step: 0, cheering: true }));
-    const body = sprite(scene, wave[0], [0.5, 0]);
-    body.scale.set(NPC_SIZE[0], NPC_SIZE[1], 1);
-    const item = sprite(scene, icons.ammo, [0.5, 0.5]);
-    item.scale.set(ITEM_SIZE[0], ITEM_SIZE[1], 1);
-    return { wave, cheer, body, item, x: 0, y: 0, z: 0, outX: 0, outZ: 0, itemHeight: ITEM_HEIGHT, cheering: false, phase: Math.random() * 6 };
-  });
+  const npcs = [0, 1].map(() => ({
+    body: sprite(scene, null, [0.5, 0]), sign: sprite(scene, null, [0.5, 0]),
+    look: null, crew: null, pose: 'sign', x: 0, y: 0, z: 0, outX: 0, outZ: 0, phase: Math.random() * 6,
+  }));
+  for (const npc of npcs) npc.body.scale.set(NPC_SIZE[0], NPC_SIZE[1], 1);
   let clock = 0, showing = false, items = [];
 
-  function setBodyTexture(npc, map) {
-    if (npc.body.material.map === map) return;
-    npc.body.material.map = map;
-    npc.body.material.needsUpdate = true;
+  function setTexture(object, map) {
+    if (object.material.map === map) return;
+    object.material.map = map;
+    object.material.needsUpdate = true;
   }
 
   return {
@@ -146,46 +88,59 @@ export function createRoadsideNpcs(scene) {
       showing = Boolean(offer);
       items = offer ? offer.items : [];
       npcs.forEach((npc, i) => {
-        npc.body.visible = npc.item.visible = showing;
-        npc.cheering = false;
+        npc.body.visible = npc.sign.visible = showing;
+        npc.pose = 'sign';
         if (!showing) return;
-        const { side } = offer.items[i], t = trackAt(offer.dist), lane = side * NPC_LANE;
+        const item = offer.items[i], t = trackAt(offer.dist), lane = item.side * NPC_LANE;
         npc.x = t.x - t.tz * lane;
         npc.z = t.z + t.tx * lane;
         npc.y = t.y;
-        npc.outX = -t.tz * side;
-        npc.outZ = t.tx * side;
-        const plate = plateFor(offer.items[i]), { width, height } = plate.image;
-        npc.item.material.map = plate;
-        npc.item.material.needsUpdate = true;
-        npc.item.scale.set(width * ITEM_SIZE[0] / PLATE_WIDTH, height * ITEM_SIZE[1] / PLATE_HEIGHT, 1);
-        npc.itemHeight = ITEM_HEIGHT + (height / PLATE_HEIGHT - 1) * ITEM_SIZE[1] / 2;    // placa mais alta sobe para não entrar no NPC
+        npc.outX = -t.tz * item.side;
+        npc.outZ = t.tx * item.side;
+        // A dupla do nitro azul é a mesma equipe: a pele muda para não parecerem gêmeos.
+        const skin = Math.floor(Math.random() * CREW_SKINS.length + i) % CREW_SKINS.length;
+        npc.crew = { roleId: roleIdFor(item), skin: CREW_SKINS[skin] };
+        npc.look = lookFor(npc.crew.roleId, skin);
+        const plate = signFor(item);
+        setTexture(npc.sign, plate);
+        npc.sign.scale.set(plate.image.width * SIGN_PIXEL, plate.image.height * SIGN_PIXEL, 1);
       });
     },
-    // Item entregue: quem deu comemora e os dois ficam de mãos vazias.
+    // Item entregue: quem deu comemora de mãos vazias e o outro abaixa a placa.
+    // Devolve quem entregou (roupa e posição) para a cabine mostrar o braço entrando pela janela.
     hideItems(taken) {
+      let giver = null;
       npcs.forEach((npc, i) => {
-        npc.item.visible = false;
-        npc.cheering = items[i] === taken;
+        npc.sign.visible = false;
+        npc.pose = items[i] === taken ? 'cheer' : 'lowered';
+        if (items[i] === taken) giver = { ...npc.crew, x: npc.x, y: npc.y + NPC_SIZE[1] * 0.6, z: npc.z };
       });
+      return giver;
     },
     // `carX` e `carZ`: o NPC pula para fora do caminho quando o carro se aproxima.
     update(dt, carX, carZ) {
       if (!showing) return;
       clock += dt;
-      const frame = WAVE_LOOP[Math.floor(clock * FRAMES_PER_SECOND) % WAVE_LOOP.length];
+      const frame = STEP_LOOP[Math.floor(clock * FRAMES_PER_SECOND) % STEP_LOOP.length];
       for (const npc of npcs) {
-        const time = clock + npc.phase;
-        setBodyTexture(npc, npc.cheering ? npc.cheer : npc.wave[frame]);
+        const time = clock + npc.phase, cheering = npc.pose === 'cheer';
+        setTexture(npc.body, cheering ? npc.look.cheer : npc.look[npc.pose][frame]);
 
-        const hop = Math.abs(Math.sin(time * (npc.cheering ? CHEER_HOP_SPEED : HOP_SPEED))) * (npc.cheering ? CHEER_HOP_HEIGHT : HOP_HEIGHT);
-        const closeness = (DODGE_START - Math.hypot(npc.x - carX, npc.z - carZ)) / (DODGE_START - DODGE_END);
+        const hop = Math.abs(Math.sin(time * (cheering ? CHEER_HOP_SPEED : HOP_SPEED))) * (cheering ? CHEER_HOP_HEIGHT : HOP_HEIGHT);
+        const toX = npc.x - carX, toZ = npc.z - carZ, distance = Math.hypot(toX, toZ) || 1;
+        const closeness = (DODGE_START - distance) / (DODGE_START - DODGE_END);
         const dodge = Math.max(0, Math.min(1, closeness)) * DODGE_DISTANCE;
         const x = npc.x + npc.outX * dodge, z = npc.z + npc.outZ * dodge;
+        const tilt = Math.sin(time * SWAY_SPEED) * SWAY_TILT;
 
         npc.body.position.set(x, npc.y + hop, z);
-        npc.body.material.rotation = Math.sin(time * SWAY_SPEED) * SWAY_TILT;
-        npc.item.position.set(x, npc.y + npc.itemHeight + hop + Math.sin(time * ITEM_BOB_SPEED) * ITEM_BOB, z);
+        npc.body.material.rotation = tilt;
+        if (!npc.sign.visible) continue;
+        // A placa fica na mão: o ponto acompanha o balanço do corpo e a placa abana em volta do cabo.
+        const rightX = -toZ / distance, rightZ = toX / distance;        // direita da tela, olhando do carro
+        const side = HAND_SIDE * Math.cos(tilt) - HAND_UP * Math.sin(tilt), up = HAND_SIDE * Math.sin(tilt) + HAND_UP * Math.cos(tilt);
+        npc.sign.position.set(x + rightX * side, npc.y + hop + up, z + rightZ * side);
+        npc.sign.material.rotation = tilt + Math.sin(time * SIGN_SWAY_SPEED) * SIGN_SWAY;
       }
     },
   };

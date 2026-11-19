@@ -1,48 +1,63 @@
 import * as THREE from 'three';
 import { CAR_MAX_HP, LOOK } from '../config.js';
-import { wrapDistance } from '../world/track.js';
+import { SHARP_RADIUS, track, wrapDistance } from '../world/track.js';
 import { createCombatVisuals } from '../world/combatVisuals.js';
 import { createHarpoonVisual } from '../world/harpoonVisual.js';
 import { bearingFrom, damagePlayer } from './car.js';
-import { lifeAfterDestruction } from './carFlip.js';
 import { createHarpoon } from './harpoon.js';
 import { damageOpponent } from './opponents.js';
-import { damageAtDistance, WEAPON_TYPES } from './weaponTypes.js';
+import { shakeCar } from './shake.js';
+import { damageAtDistance, shakeAtDistance, WEAPON_TYPES } from './weaponTypes.js';
 import { rollPart } from './carParts.js';
 import { EMP_RADIUS } from './trapTypes.js';
+import { effectiveRange, healthOf, isAlive, isVulnerable, styleOf, weaponOf } from './botStyles.js';
 
 // Combate dos adversários: cada piloto escolhe um alvo entre todos que estão à sua frente, atira,
 // recarrega, solta armadilhas em quem vem atrás e usa os power-ups. Vale a munição limitada do jogador.
+// As decisões seguem o estilo do piloto (botStyles.js) e levam em conta o que cada rival carrega e o estado dele:
+// vida, escudo, fogo, EMP, mina grudada, arma de quem vem atrás e curvas fechadas à frente.
 
-const ENGAGE_RANGE = 85, MAX_ATTACKERS_PER_TARGET = 2, GRACE_AFTER_START = 5, RETARGET_TIME = [0.5, 1];
-const BASE_ACCURACY = 0.42, MIN_ACCURACY = 0.05, MAX_ACCURACY = 0.75;
+const MAX_ATTACKERS_PER_TARGET = 2, CROWD_PENALTY = 0.4, GRACE_AFTER_START = 5, RETARGET_TIME = [0.4, 0.8];
+const CHASE_SIGHT = 260;                             // até onde procura o alvo da perseguição (op.quarry)
+const BASE_ACCURACY = 0.46, MIN_ACCURACY = 0.05, MAX_ACCURACY = 0.8;
 const DISTANCE_ACCURACY_LOSS = 0.6, GRUDGE_ACCURACY = 1.25, TARGET_IN_SMOKE_ACCURACY = 0.5;
-const AIM_TIME = [0.5, 1.1], BURST_SIZE = [3, 6], PAUSE_VARIATION = [0.7, 1.3];
-const AMMO_BUDGET_TIME = 150;                        // a munição é dosada para durar esses segundos de combate
-const GRUDGE_PACE = 0.7;
+const DODGING_LANE_RATE = 2.5, DODGING_ACCURACY = 0.8, SHAKY_ACCURACY = 0.75;   // alvo ziguezagueando; atirador deslizando
+const AIM_TIME = [0.45, 1], BURST_SIZE = [3, 6], PAUSE_VARIATION = [0.7, 1.3];
+const GRUDGE_PACE = 0.7, FINISH_HEALTH = 0.3, FINISH_PACE = 0.5;   // alvo quase destruído: atira mais seguido
+const WEAK_PELLETS = 0.35, SLOW_WEAPON = 0.7, MIN_SLOW_CHANCE = 0.2;   // disciplina de tiro (ver worthShooting)
+const IDLE_RELOAD = 1.2;                             // segundos sem alvo para completar o carregador
+// Pesos da escolha de alvo que não dependem do estilo.
+const GRUDGE_FOCUS = 1.5, VULNERABLE_BONUS = 0.5, SHIELDED_PENALTY = 0.9, BURNING_PENALTY = 0.6, SPLASH_NEIGHBOUR = 0.5;
 const MISS_OFFSET = [1.5, 4], MUZZLE_FORWARD = 1.6, MUZZLE_HEIGHT = 1.15, TARGET_HEIGHT = 1.1;
-const TRAP_RETRY = 0.4, TRAP_PAUSE = [22, 42];
-const TRAP_GAP = { default: [8, 40], dynamite: [6, 22] };
-const TRAP_LANE_REACH = 6;
+const TRAP_RETRY = 0.4, DROP_BEHIND = 8, TRAP_ALIGN_REACH = 9, TRAP_AIM_TIME = 0.6;
+const TRAP_GAP = { default: [8, 40], dynamite: [6, 22], smoke: [6, 50], paint: [8, 35] };
+const CURVE_TRAPS = new Set(['oil', 'spikes']), CURVE_SIGHT = 220, CURVE_WAIT_LIMIT = 14;   // óleo e espinhos rendem mais na curva
 const HIT_FLASH_TIME = 0.3;
-const POWERUP_RETRY = 0.3, POWERUP_PAUSE = [4, 9], EXTINGUISH_BELOW = 0.45;
-const SHIELD_BELOW = 0.7, EMP_BOT_REACH = 0.7;   // o bot ergue o escudo com a vida abaixo disso (ou com raiva) e pulsa com alguém perto
+const POWERUP_RETRY = 0.3, URGENT = 2.5, EMP_BOT_REACH = 0.7;
 const HARPOON_NEAR = 4, HARPOON_FAR = 17, HARPOON_AIM = 1;   // só dispara com o alvo reto à frente
 const FIRING_ARC_COS = Math.cos(LOOK.maxYaw);         // o piloto só atira até onde a cabeça vira, como o jogador
 
 const random = ([low, high]) => low + Math.random() * (high - low);
 
-export function createOpponentCombat({ scene, car, race, opponents, traps, burning, look, onShot, onSound, onDestroyed, onBotShot, onRemotePull, onTetherEnd, onKill, onPlayerShot = () => {} }) {
+// Curva fechada entre `from` e `from + length` metros de pista?
+function sharpCurveIn(from, length) {
+  const { count, step, curvature } = track, start = Math.floor((((from % track.length) + track.length) % track.length) / step);
+  for (let k = 0; k * step <= length; k++) if (curvature[(start + k) % count] > 1 / SHARP_RADIUS) return true;
+  return false;
+}
+
+export function createOpponentCombat({ scene, car, race, opponents, traps, mines, nets, burning, look, onShot, onSound, onDestroyed, onBotShot, onRemotePull, onTetherEnd, onTrip, onKill, onPlayerShot = () => {} }) {
   const visuals = createCombatVisuals(scene);
   const from = new THREE.Vector3(), to = new THREE.Vector3();
   const combat = { hitFlash: 0, hitAngle: 0, update, reset, showRemoteShot, explodeAt: (x, y, z) => visuals.explode(x, y, z), harpoonTip: op => harpoons.get(op).tip };
   const field = race.field;
   const attackersOn = new Map();                     // quantos já atiram em cada alvo neste quadro
-  const harpoons = new Map(opponents.map(op => [op, createHarpoon({ owner: op, car, race, visual: createHarpoonVisual(scene), onSound, onRemotePull, onTetherEnd: target => onTetherEnd(target, op) })]));
-  let raceTime = 0, playerExploded = false;
+  const harpoons = new Map(opponents.map(op => [op, createHarpoon({ owner: op, car, race, visual: createHarpoonVisual(scene), onSound, onRemotePull, onTrip, onTetherEnd: target => onTetherEnd(target, op) })]));
+  let raceTime = 0, playerExploded = false, leader = null;
 
-  const rangeOf = op => Math.min(op.arsenal.type.range, ENGAGE_RANGE);
+  const rangeOf = op => Math.min(op.arsenal.type.range, styleOf(op).reach);
   const isBlinded = op => op.effects.paint > 0 || op.effects.smoke > 0;
+  const hasCharge = (op, id) => op.arsenal.traps.some(slot => slot.type.id === id && slot.charges > 0);
 
   function isInFront(op, dx, dz, distance) {
     const yaw = op.group.rotation.y;
@@ -55,43 +70,101 @@ export function createOpponentCombat({ scene, car, race, opponents, traps, burni
     return distance < range && Math.abs(wrapDistance(op.dist - target.dist)) < range && isInFront(op, dx, dz, distance);
   }
 
-  // Primeiro revida em quem o atacou; senão pega o mais próximo que ainda não está cercado.
-  function chooseTarget(op) {
-    if (op.grudge > 0 && canReach(op, op.grudgeTarget)) return op.grudgeTarget;
-    let best = null, bestDistance = Infinity;
+  // Quem está logo à frente de `op` na pista.
+  function rivalAhead(op) {
+    let rival = null, nearest = Infinity;
+    for (const racer of field) {
+      const gap = wrapDistance(racer.dist - op.dist);
+      if (racer !== op && gap > 0 && gap < nearest) { nearest = gap; rival = racer; }
+    }
+    return rival;
+  }
+
+  const neighbours = (target, radius) => field.reduce((count, racer) =>
+    count + (racer !== target && isAlive(racer) && Math.hypot(racer.x - target.x, racer.z - target.z) < radius ? 1 : 0), 0);
+
+  // Quanto o piloto quer esse alvo. `closeness` vai de 0 (no limite) a 1 (colado).
+  function targetScore(op, target, style, closeness, rival) {
+    const { focus } = style, { type } = op.arsenal;
+    let score = focus.near * closeness + focus.weak * (1 - healthOf(target) + (isVulnerable(target) ? VULNERABLE_BONUS : 0));
+    if (target === leader) score += focus.leader;
+    if (target === rival) score += focus.rival;
+    if (op.grudge > 0 && target === op.grudgeTarget) score += GRUDGE_FOCUS;
+    if (target.effects?.shield > 0) score -= SHIELDED_PENALTY;          // o escudo engole o tiro: melhor outro
+    if (type.burn && target.effects?.burning > 0) score -= BURNING_PENALTY;   // já está queimando
+    if (type.splash) score += SPLASH_NEIGHBOUR * neighbours(target, type.splash.radius);   // granada: quem está no meio do bolo
+    return score;
+  }
+
+  // Melhor alvo ao alcance da arma.
+  function chooseTarget(op, style, rival) {
+    let best = null, bestScore = -Infinity;
     for (const target of field) {
-      if (!canReach(op, target) || (attackersOn.get(target) ?? 0) >= MAX_ATTACKERS_PER_TARGET) continue;
-      const distance = Math.hypot(target.x - op.x, target.z - op.z);
-      if (distance < bestDistance) { best = target; bestDistance = distance; }
+      if (!canReach(op, target)) continue;
+      const crowd = attackersOn.get(target) ?? 0;
+      if (!style.swarm && crowd >= MAX_ATTACKERS_PER_TARGET) continue;
+      const closeness = 1 - Math.hypot(target.x - op.x, target.z - op.z) / rangeOf(op);
+      const score = targetScore(op, target, style, closeness, rival) - (style.swarm ? 0 : crowd * CROWD_PENALTY);
+      if (score > bestScore) { best = target; bestScore = score; }
     }
     return best;
   }
 
-  function updateTarget(op, dt) {
+  // Alvo da perseguição: o preferido entre quem está à frente, mesmo fora do alcance (a tática de pista vai atrás dele).
+  function chooseQuarry(op, style, rival) {
+    let best = null, bestScore = -Infinity;
+    for (const target of field) {
+      if (target === op || !isAlive(target)) continue;
+      const gap = wrapDistance(target.dist - op.dist);
+      if (gap <= 0 || gap > CHASE_SIGHT) continue;
+      const score = targetScore(op, target, style, 1 - gap / CHASE_SIGHT, rival);
+      if (score > bestScore) { best = target; bestScore = score; }
+    }
+    return best;
+  }
+
+  function updateTarget(op, dt, style, combatOpen) {
     const { arsenal } = op;
     arsenal.retargetIn -= dt;
-    if (arsenal.retargetIn <= 0 || !arsenal.target || !canReach(op, arsenal.target)) {
-      arsenal.target = chooseTarget(op);
+    if (arsenal.retargetIn <= 0 || (arsenal.target && !canReach(op, arsenal.target))) {
+      const rival = rivalAhead(op);
+      op.quarry = chooseQuarry(op, style, rival);
+      arsenal.target = combatOpen ? chooseTarget(op, style, rival) : null;
       arsenal.retargetIn = random(RETARGET_TIME);
     }
+    if (!combatOpen) arsenal.target = null;
     if (arsenal.target) attackersOn.set(arsenal.target, (attackersOn.get(arsenal.target) ?? 0) + 1);
     return arsenal.target;
   }
 
-  function hitChance(op, target, distance) {
-    let chance = BASE_ACCURACY * (1 - DISTANCE_ACCURACY_LOSS * distance / rangeOf(op));
+  function hitChance(op, target, distance, style) {
+    const { type } = op.arsenal;
+    let chance = BASE_ACCURACY * style.accuracy * (1 - DISTANCE_ACCURACY_LOSS * distance / type.range);
     if (op.grudge > 0) chance *= GRUDGE_ACCURACY;
-    if (target.effects.smoke > 0) chance *= TARGET_IN_SMOKE_ACCURACY;
+    if (target.effects.smoke > 0 || traps.smokeBlocks(op.x, op.z, target.x, target.z)) chance *= TARGET_IN_SMOKE_ACCURACY;
+    if (Math.abs(target.laneRate ?? 0) > DODGING_LANE_RATE) chance *= DODGING_ACCURACY;
+    if (op.effects.oil > 0 || Math.abs(op.knock) > 4) chance *= SHAKY_ACCURACY;
     return Math.max(MIN_ACCURACY, Math.min(MAX_ACCURACY, chance));
   }
 
-  function hurt(target, op, amount, bearing) {
+  // Disciplina de tiro: a escopeta espera chegar perto, e arma lenta não gasta bala com chance ruim ou em escudo.
+  function worthShooting(op, target, distance, chance) {
+    const { type } = op.arsenal, finishing = healthOf(target) < FINISH_HEALTH;
+    if (op.grudge > 0 && op.grudgeTarget === target) return true;
+    if (type.falloff && damageAtDistance(type, distance) < type.damage * WEAK_PELLETS) return false;
+    if (type.interval < SLOW_WEAPON) return true;
+    if (target.effects.shield > 0 && !finishing) return false;
+    return chance >= MIN_SLOW_CHANCE || finishing;
+  }
+
+  function hurt(target, op, amount, bearing, shake = 0) {
     if (!target.isPlayer) {
-      if (damageOpponent(target, amount, op)) onKill(target, op);
+      if (damageOpponent(target, amount, op, shake)) onKill(target, op);
       return;
     }
     const wasAlive = car.health > 0 && car.wrecked <= 0;
     damagePlayer(car, amount * car.parts.bullet / CAR_MAX_HP);
+    if (shake > 0 && car.health > 0) shakeCar(car, shake);
     if (wasAlive && car.health <= 0) onKill(target, op);
     combat.hitFlash = HIT_FLASH_TIME;
     combat.hitAngle = bearing;
@@ -109,12 +182,12 @@ export function createOpponentCombat({ scene, car, race, opponents, traps, burni
     onShot(weaponId, Math.hypot(car.x - start[0], car.z - start[2]), -Math.sin(bearingFrom(car, look, start[0], start[2])));
   }
 
-  function shoot(op, target) {
+  function shoot(op, target, chance) {
     const { arsenal } = op, { type } = arsenal;
     arsenal.ammo--;
     const dx = target.x - op.x, dz = target.z - op.z, distance = Math.hypot(dx, dz) || 1;
     const ux = dx / distance, uz = dz / distance;
-    const hit = Math.random() < hitChance(op, target, distance);
+    const hit = Math.random() < chance;
 
     from.set(op.wx + ux * MUZZLE_FORWARD, op.wy + MUZZLE_HEIGHT, op.wz + uz * MUZZLE_FORWARD);
     to.set(target.wx, target.wy + TARGET_HEIGHT, target.wz);
@@ -128,8 +201,9 @@ export function createOpponentCombat({ scene, car, race, opponents, traps, burni
     const bearing = bearingFrom(car, look, op.x, op.z);
     onShot(type.id, Math.hypot(car.x - op.x, car.z - op.z), -Math.sin(bearing));
 
-    if (hit) hurt(target, op, damageAtDistance(type, distance) * rollPart().multiplier, bearing);
+    if (hit) hurt(target, op, damageAtDistance(type, distance) * rollPart().multiplier, bearing, shakeAtDistance(type, distance));
     if (hit && target.isPlayer) onPlayerShot();       // bala batendo na lataria
+    if (!hit && target.isPlayer && !type.splash && !type.burn) onSound('ricochet', to.x, to.z);   // passou raspando
     if (type.splash) splash(op, type, to, hit ? target : null);
     if (type.burn) {
       if (hit) burning.ignite(target, op, type.burn);
@@ -150,31 +224,32 @@ export function createOpponentCombat({ scene, car, race, opponents, traps, burni
     }
   }
 
-  // Pausa média entre ataques para a munição da arma durar a corrida.
-  function ammoPause({ type, maxReserve }) {
+  // Pausa média entre ataques para a munição da arma durar o tempo que o estilo quer.
+  function ammoPause({ type, maxReserve }, style) {
     const shotsPerAttack = type.automatic ? (BURST_SIZE[0] + BURST_SIZE[1]) / 2 : 1;
-    return AMMO_BUDGET_TIME / (type.magazine + maxReserve) * shotsPerAttack;
+    return style.ammoTime / (type.magazine + maxReserve) * shotsPerAttack;
   }
 
-  function scheduleNextShot(op) {
+  function scheduleNextShot(op, target, style) {
     const { arsenal } = op, { type } = arsenal;
     if (type.automatic && arsenal.burstLeft <= 0) arsenal.burstLeft = Math.round(random(BURST_SIZE));
     arsenal.burstLeft--;
-    const pace = op.grudge > 0 ? GRUDGE_PACE : 1;
+    const pace = (op.grudge > 0 ? GRUDGE_PACE : 1) * (healthOf(target) < FINISH_HEALTH ? FINISH_PACE : 1);
     if (arsenal.burstLeft > 0) arsenal.cooldown = type.interval;
-    else arsenal.cooldown = Math.max(type.interval, ammoPause(arsenal) * random(PAUSE_VARIATION) * pace);
+    else arsenal.cooldown = Math.max(type.interval, ammoPause(arsenal, style) * random(PAUSE_VARIATION) * pace);
   }
 
   function startReload(arsenal) {
     const { type } = arsenal;
-    const rounds = Math.min(type.magazine, arsenal.reserve);
+    const rounds = Math.min(type.magazine - arsenal.ammo, arsenal.reserve);
+    if (rounds <= 0) return;
     arsenal.loading = rounds;
     arsenal.reloadLeft = type.reloadsWholeMagazine ? type.roundTime : type.roundTime * rounds;
     arsenal.burstLeft = 0;
   }
 
-  function updateGun(op, dt, target) {
-    const { arsenal } = op;
+  function updateGun(op, dt, target, style) {
+    const { arsenal } = op, { type } = arsenal;
     arsenal.cooldown -= dt;
     if (arsenal.reloadLeft > 0) {
       arsenal.reloadLeft -= dt;
@@ -188,49 +263,77 @@ export function createOpponentCombat({ scene, car, race, opponents, traps, burni
       if (arsenal.reserve > 0) startReload(arsenal);
       return;
     }
+    // Sem ninguém na mira, aproveita para completar o carregador antes da próxima briga.
+    arsenal.idle = target ? 0 : (arsenal.idle ?? 0) + dt;
+    if (arsenal.idle > IDLE_RELOAD && type.magazine > 1 && arsenal.ammo <= type.magazine / 2 && arsenal.reserve > 0) {
+      startReload(arsenal);
+      return;
+    }
     if (arsenal.aimingAt !== target) {             // trocar de alvo custa tempo de mira
       arsenal.aimingAt = target;
-      arsenal.aimTime = random(AIM_TIME);
+      arsenal.aimTime = random(AIM_TIME) * style.aim;
       arsenal.burstLeft = 0;
     }
     if (!target || op.effects.emp > 0 || (arsenal.aimTime -= dt) > 0 || arsenal.cooldown > 0) return;
-    shoot(op, target);
-    scheduleNextShot(op);
+    const distance = Math.hypot(target.x - op.x, target.z - op.z) || 1, chance = hitChance(op, target, distance, style);
+    if (arsenal.burstLeft <= 0 && !worthShooting(op, target, distance, chance)) return;
+    shoot(op, target, chance);
+    scheduleNextShot(op, target, style);
   }
 
-  function nextLoadedTrap(arsenal) {
-    const { traps: slots } = arsenal;
-    for (let k = 0; k < slots.length; k++) {
-      const index = (arsenal.nextTrap + k) % slots.length;
-      if (slots[index].charges > 0 && !slots[index].type.powerup) {
-        arsenal.nextTrap = index;
-        return slots[index];
+  // Quem vem atrás na distância certa para essa armadilha, com o quanto está de lado.
+  function followersFor(op, type) {
+    const [near, far] = TRAP_GAP[type.id] ?? TRAP_GAP.default;
+    const list = [];
+    for (const racer of field) {
+      if (racer === op || !isAlive(racer)) continue;
+      const gap = wrapDistance(op.dist - racer.dist), side = Math.abs(op.lane - racer.lane);
+      if (gap >= near && gap <= far && side <= TRAP_ALIGN_REACH) list.push({ racer, gap, side });
+    }
+    return list;
+  }
+
+  // Quanto vale soltar essa armadilha nesse perseguidor agora.
+  function trapScore(op, type, { racer, gap }, style) {
+    const weapon = weaponOf(racer), aimsAtMe = racer.arsenal?.target === op || (op.grudge > 0 && op.grudgeTarget === racer);
+    let score = 1;
+    if (type.id === 'dynamite' && racer.v > op.v) score += 0.5;                       // chega rápido demais para desviar
+    if (CURVE_TRAPS.has(type.id) && sharpCurveIn(op.dist - DROP_BEHIND - 10, 30)) score += style.curveTraps ? 1.5 : 0.6;
+    if (type.id === 'paint' && weapon) score += 0.5 + (aimsAtMe ? 0.8 : 0);            // cega quem atira em mim
+    if (type.id === 'smoke') score += (effectiveRange(weapon) >= 120 ? 1.2 : 0) + (aimsAtMe ? 0.8 : 0);   // esconde de quem mira de longe
+    if (gap < 12) score += 0.3;
+    return score;
+  }
+
+  // O trapaceiro guarda óleo e espinhos para a entrada da curva fechada, se ela vem logo.
+  function waitsForCurve(op, type, style) {
+    if (!style.curveTraps || !CURVE_TRAPS.has(type.id) || op.arsenal.curveWait > CURVE_WAIT_LIMIT) return false;
+    return !sharpCurveIn(op.dist - DROP_BEHIND - 10, 30) && sharpCurveIn(op.dist, CURVE_SIGHT);
+  }
+
+  function updateTraps(op, dt, style) {
+    const { arsenal } = op;
+    if (!traps.isUnlocked() || op.effects.emp > 0 || (arsenal.trapTimer -= dt) > 0) return;
+    arsenal.trapTimer = TRAP_RETRY;
+    let best = null;
+    for (const slot of arsenal.traps) {
+      if (slot.charges <= 0 || slot.type.powerup) continue;
+      for (const follower of followersFor(op, slot.type)) {
+        const score = trapScore(op, slot.type, follower, style);
+        if (!best || score > best.score) best = { slot, follower, score };
       }
     }
-    return null;
-  }
-
-  // Alguém vem logo atrás, na mesma parte da pista, a uma distância boa para essa armadilha?
-  function hasFollower(op, type) {
-    const [near, far] = TRAP_GAP[type.id] ?? TRAP_GAP.default;
-    return field.some(racer => {
-      if (racer === op || racer.dead > 0) return false;
-      const gap = wrapDistance(op.dist - racer.dist);
-      return gap >= near && gap <= far && Math.abs(op.lane - racer.lane) <= TRAP_LANE_REACH;
-    });
-  }
-
-  function updateTraps(op, dt) {
-    const { arsenal } = op;
-    if (!traps.isUnlocked() || (arsenal.trapTimer -= dt) > 0) return;
-    arsenal.trapTimer = TRAP_RETRY;
-    const slot = nextLoadedTrap(arsenal);
-    if (!slot) return;
-    if (!hasFollower(op, slot.type)) return;
+    if (!best) { arsenal.curveWait = 0; return; }
+    const { slot, follower } = best, { type } = slot;
+    if (waitsForCurve(op, type, style)) { arsenal.curveWait = (arsenal.curveWait ?? 0) + TRAP_RETRY; return; }
+    if (follower.side > type.halfWidth + 1) {        // fora da faixa dele: quem sabe entra na frente e tenta de novo
+      if (style.trapLane) Object.assign(op.tactics, { trapAim: follower.racer.lane, trapAimTime: TRAP_AIM_TIME });
+      return;
+    }
     slot.charges--;
-    traps.dropFrom(op, slot.type);
-    arsenal.nextTrap = (arsenal.nextTrap + 1) % arsenal.traps.length;
-    arsenal.trapTimer = random(TRAP_PAUSE);
+    traps.dropFrom(op, type);
+    arsenal.curveWait = 0;
+    arsenal.trapTimer = random(style.trapPause);
   }
 
   function hasHarpoonShot(op) {
@@ -242,37 +345,69 @@ export function createOpponentCombat({ scene, car, race, opponents, traps, burni
     });
   }
 
-  function usePowerup(op, type) {
-    if (type.id === 'extinguisher') {
-      if (op.hp / (op.maxHp * lifeAfterDestruction(op.destroyed)) > EXTINGUISH_BELOW) return false;
-      traps.extinguish(op);
-      return true;
-    }
-    if (type.id === 'shield') {
-      if (op.effects.shield > 0 || (op.hp / op.maxHp > SHIELD_BELOW && op.grudge <= 0)) return false;
-      return traps.usePower('shield', op);
-    }
-    if (type.id === 'emp') {
-      const crowded = field.some(racer => racer !== op && racer.dead <= 0 && Math.hypot(racer.x - op.x, racer.z - op.z) < EMP_RADIUS * EMP_BOT_REACH);
-      return crowded && traps.usePower('emp', op);
-    }
-    if (type.id === 'mine') return !isBlinded(op) && traps.usePower('mine', op);
-    const harpoon = harpoons.get(op);
-    if (harpoon.busy || !hasHarpoonShot(op)) return false;
-    harpoon.fire();
-    return true;
+  // Alguém por perto que pode me machucar agora: mira em mim, tem raiva de mim ou está atrás no alcance da arma dele.
+  function threatens(racer, op) {
+    if (racer.arsenal?.target === op || (racer.grudge > 0 && racer.grudgeTarget === op)) return true;
+    const behind = wrapDistance(op.dist - racer.dist);
+    return behind > 0 && behind < effectiveRange(weaponOf(racer));
   }
 
-  function updatePowerups(op, dt) {
-    const { arsenal } = op;
-    if (!traps.isUnlocked() || op.overturned || (arsenal.powerupTimer -= dt) > 0) return;
-    arsenal.powerupTimer = POWERUP_RETRY;
-    for (const slot of arsenal.traps) {
-      if (!slot.type.powerup || slot.charges <= 0 || !usePowerup(op, slot.type)) continue;
-      slot.charges--;
-      arsenal.powerupTimer = random(POWERUP_PAUSE);
-      return;
+  // Urgência de cada power-up (0 = não usa). URGENT ou mais passa por cima da pausa entre itens.
+  function powerupUrgency(op, type, style) {
+    const health = healthOf(op), burning = op.effects.burning > 0, mineOnMe = mines.fuseOn(op) > 0;
+    if (type.id === 'emp') {
+      if (mineOnMe) return 3;                        // o pulso desarma a mina grudada
+      const near = field.filter(racer => racer !== op && isAlive(racer) && racer.effects.emp <= 0 && Math.hypot(racer.x - op.x, racer.z - op.z) < EMP_RADIUS * EMP_BOT_REACH);
+      if (near.length < style.empCrowd) return 0;
+      return near.some(racer => threatens(racer, op)) ? 1.6 : near.length > style.empCrowd ? 1.1 : 0;
     }
+    if (type.id === 'shield') {
+      if (op.effects.shield > 0) return 0;
+      if (mineOnMe && !hasCharge(op, 'emp')) return 2.8;
+      if (burning && health < 0.6 && !hasCharge(op, 'extinguisher')) return 2;
+      const underFire = op.grudge > 0 || field.some(racer => racer.arsenal?.target === op);
+      if (health < style.shieldAt && underFire) return 1.8;
+      if (op.tactics.ramming > 0 && style.ram >= 1) return 1;   // o brutamontes ergue o escudo antes da pancada
+      return 0;
+    }
+    if (type.id === 'extinguisher') {
+      if (burning && health < 0.75) return 2.6;     // apaga o fogo antes que ele termine o serviço
+      return health < style.extinguishAt ? 2 : 0;
+    }
+    if (type.id === 'mine') {
+      const target = mines.targetFor(op);
+      if (!target || isBlinded(op) || target.effects?.shield > 0) return 0;
+      return 1.4 + (target === op.quarry ? 0.4 : 0) + (healthOf(target) < 0.35 ? 0.5 : 0);
+    }
+    if (type.id === 'net') {
+      const target = nets.targetFor(op);
+      if (!target || isBlinded(op)) return 0;
+      return 1.2 + (target === op.quarry ? 0.4 : 0) + (target.nitroActive || target.v > op.v ? 0.3 : 0);
+    }
+    if (type.id === 'harpoon') return !harpoons.get(op).busy && hasHarpoonShot(op) ? 1.3 : 0;
+    return 0;
+  }
+
+  function usePowerup(op, type) {
+    if (type.id === 'extinguisher') { traps.extinguish(op); return true; }
+    if (type.id === 'harpoon') { harpoons.get(op).fire(); return true; }
+    return traps.usePower(type.id, op);
+  }
+
+  function updatePowerups(op, dt, style) {
+    const { arsenal } = op;
+    arsenal.powerupTimer -= dt;
+    if (!traps.isUnlocked() || op.overturned || op.effects.emp > 0 || (arsenal.powerupCheck -= dt) > 0) return;
+    arsenal.powerupCheck = POWERUP_RETRY;
+    let best = null, bestUrgency = 0;
+    for (const slot of arsenal.traps) {
+      if (!slot.type.powerup || slot.charges <= 0) continue;
+      const urgency = powerupUrgency(op, slot.type, style);
+      if (urgency > bestUrgency && (arsenal.powerupTimer <= 0 || urgency >= URGENT)) { best = slot; bestUrgency = urgency; }
+    }
+    if (!best || !usePowerup(op, best.type)) return;
+    best.charges--;
+    arsenal.powerupTimer = random(style.powerupPause);
   }
 
   function showDestruction(x, y, z) {
@@ -308,13 +443,15 @@ export function createOpponentCombat({ scene, car, race, opponents, traps, burni
     if (!race.started || race.finished) return;
     raceTime += dt;
     attackersOn.clear();
+    leader = field.reduce((best, racer) => (!best || racer.dist > best.dist ? racer : best), null);
     const combatOpen = raceTime >= GRACE_AFTER_START;
     for (const op of opponents) {
       if (op.dead > 0 || op.remote) continue;
+      const style = styleOf(op);
       op.grudge -= dt;
-      updateGun(op, dt, combatOpen ? updateTarget(op, dt) : null);
-      updateTraps(op, dt);
-      if (combatOpen) updatePowerups(op, dt);
+      updateGun(op, dt, updateTarget(op, dt, style, combatOpen), style);
+      updateTraps(op, dt, style);
+      if (combatOpen) updatePowerups(op, dt, style);
     }
   }
 

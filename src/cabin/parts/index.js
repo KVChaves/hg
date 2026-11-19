@@ -1,6 +1,7 @@
 import { HEALTH_METERS } from './healthMeters.js';
 import { CABIN_COLORS } from './cabinColors.js';
 import { CHARMS } from './charms.js';
+import { HANDS } from './hands.js';
 import { NITROS } from './nitros.js';
 import { SHIFTERS } from './shifters.js';
 import { WHEELS } from './wheels.js';
@@ -13,4 +14,5 @@ export const PARTS = {
   nitro: { label: 'Cilindro de nitro', options: NITROS, default: 'standard' },
   charm: { label: 'Enfeite do retrovisor', options: CHARMS, default: 'cross' },
   cabinColor: { label: 'Cor da cabine', options: CABIN_COLORS, default: 'standard' },
+  hands: { label: 'Maos', options: HANDS, default: 'glove' },
 };

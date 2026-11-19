@@ -1,3 +1,4 @@
+// `shake` (escopetas): o carro atingido balança, com giro, empurrão lateral e inclinação; quanto mais perto, mais forte.
 // Armas de fogo disponíveis. Com toda a munição e sem errar, cada uma causa cerca de 1000 de dano;
 // o preço (`price`, em reais) depende de quão fácil é aproveitar esse dano numa corrida.
 
@@ -8,7 +9,7 @@ export const WEAPON_TYPES = {
   },
   shotgun: {
     id: 'shotgun', family: 'shotgun', label: 'ESCOPETA', price: 240, summary: 'DEVASTADORA DE PERTO',
-    damage: 92, falloff: { full: 15, zero: 50, min: 5 }, interval: 0.45, range: 60,
+    damage: 92, falloff: { full: 15, zero: 50, min: 5 }, shake: 1.4, interval: 0.45, range: 60,
     magazine: 2, reserve: 10, roundTime: 0.6, recoil: 1.5,
   },
   smg: {
@@ -17,8 +18,8 @@ export const WEAPON_TYPES = {
     automatic: true, reloadsWholeMagazine: true, bloom: { perShot: 0.012, max: 0.07, decay: 0.12 },
   },
   rifle: {
-    id: 'rifle', family: 'rifle', label: 'RIFLE', price: 260, summary: 'LONGO ALCANCE E TIRO LENTO',
-    damage: 55, interval: 0.75, range: 230, magazine: 5, reserve: 13, roundTime: 0.55, recoil: 1.3,
+    id: 'rifle', family: 'rifle', label: 'RIFLE', price: 320, summary: 'LONGO ALCANCE E TIRO LENTO',
+    damage: 75, interval: 0.75, range: 230, magazine: 5, reserve: 13, roundTime: 0.55, recoil: 1.3,
   },
   magnum: {
     id: 'magnum', family: 'revolver', style: 'topbreak', label: 'REVOLVER PESADO', price: 190, summary: 'DEVAGAR E PESADO',
@@ -30,7 +31,7 @@ export const WEAPON_TYPES = {
   },
   autoshotgun: {
     id: 'autoshotgun', family: 'shotgun', style: 'autoshotgun', label: 'ESCOPETA AUTO', price: 320, summary: 'ESCOPETA QUE ATIRA SEGURANDO',
-    damage: 48, falloff: { full: 14, zero: 42, min: 4 }, interval: 0.28, range: 50, magazine: 6, reserve: 18, roundTime: 0.45, recoil: 1.2,
+    damage: 48, falloff: { full: 14, zero: 42, min: 4 }, shake: 0.8, interval: 0.28, range: 50, magazine: 6, reserve: 18, roundTime: 0.45, recoil: 1.2,
     automatic: true, bloom: { perShot: 0.02, max: 0.08, decay: 0.15 },
   },
   // `burn`: segundos em chamas para o carro atingido; errando, a flecha deixa o chão queimando (game/burning.js).
@@ -53,4 +54,11 @@ export function damageAtDistance(type, distance) {
   const { full, zero, min } = type.falloff;
   const t = Math.max(0, Math.min(1, (distance - full) / (zero - full)));
   return type.damage + (min - type.damage) * t;
+}
+
+// Força do balanço no carro atingido a `distance` metros: a mesma queda do dano, com um mínimo para o tiro longe ainda sacudir.
+const SHAKE_MIN_SHARE = 0.25;
+export function shakeAtDistance(type, distance) {
+  if (!type.shake) return 0;
+  return type.shake * Math.max(SHAKE_MIN_SHARE, damageAtDistance(type, distance) / type.damage);
 }
