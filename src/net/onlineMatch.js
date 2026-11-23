@@ -14,7 +14,7 @@ import { createHarpoonVisual } from '../world/harpoonVisual.js';
 // garagem, largada, fim da corrida e próxima rodada.
 
 const SNAPSHOT_INTERVAL = 1 / 15;
-const VOTE_TIME = 10, VOTE_RESULT_TIME = 1.8, VOTE_CHOICES = 3;
+const VOTE_TIME = 10, VOTE_RESULT_TIME = 1.8, VOTE_CHOICES = 3, VETO_TIME = 4;   // com alguém podendo excluir um mapa, a votação dura um pouco mais
 const GARAGE_TIME = 45, GARAGE_GRACE = 1, RESULTS_TIME = 12, FINISH_GRACE = 30;
 const HIT_FLASH_TIME = 0.3, HARPOON_HEIGHT = 0.62, NOSE_FORWARD = 2.3;
 const BOT_PREFIX = 'bot';
@@ -22,12 +22,14 @@ const BOT_PREFIX = 'bot';
 const round = value => Math.round(value * 100) / 100;
 const isBotId = id => id.startsWith(BOT_PREFIX);
 
-export function createOnlineMatch({ onRopeTripped = () => {}, onPlayerKilledBy = () => {}, onPlayerShot = () => {}, net, scene, race, car, opponents, combat, traps, mines, nets, emp, burning, foam, harpoon, pulls, weapon, look, garage, results, podium, voteScreen, getSpec, setRacerCount, setMatch, getMatch, getMatchKills, beginRace, getBiome, playAt, creditKill, rewardKillFor, announceTrapCatch, obstacles, onLateJoin }) {
+export function createOnlineMatch({ onRopeTripped = () => {}, onPlayerKilledBy = () => {}, onPlayerShot = () => {}, net, scene, race, car, opponents, combat, traps, mines, nets, emp, burning, foam, harpoon, pulls, weapon, look, garage, results, podium, voteScreen, getSpec, setRacerCount, setMatch, getMatch, getMatchKills, combatStats, beginRace, getBiome, playAt, creditKill, rewardKillFor, announceTrapCatch, obstacles, raceKills: killTable, addRaceKill, onLateJoin }) {
+  let lead = { leader: null, time: new Map(), lost: new Map() };   // liderança da corrida (só o admin usa)
   const byId = new Map(), harpoonVisuals = new Map(), ready = new Set(), pool = [...opponents], killsOf = new Map();
   let isHost = false, phase = 'idle', phaseTimer = 0, snapshotTimer = 0, finishGrace = 0;
-  let vote = null;                                   // votação em andamento: { candidates, played, number, timeLeft, votes }
+  let vote = null;                                   // votação em andamento: { candidates, played, timeLeft, votes, veto, double, excluded }
+  let raceKills = new Map(), raceStartKills = 0;     // abates de cada humano na última corrida (só o admin junta) e o meu total na largada
 
-  const online = { active: false, start, update, markReady, castVote, readyRoster, returnToLobby, onRoomChange, sendKill, sendCaught, sendShot, sendTrap, sendTrapBoom, sendExtinguisher, sendPull, sendMine, sendNet, sendTrip, sendEmp, sendPullEnd, sendObstacle, sendObstacleBreak };
+  const online = { active: false, start, update, markReady, castVote, castVeto, readyRoster, returnToLobby, onRoomChange, sendKill, sendCaught, sendShot, sendTrap, sendTrapBoom, sendExtinguisher, sendPull, sendMine, sendNet, sendTrip, sendEmp, sendPullEnd, sendObstacle, sendObstacleBreak };
   const me = () => race.field[0];
   const humanIds = () => race.field.filter(racer => !isBotId(racer.netId)).map(racer => racer.netId);
   const ownerOf = racer => (isBotId(racer.netId) ? net.room.hostId : racer.netId);
@@ -84,27 +86,66 @@ export function createOnlineMatch({ onRopeTripped = () => {}, onPlayerKilledBy =
     if (isHost) startVote();                         // o mapa se vota antes da garagem; a partida só larga com todos prontos
   }
 
+  // Privilégios da votação, a partir da segunda corrida: o humano que chegou na frente na última corrida pode excluir
+  // um dos mapas (`x`) e o que mais abateu nela tem o voto dobrado (`d`; empate não dá a ninguém). Bot não vota, então
+  // vale o humano mais bem colocado.
+  function votePrivileges(match, candidates) {
+    if (match.racesDone === 0) return {};
+    const humans = new Map(race.field.filter(racer => !isBotId(racer.netId)).map(racer => [racer.name, racer.netId]));
+    const ids = new Set(humans.values());
+    const veto = candidates.length >= VOTE_CHOICES ? (match.lastOrder ?? []).map(name => humans.get(name)).find(Boolean) ?? null : null;
+    const [best, next] = [...raceKills].filter(([id, kills]) => ids.has(id) && kills > 0).sort((a, b) => b[1] - a[1]);
+    const double = best && !(next && next[1] === best[1]) ? best[0] : null;
+    return { ...(veto && { x: veto }), ...(double && { d: double }) };
+  }
+
   // O admin abre a votação com opções sorteadas entre os biomas ainda não jogados. Com uma só opção não há o que votar.
   function startVote() {
     const match = getMatch(), played = [...match.biomesPlayed], candidates = voteCandidates(played, VOTE_CHOICES);
     if (candidates.length === 1) { broadcast({ k: 'vr', b: candidates[0].id, p: played, auto: true }); return; }
-    broadcast({ k: 'vt', c: candidates.map(biome => biome.id), p: played, n: match.racesDone + 1, tot: match.raceCount, s: VOTE_TIME });
+    const privileges = votePrivileges(match, candidates);
+    broadcast({ k: 'vt', c: candidates.map(biome => biome.id), p: played, n: match.racesDone + 1, tot: match.raceCount, s: VOTE_TIME + (privileges.x ? VETO_TIME : 0), ...privileges });
   }
 
   const voteNames = () => new Map(race.field.filter(racer => !isBotId(racer.netId)).map(racer => [racer.netId, racer.name]));
   const showVotes = () => voteScreen.setVotes(vote.votes, voteNames());
+  const voteWeight = player => (player === vote.double ? 2 : 1);
 
-  // Maioria vence; empate (ou ninguém votou) o admin sorteia entre os empatados e avisa todos.
+  // Maioria vence (o voto dobrado conta 2); empate (ou ninguém votou) o admin sorteia entre os empatados e avisa todos.
   function resolveVote() {
-    const tally = new Map(vote.candidates.map(id => [id, 0]));
-    for (const choice of vote.votes.values()) tally.set(choice, (tally.get(choice) ?? 0) + 1);
+    const tally = new Map(vote.candidates.filter(id => id !== vote.excluded).map(id => [id, 0]));
+    for (const [player, choice] of vote.votes) if (tally.has(choice)) tally.set(choice, tally.get(choice) + voteWeight(player));
     const top = Math.max(...tally.values()), tied = [...tally].filter(([, count]) => count === top).map(([id]) => id);
     broadcast({ k: 'vr', b: tied[Math.floor(Math.random() * tied.length)], p: vote.played });
   }
 
   // O jogador clicou num mapa: vale o último clique até a votação acabar.
   function castVote(biomeId) {
-    if (phase === 'vote') broadcast({ k: 'vv', b: biomeId });
+    if (phase === 'vote' && biomeId !== vote.excluded) broadcast({ k: 'vv', b: biomeId });
+  }
+
+  // O líder da última corrida tirou um mapa da votação (uma vez só).
+  function castVeto(biomeId) {
+    if (phase === 'vote' && vote.veto === net.id && !vote.excluded) broadcast({ k: 'vx', b: biomeId });
+  }
+
+  // Na largada guarda o meu total de abates; no fim manda ao admin quantos foram nesta corrida.
+  function reportRaceKills() {
+    const kills = getMatchKills() - raceStartKills;
+    if (isHost) { raceKills.set(net.id, kills); shareRaceKills(); }
+    else net.relay({ k: 'rk', n: kills }, net.room.hostId);
+  }
+
+  // O admin junta os abates da corrida de todos (os dele e dos bots já estão em `killTable`; os dos outros humanos vêm em `rk`)
+  // e manda a tabela a todos, para a tela de resultados mostrar o rei dos abates. Reenvia a cada relato novo.
+  function shareRaceKills() {
+    const table = new Map(killTable);
+    for (const [id, kills] of raceKills) {
+      const name = race.field.find(racer => racer.netId === id)?.name;
+      if (name) table.set(name, kills);
+    }
+    for (const [name, kills] of table) killTable.set(name, kills);
+    net.relay({ k: 'kk', n: [...table] });
   }
 
   // O jogador terminou a garagem: avisa todos e espera a largada.
@@ -134,6 +175,7 @@ export function createOnlineMatch({ onRopeTripped = () => {}, onPlayerKilledBy =
       phaseTimer -= dt;
       if (phaseTimer <= 0 || humanIds().every(id => ready.has(id))) launchRace();
     } else if (phase === 'race' && race.started && !race.finished) {
+      trackLead(dt);
       const humans = race.field.filter(racer => !isBotId(racer.netId));
       const done = humans.filter(racer => race.hasFinished(racer)).length;
       if (done > 0) finishGrace += dt;
@@ -152,12 +194,26 @@ export function createOnlineMatch({ onRopeTripped = () => {}, onPlayerKilledBy =
     }
   }
 
+  // Liderança, medida só pelo admin para todos verem o mesmo número: tempo na frente e quantas vezes perdeu a ponta.
+  // Para de contar quando alguém cruza a linha (dali em diante a ordem não é mais disputa).
+  function trackLead(dt) {
+    if (race.field.some(racer => race.hasFinished(racer))) return;
+    const leader = race.order[0]?.name;
+    if (!leader) return;
+    if (lead.leader && leader !== lead.leader) lead.lost.set(lead.leader, (lead.lost.get(lead.leader) ?? 0) + 1);
+    lead.leader = leader;
+    lead.time.set(leader, (lead.time.get(leader) ?? 0) + dt);
+  }
+
   // Ordem de chegada da corrida, com o id de rede de cada humano (os bots vão só com o nome).
   function raceResults(finished) {
     return finished.map((entry, i) => {
       const racer = race.field.find(candidate => candidate.name === entry.name);
       const human = racer && !isBotId(racer.netId);
-      return { ...(human ? { id: racer.netId } : {}), name: entry.name, position: i + 1, time: entry.time };
+      return {
+        ...(human ? { id: racer.netId } : {}), name: entry.name, position: i + 1, time: entry.time,
+        lead: Math.round((lead.time.get(entry.name) ?? 0) * 10) / 10, lost: lead.lost.get(entry.name) ?? 0,
+      };
     });
   }
 
@@ -258,7 +314,7 @@ export function createOnlineMatch({ onRopeTripped = () => {}, onPlayerKilledBy =
     } else {
       destroyed = damageOpponent(target, a, attacker, s);
     }
-    if (destroyed && attacker) sendKill(target, attacker);
+    if (destroyed && attacker) sendKill(target, attacker, 'shot');
   }
 
   const HANDLERS = {
@@ -270,16 +326,29 @@ export function createOnlineMatch({ onRopeTripped = () => {}, onPlayerKilledBy =
       ready.clear();
       match.upcomingBiome = null;
       phase = 'vote';
-      vote = { candidates: data.c, played: data.p, timeLeft: data.s, votes: new Map() };
-      voteScreen.open({ candidates: data.c.map(id => BIOMES.find(biome => biome.id === id)), played: data.p, number: data.n, total: data.tot, seconds: VOTE_TIME, myId: net.id });
+      vote = { candidates: data.c, played: data.p, timeLeft: data.s, votes: new Map(), veto: data.x ?? null, double: data.d ?? null, excluded: data.e ?? null };
+      const names = voteNames();
+      voteScreen.open({
+        candidates: data.c.map(id => BIOMES.find(biome => biome.id === id)), played: data.p, number: data.n, total: data.tot, seconds: VOTE_TIME + (data.x ? VETO_TIME : 0), myId: net.id,
+        veto: vote.veto, double: vote.double, excluded: vote.excluded, vetoName: names.get(vote.veto), doubleName: names.get(vote.double),
+      });
       voteScreen.setTime(data.s);
       showVotes();
     },
     vv: (data, from) => {                            // `by`: o admin repassa os votos já dados a quem entrou no meio
-      if (phase !== 'vote' || !vote.candidates.includes(data.b)) return;
+      if (phase !== 'vote' || !vote.candidates.includes(data.b) || data.b === vote.excluded) return;
       vote.votes.set(data.by ?? from, data.b);
       showVotes();
     },
+    vx: (data, from) => {                            // mapa excluído: os votos nele caem e quem votou escolhe outro
+      if (phase !== 'vote' || from !== vote.veto || vote.excluded || !vote.candidates.includes(data.b)) return;
+      vote.excluded = data.b;
+      for (const [player, choice] of [...vote.votes]) if (choice === data.b) vote.votes.delete(player);
+      voteScreen.setExcluded(data.b);
+      showVotes();
+    },
+    rk: (data, from) => { if (isHost) { raceKills.set(from, data.n); shareRaceKills(); } },
+    kk: data => { if (!isHost) { killTable.clear(); for (const [name, kills] of data.n) killTable.set(name, kills); } },
     vr: data => {
       const match = getMatch();
       if (!match) return;
@@ -291,13 +360,15 @@ export function createOnlineMatch({ onRopeTripped = () => {}, onPlayerKilledBy =
     },
     hit: receiveHit,
     kill: data => {
-      if (data.b) { rewardKillFor(byId.get(data.b)); return; }
-      creditKill(byId.get(data.t));
+      if (data.b) { addRaceKill(byId.get(data.b)); rewardKillFor(byId.get(data.b)); return; }   // abate de bot: o admin conta
+      creditKill(byId.get(data.t), data.c);
       weapon.hitMarker = 0.4;
     },
     caught: data => {
       const racer = byId.get(data.t);
-      if (data.by === net.id && racer) announceTrapCatch(racer, hazardType(data.i));
+      if (data.by !== net.id || !racer) return;
+      combatStats.trapScored(data.n);
+      announceTrapCatch(racer, hazardType(data.i));
     },
     burn: data => {
       const target = byId.get(data.t);
@@ -359,10 +430,17 @@ export function createOnlineMatch({ onRopeTripped = () => {}, onPlayerKilledBy =
       net.relay({ k: 'spec', s: getSpec() });
       phase = 'race';
       finishGrace = 0;
+      lead = { leader: null, time: new Map(), lost: new Map() };
+      raceKills = new Map();
+      raceStartKills = getMatchKills();
       snapshotTimer = 0;
     },
     end: data => {
       if (!race.finished) race.applyFinish(data.r);
+      if (race.field.includes(me())) {
+        net.sendCombat(combatStats.snapshot());      // cada humano manda as próprias
+        reportRaceKills();
+      }
       phase = 'results';
       phaseTimer = RESULTS_TIME;
     },
@@ -475,7 +553,7 @@ export function createOnlineMatch({ onRopeTripped = () => {}, onPlayerKilledBy =
         if (isHost) for (const player of joined) {
           net.relay({ k: 'inter', m: getMatch().snapshot() }, player.id);
           if (phase === 'vote') {
-            net.relay({ k: 'vt', c: vote.candidates, p: vote.played, n: getMatch().racesDone + 1, tot: getMatch().raceCount, s: vote.timeLeft }, player.id);
+            net.relay({ k: 'vt', c: vote.candidates, p: vote.played, n: getMatch().racesDone + 1, tot: getMatch().raceCount, s: vote.timeLeft, ...(vote.veto && { x: vote.veto }), ...(vote.double && { d: vote.double }), ...(vote.excluded && { e: vote.excluded }) }, player.id);
             for (const [by, b] of vote.votes) net.relay({ k: 'vv', b, by }, player.id);
           }
         }
@@ -485,14 +563,16 @@ export function createOnlineMatch({ onRopeTripped = () => {}, onPlayerKilledBy =
   }
 
   // Avisa o piloto humano que destruiu ou pegou numa armadilha um carro simulado aqui.
-  function sendKill(victim, killer) {
+  // `cause`: como foi destruído (ver ui/feats.js), para as estatísticas de quem abateu.
+  function sendKill(victim, killer, cause) {
     if (!online.active) return;
     // Bot: quem recompensa é o admin, que simula os bots (`b` diz qual bot).
     if (isBotId(killer.netId)) net.relay({ k: 'kill', t: victim.netId, b: killer.netId }, net.room.hostId);
-    else net.relay({ k: 'kill', t: victim.netId }, killer.netId);
+    else net.relay({ k: 'kill', t: victim.netId, ...(cause && { c: cause }) }, killer.netId);
   }
-  function sendCaught(victim, type, owner) {
-    if (online.active && !isBotId(owner.netId)) net.relay({ k: 'caught', t: victim.netId, i: type.id, by: owner.netId }, owner.netId);
+  // `id`: qual armadilha pegou, para o dono contar as que acertaram alguém.
+  function sendCaught(victim, type, owner, id) {
+    if (online.active && !isBotId(owner.netId)) net.relay({ k: 'caught', t: victim.netId, i: type.id, by: owner.netId, n: id }, owner.netId);
   }
 
   // Quem é visto atirando revela a arma: os bots daqui passam a levá-la em conta (botStyles.weaponOf).

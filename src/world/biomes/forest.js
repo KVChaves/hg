@@ -1,15 +1,19 @@
 import * as THREE from 'three';
 import { paintGradient, paintSilhouette } from '../atmosphere.js';
-import { cutTop, speckle } from './wallPaint.js';
 import { alongRoad, EDGE, nearRoad, pickFrom, scatter, solid } from './propKit.js';
+import { broadleafTree, bush, pineTree } from './plants.js';
 import { useImage } from '../textures.js';
 import { forestGate } from './finishGates.js';
 
-// Pôr do sol de outono, estrada de terra batida, árvores vermelhas e cogumelos gigantes.
+// Acostamento largo (metros a mais de cada lado): o limite da pista e o começo da mata ficam em SIDE.
+const SHOULDER = 6, SIDE = EDGE + SHOULDER;
+
+// Pôr do sol de outono, trilha de terra coberta de folhas, árvores vermelhas e cogumelos gigantes. Sem muro: a
+// trilha fica no nível do chão, com acostamento largo de terra, e a mata fechada começa logo depois.
 export const FOREST = {
   id: 'forest', name: 'FLORESTA', music: 'forestField',
   sky: 0xd88040, fog: [14, 190], cabinTint: 0xf4c89c,
-  shape: { wiggle: 0.2, targetLength: 2150, relief: 13, hillScale: 190, banks: 6, sharpCurves: 2 },
+  shape: { wiggle: 0.2, targetLength: 2150, relief: 13, hillScale: 190, shoulder: SHOULDER, sharpCurves: 2 },
   surface: { grip: 0.95, side: 0.9, drag: 0.02, offroad: 1.2 },                  // terra batida: segura um pouco menos que asfalto
   layout: {
     jump: { fallLabel: 'CAIU NA LAMA' },
@@ -25,9 +29,14 @@ export const FOREST = {
     base: [92, 54, 24], variation: 26, image: useImage('assets/tex/autumn-leaves.png'), shade: 0.9,
     paint(ctx) { for (const color of ['#c85a14', '#e0902c', '#8a2c10']) { ctx.fillStyle = color; for (let i = 0; i < 20; i++) ctx.fillRect(Math.random() * 64, Math.random() * 64, 2, 1); } },
   },
+  // Terra batida com folhas caídas por cima; as bordas somem nas folhas do chão, sem faixa pintada.
   road: {
-    base: [122, 84, 48], variation: 22, image: useImage('assets/tex/dirt.png'), shade: 1.15, edge: '#5a3a1c', center: '#7c5630',
-    paint(ctx) { ctx.fillStyle = 'rgba(70,44,20,.55)'; ctx.fillRect(16, 0, 4, 64); ctx.fillRect(44, 0, 4, 64); },
+    base: [122, 84, 48], variation: 22, image: useImage('assets/tex/dirt.png'), shade: 1.15, edge: null, center: null,
+    paint(ctx) { ctx.fillStyle = 'rgba(70,44,20,.55)'; ctx.fillRect(16, 0, 4, 64); ctx.fillRect(44, 0, 4, 64); },   // sulcos das rodas
+    overlay(ctx) {
+      for (const color of ['#c85a14', '#e0902c', '#8a2c10', '#a8701c']) { ctx.fillStyle = color; for (let i = 0; i < 14; i++) ctx.fillRect(Math.random() * 64, Math.random() * 64, 2, 1); }
+      ctx.fillStyle = 'rgba(92,54,24,.7)'; for (let i = 0; i < 18; i++) ctx.fillRect(Math.random() < 0.5 ? Math.random() * 8 : 56 + Math.random() * 8, Math.random() * 64, 2, 1);
+    },
   },
   // Beira de toras deitadas, com folhas caídas.
   kerb: {
@@ -39,25 +48,8 @@ export const FOREST = {
   },
   gantry: forestGate,
   tunnel: { arch: 'timber', rib: 0x5a3618, leaves: 0xb83c14 },
-  // Paliçada de troncos com ponta.
-  wall: {
-    height: 2.8, tile: 6,
-    paint(ctx, w, h) {
-      const LOG = 16;
-      for (let x = 0; x < w; x += LOG) {
-        ['#3a2210', '#5a3618', '#74481e', '#5a3618', '#3a2210'].forEach((color, band) => {
-          ctx.fillStyle = color;
-          ctx.fillRect(x + 1 + band * 3, 0, 3, h);
-        });
-        ctx.fillStyle = '#1a0f06';
-        ctx.fillRect(x, 0, 1, h);
-      }
-      speckle(ctx, w, h, ['#2a1809', '#8a5a2a'], 120);
-      ctx.fillStyle = '#c89a4a';
-      ctx.fillRect(0, h - 15, w, 2);
-      cutTop(ctx, w, x => Math.abs((x % 16) - 8));
-    },
-  },
+  // Sem muro: a mata fecha a pista (o limite de colisão continua no mesmo lugar, junto das primeiras moitas).
+  wall: null,
   epic: { ramp: { stone: [0x3a302c, 0x5a4c44, 0x6a5a4e, 0x4a3e38], mortar: 0x221a16, moss: [0x7a3418, 0x9a4a1c, 0x5a5a20] }, abyss: 0x2a1c10, glow: false, edge: '#e0a030', tube: { wall: '#5a3618', speckle: ['#74481e', '#3a2210', '#8a5a2a'], rib: 0x3a2210, portal: 0xc89a4a, lines: [{ angle: Math.PI * 0.5, width: 0.04, color: 0xe0a030 }] } },
   weather: { count: 240, size: 2, fall: 3, sway: 3, swaySpeed: 1.1, colors: [0xd86a18, 0xc03a14, 0xe8a030] },
 
@@ -70,41 +62,33 @@ export const FOREST = {
   },
 
   addProps(ctx) {
-    const trunk = new THREE.CylinderGeometry(0.5, 0.8, 7, 5);
-    trunk.translate(0, 3.5, 0);
-    const leaves = new THREE.IcosahedronGeometry(3.8, 0);
-    leaves.scale(1.3, 0.85, 1.3);
-    leaves.translate(0, 8.5, 0);
-    scatter(ctx, {
-      count: 560, clearance: 13, sizeOf: random => 0.8 + random() * 0.9,
-      parts: [
-        { geometry: trunk, material: solid(0x2a1608) },
-        { geometry: leaves, material: solid(0xffffff), colorOf: pickFrom([0xb8301a, 0xd04a14, 0x9a2a10, 0xe07820, 0xc8a024]) },
-      ],
-    });
+    // Mata de outono: carvalhos e bordos de copa vermelha, laranja e amarela, com alguns pinheiros escuros.
+    const AUTUMN = [0xb8301a, 0xd04a14, 0x9a2a10, 0xe07820, 0xc8a024, 0xa83c18];
+    const oaks = [broadleafTree({ colors: AUTUMN }), broadleafTree({ height: 8, crown: 3.8, colors: AUTUMN }), broadleafTree({ height: 6, crown: 3, bark: 0x4a2e18, colors: AUTUMN })];
+    const pine = pineTree({ colors: [0x2a4a2a, 0x34522c, 0x223e24] });
+    const treeSize = random => 0.8 + random() * 0.7;
+    oaks.forEach(parts => scatter(ctx, { count: 160, clearance: SIDE, sizeOf: treeSize, parts }));
+    scatter(ctx, { count: 110, clearance: SIDE, sizeOf: random => 0.8 + random() * 0.6, parts: pine });
 
-    nearRoad(ctx, {
-      count: 260, from: EDGE, to: EDGE + 14, sizeOf: random => 0.7 + random() * 0.7,
-      parts: [
-        { geometry: trunk, material: solid(0x2a1608) },
-        { geometry: leaves, material: solid(0xffffff), colorOf: pickFrom([0xb8301a, 0xd04a14, 0xe07820, 0xc8a024]) },
-      ],
-    });
+    // Mata fechada colada no acostamento.
+    oaks.forEach(parts => nearRoad(ctx, { count: 150, from: SIDE, to: SIDE + 16, sizeOf: treeSize, parts }));
+    nearRoad(ctx, { count: 90, from: SIDE + 2, to: SIDE + 16, sizeOf: random => 0.7 + random() * 0.5, parts: pine });
 
     const stem = new THREE.CylinderGeometry(0.5, 0.75, 3, 7);
     stem.translate(0, 1.5, 0);
     const cap = new THREE.SphereGeometry(2, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2);
     cap.translate(0, 3, 0);
     scatter(ctx, {
-      count: 90, clearance: 12, sizeOf: random => 0.7 + random() * 1.5,
+      count: 90, clearance: SIDE, sizeOf: random => 0.7 + random() * 1.5,
       parts: [
         { geometry: stem, material: solid(0xeadcc0) },
         { geometry: cap, material: solid(0xffffff), colorOf: pickFrom([0xc02020, 0xe07018, 0x8a3ab0]) },
       ],
     });
 
-    const bush = new THREE.IcosahedronGeometry(1.6, 0);
-    bush.translate(0, 0.9, 0);
-    alongRoad(ctx, { every: 16, offset: EDGE + 0.5, sizeOf: random => 0.6 + random() * 0.8, parts: [{ geometry: bush, material: solid(0xffffff), colorOf: pickFrom([0x6a3414, 0x8a4418, 0x5a6a1c]) }] });
+    // Fileira de moitas logo depois do acostamento: é a borda da pista, no lugar do muro.
+    const bushes = bush({ colors: [0x6a3414, 0x8a4418, 0x5a6a1c, 0xa8501a, 0x7a5a1c] });
+    alongRoad(ctx, { every: 4, offset: SIDE, sizeOf: random => 0.8 + random() * 0.5, parts: bushes });
+    nearRoad(ctx, { count: 500, from: SIDE, to: SIDE + 10, sizeOf: random => 0.6 + random() * 0.7, parts: bushes });
   },
 };

@@ -20,7 +20,7 @@ const formatTime = seconds => {
 
 const centered = (ctx, text, y, color, scale = 1) => ctxText(ctx, text, Math.round(VIEW.width / 2 - textWidth(text, scale) / 2), y, color, scale);
 
-export function createResultsScreen({ stage, onNext, onFinished, localName, getUpcomingBiome = () => null }) {
+export function createResultsScreen({ stage, onNext, onFinished, localName, getUpcomingBiome = () => null, getRaceKills = () => new Map() }) {
   const screen = { isOpen: false };
   let pointer = { x: -1, y: -1 }, match = null, finish = [], queued = null, waitsForHost = false;
 
@@ -87,12 +87,22 @@ export function createResultsScreen({ stage, onNext, onFinished, localName, getU
     });
   }
 
+  // Quem mais abateu na corrida (empate lista todos); nulo se ninguém abateu.
+  function killKing() {
+    const entries = [...getRaceKills()].filter(([, kills]) => kills > 0);
+    if (!entries.length) return null;
+    const most = Math.max(...entries.map(([, kills]) => kills));
+    return { names: entries.filter(([, kills]) => kills === most).map(([name]) => name), kills: most };
+  }
+
   screen.draw = ctx => {
     ctx.fillStyle = COLOR.backdrop;
     ctx.fillRect(0, 0, VIEW.width, VIEW.height);
     drawHeading(ctx, `CORRIDA ${match.racesDone} DE ${match.raceCount}`, VIEW.width / 2, 24);
     drawFinish(ctx);
     drawTable(ctx);
+    const king = killKing();
+    if (king) centered(ctx, `REI DOS ABATES: ${king.names.join(' E ')} - ${king.kills} ${king.kills === 1 ? 'ABATE' : 'ABATES'}`, FINISH.y + FINISH.height + 6, COLOR.gold);
     if (match.isOver) {
       const champion = match.standings()[0].name;
       centered(ctx, champion === localName() ? 'VOCE VENCEU A PARTIDA!' : `CAMPEAO: ${champion}`, 290, '#f0d060', 2);

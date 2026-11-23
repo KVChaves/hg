@@ -28,7 +28,7 @@ export function createRoomClient() {
     status: 'offline', id: null, rooms: [], room: null, notice: '', ranking: null, history: null, matchRaces: null, stats: null, statsPlayers: null, token: null, chat: [],
     online: null,                                    // jogadores conectados ao servidor (contando este); nulo sem conexão
     onStarted: () => {}, onEnded: () => {}, onGame: () => {}, onRoomChange: () => {}, onLeft: () => {},
-    connect, setName, create, join, leave, kick, configure, start, endRace, endMatch, requestRanking, requestHistory, requestMatch, requestStats, sendChat, relay,
+    connect, setName, create, join, leave, kick, configure, start, endRace, endMatch, requestRanking, requestHistory, requestMatch, requestStats, sendCombat, sendChat, relay,
     get isAdmin() { return client.room?.hostId === client.id; },
   };
 
@@ -149,6 +149,7 @@ export function createRoomClient() {
   // `results` traz o que cada jogador humano fez na partida, para o histórico do servidor.
   function endMatch(results) { send({ t: 'end', results }); }
   function requestRanking() { connect(() => send({ t: 'ranking' })); }
+  function sendCombat(stats) { send({ t: 'combat', stats }); }
   function requestStats(player = '') { client.stats = null; connect(() => send({ t: 'stats', player })); }
   function requestHistory(player = '') { client.history = null; connect(() => send({ t: 'history', player })); }
   function requestMatch(match) { client.matchRaces = null; connect(() => send({ t: 'history', match })); }

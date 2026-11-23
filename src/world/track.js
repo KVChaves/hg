@@ -5,7 +5,7 @@ import { fbm } from '../art/shade.js';
 // Pista gerada por semente: uma curva fechada em volta do centro, reamostrada em passos iguais, apoiada
 // num relevo. `track` é sempre o mesmo objeto; gerar outra pista troca o conteúdo dele.
 
-export const track = { length: 1, count: 0, step: 1, px: null, py: null, pz: null, tx: null, tz: null, slope: null, curvature: null, turn: null, wall: null, roll: null, gap: null, epic: null, drop: null, bed: null, enclosed: null, lift: null, flight: null, bridge: null, jumps: [], bridges: [], darkZones: [], stormZones: [], belts: [], gusts: [], boosts: [], hazards: [], valley: null, openWall: 0, chasmRange: null, heightAt: () => 0, meshHeightAt: () => 0 };
+export const track = { length: 1, count: 0, step: 1, px: null, py: null, pz: null, tx: null, tz: null, slope: null, curvature: null, turn: null, wall: null, shoulder: 0, roll: null, gap: null, epic: null, drop: null, bed: null, enclosed: null, lift: null, flight: null, bridge: null, jumps: [], bridges: [], darkZones: [], stormZones: [], belts: [], gusts: [], boosts: [], hazards: [], valley: null, openWall: 0, chasmRange: null, heightAt: () => 0, meshHeightAt: () => 0 };
 
 const CONTROL_COUNT = 18, HARMONICS = [[2, 0.8], [3, 0.55], [4, 0.3]];
 export const OPEN_WALL = TRACK_WIDTH / 2 + 3;         // até onde o centro do carro pode sair da pista, onde ficam os muros
@@ -161,7 +161,8 @@ function measureRoad({ count, step, px, pz }, heightAt) {
 // começando colado na pista, a estrada corre no fundo de um vale. Com `valley` o vale tem perfil próprio
 // (valleyRise). `track.lift` é o que a rampa ergueu a estrada: o chão fica na altura de antes.
 // Devolve a altura de verdade e a da malha grossa do chão, que no vale fica um pouco abaixo das encostas.
-function conformToRoad(terrainAt, { count, px, pz }, py, { banks = 0, bankRange: [bankFrom, bankTo] = [BANK_FROM, BANK_TO], valley = null, chasmRange: [riverFrom, riverTo] = [RIVER_FROM, RIVER_TO] } = {}) {
+// `shoulder` empurra o perfil todo para fora: o chão fica na altura da estrada (um pouco abaixo) por mais tantos metros.
+function conformToRoad(terrainAt, { count, px, pz }, py, { banks = 0, bankRange: [bankFrom, bankTo] = [BANK_FROM, BANK_TO], valley = null, shoulder = 0, chasmRange: [riverFrom, riverTo] = [RIVER_FROM, RIVER_TO] } = {}) {
   const height = (x, z, mesh) => {
     let nearest = Infinity, index = 0;
     for (let i = 0; i < count; i++) {
@@ -176,9 +177,10 @@ function conformToRoad(terrainAt, { count, px, pz }, py, { banks = 0, bankRange:
       if (mesh) sink = VALLEY_MESH_SINK * (1 - smoothstep(reach, reach + VALLEY_MESH_MARGIN, distance));
       ground = road + valleyRise(distance, valley) + (terrain - road) * smoothstep(reach, reach + VALLEY_BLEND, distance) - chasm;
     } else {
-      const bank = banks * smoothstep(bankFrom, bankTo, distance) - chasm;
-      ground = distance >= BLEND_TO ? terrain + bank
-        : road + (terrain - road) * smoothstep(BLEND_FROM, BLEND_TO, distance) - GROUND_SINK * (1 - smoothstep(BLEND_FROM, SINK_TO, distance)) + bank;
+      const away = Math.max(0, distance - shoulder);
+      const bank = banks * smoothstep(bankFrom, bankTo, away) - chasm;
+      ground = away >= BLEND_TO ? terrain + bank
+        : road + (terrain - road) * smoothstep(BLEND_FROM, BLEND_TO, away) - GROUND_SINK * (1 - smoothstep(BLEND_FROM, SINK_TO, away)) + bank;
     }
     // O rio corta barrancos e encostas: o leito fica `bed` metros abaixo da estrada, por mais alto que o chão seja.
     const river = track.bed[index] > 0 ? 1 - smoothstep(riverFrom, riverTo, distance) : 0;
@@ -220,11 +222,13 @@ export function generateTrack(seed, shape) {
     if (road.steepest <= MAX_SLOPE) break;
     heights *= RELIEF_REDUCTION;
   }
-  // No vale o limite lateral fica na borda dele: a encosta toda é pista.
-  const openWall = shape.valley ? valleyReach(shape.valley) : OPEN_WALL;
+  // No vale o limite lateral fica na borda dele: a encosta toda é pista. `shoulder` alarga o acostamento (metros a
+  // mais de cada lado): o limite, a faixa de terra e o cenário se afastam juntos.
+  const shoulder = shape.shoulder ?? 0;
+  const openWall = shape.valley ? valleyReach(shape.valley) : OPEN_WALL + shoulder;
   const [groundAt, meshAt] = conformToRoad(heightAt, geometry, road.py, shape);
   Object.assign(track, geometry, {
-    py: road.py, slope: road.slope, wall: new Float32Array(geometry.count).fill(openWall), openWall, valley: shape.valley ?? null, chasmRange: shape.chasmRange ?? [RIVER_FROM, RIVER_TO],
+    py: road.py, slope: road.slope, wall: new Float32Array(geometry.count).fill(openWall), openWall, shoulder, valley: shape.valley ?? null, chasmRange: shape.chasmRange ?? [RIVER_FROM, RIVER_TO],
     roll: new Float32Array(geometry.count), gap: new Uint8Array(geometry.count), epic: new Uint8Array(geometry.count),
     drop: new Float32Array(geometry.count), bed: new Float32Array(geometry.count), enclosed: new Uint8Array(geometry.count),
     lift: new Float32Array(geometry.count), flight: new Uint8Array(geometry.count), bridge: new Uint8Array(geometry.count), jumps: [], bridges: [], darkZones: [], stormZones: [], belts: [], gusts: [], boosts: [], hazards: [],

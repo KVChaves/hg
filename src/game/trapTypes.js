@@ -2,20 +2,29 @@
 // `charges` é a quantidade sugerida. O jogador leva qualquer combinação de itens, cada um até o seu limite.
 // Itens do bagageiro (tecla E). As armadilhas ficam na pista e afetam todos os carros, inclusive quem soltou;
 // halfLength e halfWidth são a área de contato em metros. A dinamite explode quando um carro passa por cima: joga esse carro na diagonal para trás e empurra quem estiver perto; não causa dano.
-// Os power-ups (`powerup`) fazem efeito na hora. Nenhum item do bagageiro pode ser usado antes de TRAPS_UNLOCK_TIME.
+// Os power-ups (`powerup`) fazem efeito na hora. Os itens de ataque e controle só podem ser usados depois de TRAPS_UNLOCK_TIME; os de defesa, desde a largada.
+
+// `category`: como o item é usado. defense protege quem leva (extintor, escudo) ou desarma o ataque dos outros (EMP); control atrapalha o rival
+// (pneu, aderência, visão, direção); attack machuca (dinamite, mina, arpão). Só organiza a garagem e não muda o jogo, então não afeta o online.
+// `damage` (dinamite): vida (escala de CAR_MAX_HP) que a explosão tira de quem pisou; quem está em volta leva menos, até 40% nas bordas (game/traps.js).
+export const ITEM_CATEGORIES = [
+  { id: 'attack', label: 'ATAQUE' },
+  { id: 'control', label: 'CONTROLE' },
+  { id: 'defense', label: 'DEFESA' },
+];
 
 export const TRAP_TYPES = {
-  spikes: { id: 'spikes', label: 'ESPINHOS', caughtText: 'NOS ESPINHOS', price: 30, maxCharges: 5, summary: 'FURA O PNEU', charges: 3, halfLength: 1.9, halfWidth: 2.95, life: 20, effect: 'puncture', duration: 5 },
-  oil: { id: 'oil', label: 'OLEO', caughtText: 'NO OLEO', price: 30, maxCharges: 5, summary: 'CARRO PERDE ADERENCIA', charges: 3, halfLength: 2.85, halfWidth: 2.8, life: 20, effect: 'oil', duration: 2.8 },
-  paint: { id: 'paint', label: 'TINTA', caughtText: 'NA TINTA', price: 40, maxCharges: 3, summary: 'COBRE O PARA-BRISA', charges: 1, halfLength: 1.6, halfWidth: 2.4, life: 20, effect: 'paint', duration: 7 },
-  dynamite: { id: 'dynamite', label: 'DINAMITE', caughtText: 'NA DINAMITE', price: 75, maxCharges: 4, summary: 'EXPLODE AO PISAR E JOGA O CARRO PARA TRAS', charges: 2, halfLength: 1.0, halfWidth: 1.3, life: 90, radius: 8 },
-  smoke: { id: 'smoke', label: 'FUMACA', caughtText: 'NA FUMACA', price: 50, maxCharges: 3, summary: 'ESCONDE A PISTA', charges: 1, halfLength: 8, halfWidth: 6.5, life: 9, effect: 'smoke', duration: 3 },
-  extinguisher: { id: 'extinguisher', label: 'EXTINTOR', price: 75, maxCharges: 3, summary: 'RECUPERA 20% DA VIDA', charges: 1, powerup: true },
-  shield: { id: 'shield', label: 'ESCUDO', price: 130, maxCharges: 2, summary: 'ABSORVE 80% DA VIDA POR 8 S', charges: 1, powerup: true },
-  emp: { id: 'emp', label: 'PULSO EMP', price: 115, maxCharges: 3, summary: 'SEM NITRO, TIRO E ITENS POR 8 S, A 80 M', charges: 1, powerup: true },
-  mine: { id: 'mine', label: 'MINA TELEGUIADA', price: 135, maxCharges: 3, summary: 'PERSEGUE O CARRO A FRENTE, GRUDA E EXPLODE', charges: 1, powerup: true },
-  net: { id: 'net', label: 'LANCA-REDES', price: 95, maxCharges: 3, summary: 'PERSEGUE O CARRO NA MIRA ATE 60 M E TRAVA A DIRECAO DELE POR 4 S', charges: 1, powerup: true },
-  harpoon: { id: 'harpoon', label: 'ARPAO', price: 85, maxCharges: 3, summary: 'PERSEGUE O CARRO NA MIRA ATE 60 M E PRENDE POR 8 S. SO O EMP SOLTA. OUTROS CARROS BATEM NO CABO', charges: 1, powerup: true },
+  spikes: { id: 'spikes', category: 'control', label: 'ESPINHOS', caughtText: 'NOS ESPINHOS', price: 30, maxCharges: 5, summary: 'FURA O PNEU', charges: 3, halfLength: 1.9, halfWidth: 2.95, life: 20, effect: 'puncture', duration: 5 },
+  oil: { id: 'oil', category: 'control', label: 'OLEO', caughtText: 'NO OLEO', price: 30, maxCharges: 5, summary: 'CARRO PERDE ADERENCIA', charges: 3, halfLength: 2.85, halfWidth: 2.8, life: 20, effect: 'oil', duration: 2.8 },
+  paint: { id: 'paint', category: 'control', label: 'TINTA', caughtText: 'NA TINTA', price: 40, maxCharges: 3, summary: 'COBRE O PARA-BRISA', charges: 1, halfLength: 1.6, halfWidth: 2.4, life: 20, effect: 'paint', duration: 7 },
+  dynamite: { id: 'dynamite', category: 'attack', label: 'DINAMITE', caughtText: 'NA DINAMITE', price: 75, maxCharges: 4, summary: 'DANO EM AREA E JOGA O CARRO PARA TRAS', charges: 2, halfLength: 1.0, halfWidth: 1.3, life: 90, radius: 8, damage: 50 },
+  smoke: { id: 'smoke', category: 'control', label: 'FUMACA', caughtText: 'NA FUMACA', price: 50, maxCharges: 3, summary: 'ESCONDE A PISTA', charges: 1, halfLength: 8, halfWidth: 6.5, life: 9, effect: 'smoke', duration: 3 },
+  extinguisher: { id: 'extinguisher', category: 'defense', label: 'EXTINTOR', price: 75, maxCharges: 3, summary: 'RECUPERA 20% DA VIDA', charges: 1, powerup: true },
+  shield: { id: 'shield', category: 'defense', label: 'ESCUDO', price: 130, maxCharges: 2, summary: 'ABSORVE 80% DA VIDA POR 8 S', charges: 1, powerup: true },
+  emp: { id: 'emp', category: 'defense', label: 'PULSO EMP', price: 115, maxCharges: 3, summary: 'SEM NITRO, TIRO E ITENS POR 8 S, A 80 M', charges: 1, powerup: true },
+  mine: { id: 'mine', category: 'attack', label: 'MINA TELEGUIADA', price: 135, maxCharges: 3, summary: 'PERSEGUE O CARRO A FRENTE, GRUDA E EXPLODE', charges: 1, powerup: true },
+  net: { id: 'net', category: 'control', label: 'LANCA-REDES', price: 95, maxCharges: 3, summary: 'PERSEGUE O CARRO NA MIRA ATE 60 M E TRAVA A DIRECAO DELE POR 4 S', charges: 1, powerup: true },
+  harpoon: { id: 'harpoon', category: 'attack', label: 'ARPAO', price: 85, maxCharges: 3, summary: 'DANO BAIXO. PERSEGUE O CARRO NA MIRA ATE 60 M E PRENDE POR 8 S. SO O EMP SOLTA. OUTROS CARROS BATEM NO CABO', charges: 1, powerup: true },
 };
 
 // Chão queimando onde a flecha incendiária caiu. Não se compra: só a besta cria. Quem passa por cima pega fogo

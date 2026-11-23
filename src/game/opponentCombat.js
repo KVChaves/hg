@@ -52,7 +52,7 @@ export function createOpponentCombat({ scene, car, race, opponents, traps, mines
   const combat = { hitFlash: 0, hitAngle: 0, update, reset, showRemoteShot, explodeAt: (x, y, z) => visuals.explode(x, y, z), harpoonTip: op => harpoons.get(op).tip };
   const field = race.field;
   const attackersOn = new Map();                     // quantos já atiram em cada alvo neste quadro
-  const harpoons = new Map(opponents.map(op => [op, createHarpoon({ owner: op, car, race, visual: createHarpoonVisual(scene), onSound, onRemotePull, onTrip, onTetherEnd: target => onTetherEnd(target, op) })]));
+  const harpoons = new Map(opponents.map(op => [op, createHarpoon({ owner: op, car, race, visual: createHarpoonVisual(scene), onSound, onRemotePull, onTrip, onTetherEnd: target => onTetherEnd(target, op), onKill: victim => onKill(victim, op) })]));
   let raceTime = 0, playerExploded = false, leader = null;
 
   const rangeOf = op => Math.min(op.arsenal.type.range, styleOf(op).reach);
@@ -397,11 +397,11 @@ export function createOpponentCombat({ scene, car, race, opponents, traps, mines
   function updatePowerups(op, dt, style) {
     const { arsenal } = op;
     arsenal.powerupTimer -= dt;
-    if (!traps.isUnlocked() || op.overturned || op.effects.emp > 0 || (arsenal.powerupCheck -= dt) > 0) return;
+    if (!race.started || op.overturned || op.effects.emp > 0 || (arsenal.powerupCheck -= dt) > 0) return;
     arsenal.powerupCheck = POWERUP_RETRY;
     let best = null, bestUrgency = 0;
     for (const slot of arsenal.traps) {
-      if (!slot.type.powerup || slot.charges <= 0) continue;
+      if (!slot.type.powerup || slot.charges <= 0 || !traps.isUnlocked(slot.type)) continue;
       const urgency = powerupUrgency(op, slot.type, style);
       if (urgency > bestUrgency && (arsenal.powerupTimer <= 0 || urgency >= URGENT)) { best = slot; bestUrgency = urgency; }
     }

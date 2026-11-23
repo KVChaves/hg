@@ -5,14 +5,15 @@ const COLOR = { kill: '#ff5a3a', special: '#ffb030', air: '#c890ff', pass: '#6fe
 const DRIFT_GRADES = [[3, 'DRIFT INSANO', '#ff7040'], [1.6, 'GRANDE DRIFT', '#ffe060'], [0, 'DRIFT', '#80e0ff']];
 const DRIFT_SHOWN_FROM = 0.4, AIR_SHOWN_FROM = 0.25, AIR_COUNTS_FROM = 0.4, HOP_STREAK_GAP = 2;   // segundos
 const KILL_TEXT = { ram: 'NA PANCADA!', fire: 'ASSADO!', splash: 'PELOS ARES!' };
-const MULTI_KILL = ['', '', 'ABATE DUPLO!', 'ABATE TRIPLO!', 'MASSACRE!'], MULTI_WINDOW = 4;
+// Abates seguidos sem morrer (a sequência zera quando o carro do jogador é destruído).
+const STREAK_NAMES = ['', '', 'DOUBLE KILL', 'TRIPLE KILL', 'QUADRA KILL', 'PENTA KILL', 'HEXA KILL', 'SEPTA KILL', 'OCTA KILL', 'NONA KILL', 'DECA KILL'];
+const streakName = streak => STREAK_NAMES[Math.min(streak, STREAK_NAMES.length - 1)] + (streak >= STREAK_NAMES.length ? ` x${streak}` : '');
 const LONG_SHOT = 110, LOW_HEALTH = 0.15;
 
 const driftGrade = seconds => DRIFT_GRADES.find(([minimum]) => seconds >= minimum);
 
 export function createFeats({ featFeed, race, car, driftTracker }) {
-  let airTime = 0, hopStreak = 0, sinceLanding = Infinity, lastRank = null, lastKiller = null, clock = 0;
-  const recentKills = [];
+  let airTime = 0, hopStreak = 0, sinceLanding = Infinity, lastRank = null, lastKiller = null, streak = 0, deathsSeen = car.destroyed;
 
   const isBlinded = () => car.effects.paint > 0 || car.effects.smoke > 0;
   // No ar de verdade (rampa, lombada, beirada): o tempo todo sem tocar o chão, não só o trecho sobre o vão.
@@ -28,7 +29,7 @@ export function createFeats({ featFeed, race, car, driftTracker }) {
 
   // Chamar depois de featFeed.update, a cada quadro.
   function update(dt) {
-    clock += dt;
+    if (car.destroyed !== deathsSeen) { deathsSeen = car.destroyed; streak = 0; }
     sinceLanding += dt;
     const drift = driftTracker.current;
     if (drift >= DRIFT_SHOWN_FROM) featFeed.live('drift', `DRIFT ${drift.toFixed(1)}s`, driftGrade(drift)[2]);
@@ -56,9 +57,8 @@ export function createFeats({ featFeed, race, car, driftTracker }) {
     kill(victim, cause) {
       const text = KILL_TEXT[cause] ?? 'DESTRUIDO';
       featFeed.announce(text, { key: `kill:${text}`, color: COLOR.kill, big: true });
-      while (recentKills.length && clock - recentKills[0] > MULTI_WINDOW) recentKills.shift();
-      recentKills.push(clock);
-      if (recentKills.length >= 2) featFeed.announce(MULTI_KILL[Math.min(recentKills.length, MULTI_KILL.length - 1)], { key: 'multi', color: COLOR.special, big: true });
+      streak++;
+      if (streak >= 2) featFeed.announce(streakName(streak), { key: `multi:${streak}`, color: COLOR.special, big: true });
       if (isBlinded()) special('ABATE AS CEGAS');
       if (isAirborne()) special('ABATE NO AR');
       if (car.wrecked > 0) special('DO ALEM');
@@ -68,6 +68,7 @@ export function createFeats({ featFeed, race, car, driftTracker }) {
         const distance = Math.hypot(victim.x - car.x, victim.z - car.z);
         if (distance >= LONG_SHOT) special(`DE LONGE ${Math.round(distance)}M`);
       }
+      return streak;                                 // quem chama usa para o bônus da sequência
     },
     hit() {
       if (isBlinded()) featFeed.announce('TIRO AS CEGAS', { key: 'blindhit', color: COLOR.blind });
@@ -79,7 +80,8 @@ export function createFeats({ featFeed, race, car, driftTracker }) {
       airTime = hopStreak = 0;
       sinceLanding = Infinity;
       lastRank = lastKiller = null;
-      recentKills.length = 0;
+      streak = 0;
+      deathsSeen = car.destroyed;
     },
   };
 }

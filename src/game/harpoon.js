@@ -1,3 +1,5 @@
+import { CAR_MAX_HP } from '../config.js';
+import { damagePlayer } from './car.js';
 import { damageOpponent } from './opponents.js';
 import { aimOffset, AIM_RADIUS } from './aim.js';
 import { createTether, tripRacer } from './tether.js';
@@ -16,6 +18,18 @@ const STEP = 0.5;                                    // de quanto em quanto a po
 const HOOK_SPIN = [0.7, 1.2];                        // o tranco desvia o carro preso, em rad/s de giro
 const BOT_HOOK_SPIN = 2, BOT_HOOK_KNOCK = 14;        // o bot volta para a faixa sozinho, então o tranco nele é maior
 const HALF_LENGTH = 2.2, HALF_WIDTH = 0.97;
+const HOOK_DAMAGE = 15;                              // dano baixo da fisgada, na escala de CAR_MAX_HP
+
+// Dano da fisgada em quem é simulado aqui (cada navegador cuida dos seus carros); `onKill(vítima, atirador)` avisa do abate.
+function hookHurt(racer, shooter, car, onKill) {
+  if (racer.isPlayer) {
+    const wasAlive = car.health > 0;
+    damagePlayer(car, HOOK_DAMAGE / CAR_MAX_HP * car.parts.bullet);
+    if (wasAlive && car.health <= 0) onKill(racer, shooter);
+  } else if (damageOpponent(racer, HOOK_DAMAGE, shooter)) {
+    onKill(racer, shooter);
+  }
+}
 
 // O tranco do arpão freia o carro preso e tira ele da direção, para um lado sorteado.
 function jerk(racer, car) {
@@ -33,7 +47,7 @@ function jerk(racer, car) {
 }
 
 // Cabos de arpões disparados em outro navegador: quem simula o carro fisgado aplica a corda nele.
-export function createPullReceiver(car) {
+export function createPullReceiver(car, { onKill = () => {} } = {}) {
   const ropes = [];
   const drop = index => { ropes[index].dispose(); ropes.splice(index, 1); };
   return {
@@ -41,7 +55,7 @@ export function createPullReceiver(car) {
     trip(racer, side) { tripRacer(racer, car, side); },
     start(racer, shooter) {
       jerk(racer, car);
-      if (!racer.isPlayer && shooter) damageOpponent(racer, 0, shooter);
+      hookHurt(racer, shooter ?? null, car, onKill);
       if (shooter) ropes.push(createTether({ owner: shooter, target: racer, car, ownerSide: false }));
     },
     // O dono avisou que soltou, ou o tempo acabou lá.
@@ -60,7 +74,7 @@ export function createPullReceiver(car) {
 }
 
 // `owner` é o piloto de race.field que dispara. `onRemotePull` avisa quando o alvo é simulado em outro navegador.
-export function createHarpoon({ owner, car, race, visual, onSound, onRemotePull = () => {}, onTetherEnd = () => {}, onHooked = () => {}, onTrip = () => {}, playerAim = false, holdToExtend = false, aimYaw = () => owner.yaw }) {
+export function createHarpoon({ owner, car, race, visual, onSound, onRemotePull = () => {}, onTetherEnd = () => {}, onHooked = () => {}, onKill = () => {}, onTrip = () => {}, playerAim = false, holdToExtend = false, aimYaw = () => owner.yaw }) {
   let held = false, flightTime = 0, atMaxTime = 0, rope = null;
   let phase = 'idle', timer = 0, dirX = 0, dirZ = 0, aimX = 0, aimZ = 0, lock = null, tipX = 0, tipZ = 0, target = null, attachForward = 0, attachRight = 0;
 
@@ -138,7 +152,7 @@ export function createHarpoon({ owner, car, race, visual, onSound, onRemotePull 
       onRemotePull(target, owner);
     } else {
       jerk(target, car);
-      if (!target.isPlayer) damageOpponent(target, 0, owner);   // sem dano, mas o carro atingido fica com raiva
+      hookHurt(target, owner, car, onKill);       // dano baixo; o carro atingido também fica com raiva
     }
     onSound('harpoonHit', target.x, target.z);
     onHooked(target);

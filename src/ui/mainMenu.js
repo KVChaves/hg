@@ -53,6 +53,11 @@ const RANKING_COLUMNS = [
 const STATS_PREV = { x: 46, y: 68, width: 18, height: 16 };
 const STATS_NAME = { x: 68, y: 68, width: 150, height: 16 };
 const STATS_NEXT = { x: 222, y: 68, width: 18, height: 16 };
+const STATS_PAGES = [
+  { page: 'general', label: 'GERAL', x: 468, y: 68, width: 64, height: 16 },
+  { page: 'combat', label: 'COMBATE', x: 536, y: 68, width: 64, height: 16 },
+];
+const KILL_CAUSE_LABELS = [['shot', 'TIRO'], ['ram', 'PANCADA'], ['fire', 'FOGO'], ['splash', 'EXPLOSAO'], ['other', 'OUTROS']];
 const STATS_TOP = 98, STATS_LINE = 13, STATS_LEFT = 46, STATS_LEFT_VALUE = 196, STATS_RIGHT = 318, STATS_RIGHT_VALUE = 410;
 const biomeLabel = id => BIOMES.find(biome => biome.id === id)?.name ?? String(id || '-').toUpperCase();
 const HISTORY_COLUMNS = [{ label: 'DATA', x: 14 }, { label: 'BIOMA', x: 82 }, { label: 'VENCEDOR', x: 150 }, { label: 'TEMPO', x: 246 }, { label: 'HUMANOS', x: 290 }];
@@ -91,7 +96,7 @@ function drawPerson(ctx, x, y, color) {
 const formatTime = seconds => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
 
 export function createMainMenu({ stage, settings, net, getName = () => '', onSingleplayer, onMultiplayer, onGarage, onSettingChange, onEffectsPreview, onQuit }) {
-  let page = 'main', helpOpen = false, notesScroll = 0, pointer = { x: -1, y: -1 }, dragging = null, rebinding = null, swallowClick = false, queued = null, view = 'ranking', selectedRace = null, viewingMatch = null, historyFilter = null, statsPlayer = null;
+  let page = 'main', helpOpen = false, notesScroll = 0, pointer = { x: -1, y: -1 }, dragging = null, rebinding = null, swallowClick = false, queued = null, view = 'ranking', selectedRace = null, viewingMatch = null, historyFilter = null, statsPlayer = null, statsPage = 'general';
 
   const screen = { isOpen: true, isRebinding: () => rebinding !== null };
 
@@ -227,6 +232,8 @@ export function createMainMenu({ stage, settings, net, getName = () => '', onSin
 
   // Setas trocam o jogador, dando a volta na lista; clicar no nome volta para você.
   function clickStats(x, y) {
+    const page = STATS_PAGES.find(box => inside(box, x, y));
+    if (page) { statsPage = page.page; return; }
     const players = net.statsPlayers ?? [], current = net.stats?.name ?? statsPlayer ?? '';
     if (inside(STATS_NAME, x, y) && getName()) { showStats(getName()); return; }
     const step = inside(STATS_PREV, x, y) ? -1 : inside(STATS_NEXT, x, y) ? 1 : 0;
@@ -466,7 +473,9 @@ export function createMainMenu({ stage, settings, net, getName = () => '', onSin
     const hint = nameHover && getName() ? 'CLIQUE PARA VER AS SUAS' : `${index + 1}/${players.length}   SETAS TROCAM O JOGADOR`;
     ctxText(ctx, hint, STATS_NEXT.x + STATS_NEXT.width + 10, STATS_NAME.y + 5, COLOR.muted);
     drawRule(ctx, RANKING_PANEL.x + 8, STATS_TOP - 10, RANKING_PANEL.width - 16);
+    for (const box of STATS_PAGES) drawButton(ctx, box, box.label, inside(box, pointer.x, pointer.y), { style: 'tab', active: box.page === statsPage });
     if (!stats) { ctxText(ctx, 'CARREGANDO...', STATS_LEFT, STATS_TOP + 20, COLOR.text); return; }
+    if (statsPage === 'combat') { drawCombatStats(ctx, stats.combat); return; }
 
     const percent = (part, whole) => (whole ? `${Math.round(100 * part / whole)}%` : '-');
     const general = [
@@ -517,6 +526,58 @@ export function createMainMenu({ stage, settings, net, getName = () => '', onSin
     });
 
     const footer = `SO PARTIDAS RANKEADAS${stats.last ? `   ULTIMA CORRIDA ${formatDate(stats.last)}` : ''}`;
+    ctxText(ctx, footer, STATS_LEFT, RANKING_PANEL.y + RANKING_PANEL.height - 14, COLOR.muted);
+  }
+
+  // Linhas de rótulo e valor; `color` opcional por linha. Linha com `header` vira título da seção.
+  function drawStatLines(ctx, lines, x, valueX) {
+    lines.forEach((line, i) => {
+      if (!line) return;
+      const y = STATS_TOP + i * STATS_LINE;
+      if (line.header) { ctxText(ctx, line.header, x, y, COLOR.selected); return; }
+      ctxText(ctx, line[0], x, y, COLOR.muted);
+      ctxText(ctx, String(line[1]), valueX, y, line[2] ?? COLOR.text);
+    });
+  }
+
+  // Página COMBATE: tiro, armadilhas e liderança à esquerda; vítimas, carrascos e forma do abate à direita.
+  function drawCombatStats(ctx, combat) {
+    if (!combat || (!combat.races && !combat.leadRaces)) {
+      ['SEM DADOS DE COMBATE AINDA', 'CONTA A PARTIR DAS PROXIMAS CORRIDAS RANKEADAS'].forEach((text, i) =>
+        ctxText(ctx, text, Math.round(VIEW.width / 2 - textWidth(text) / 2), STATS_TOP + 50 + i * 14, i ? COLOR.muted : COLOR.text));
+      return;
+    }
+    const percent = (part, whole) => (whole ? `${Math.round(100 * part / whole)}%` : '-');
+    const { races, leadRaces } = combat;
+    drawStatLines(ctx, [
+      { header: 'TIRO E ABATES' },
+      ['ABATES', combat.kills],
+      ['MORTES', combat.deaths],
+      ['ABATES POR MORTE', combat.deaths ? (combat.kills / combat.deaths).toFixed(2) : combat.kills ? 'INVICTO' : '-', COLOR.selected],
+      ['MIRA', combat.shots ? `${percent(combat.hits, combat.shots)}  (${combat.hits}/${combat.shots})` : '-', COLOR.selected],
+      ['ARMADILHAS SOLTAS', combat.trapsPlaced],
+      ['PEGARAM ALGUEM', combat.trapsPlaced ? `${combat.trapsScored}  (${percent(combat.trapsScored, combat.trapsPlaced)})` : '-'],
+      ['CAIU EM ARMADILHA', combat.caught],
+      null,
+      { header: 'LIDERANCA' },
+      ['TEMPO NA FRENTE', combat.leadShare == null ? '-' : `${combat.leadShare}%`, COLOR.selected],
+      ['MEDIA POR CORRIDA', combat.leadAverage == null ? '-' : `${combat.leadAverage.toFixed(1)} S`],
+      ['PERDEU A PONTA', leadRaces ? `${combat.leadLost}  (${(combat.leadLost / leadRaces).toFixed(1)}/CORRIDA)` : '-'],
+    ], STATS_LEFT, STATS_LEFT_VALUE);
+
+    const people = (list, color) => [0, 1, 2].map(i => (list[i]
+      ? [fit(list[i].name, STATS_RIGHT_VALUE - STATS_RIGHT + 40), `${list[i].count}X`, i === 0 ? color : COLOR.text]
+      : i === 0 ? ['-', ''] : null));
+    drawStatLines(ctx, [
+      { header: 'VITIMAS FAVORITAS' }, ...people(combat.victims, COLOR.gold), null,
+      { header: 'CARRASCOS' }, ...people(combat.killers, COLOR.danger), null,
+      { header: 'FORMA DO ABATE' },
+    ], STATS_RIGHT, STATS_RIGHT_VALUE + 60);
+    const causes = KILL_CAUSE_LABELS.map(([id, label]) => `${label} ${combat.causes?.[id] ?? 0}`);
+    ctxText(ctx, causes.slice(0, 3).join('   '), STATS_RIGHT, STATS_TOP + 11 * STATS_LINE, COLOR.text);
+    ctxText(ctx, causes.slice(3).join('   '), STATS_RIGHT, STATS_TOP + 12 * STATS_LINE, COLOR.text);
+
+    const footer = `${races} ${races === 1 ? 'CORRIDA' : 'CORRIDAS'} COM DADOS DE COMBATE   SO PARTIDAS RANKEADAS`;
     ctxText(ctx, footer, STATS_LEFT, RANKING_PANEL.y + RANKING_PANEL.height - 14, COLOR.muted);
   }
 

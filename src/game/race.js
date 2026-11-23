@@ -172,7 +172,7 @@ export function createRace(car, opponents, { onCrash, onDestroyed, onBlast, onCo
       return t.y;
     }
     if (track.valley) return t.y + valleyRise(offset);
-    const k = Math.min(1, Math.max(0, (Math.abs(offset) - ROAD_HALF) / SHOULDER_BLEND));
+    const k = Math.min(1, Math.max(0, (Math.abs(offset) - ROAD_HALF - track.shoulder) / SHOULDER_BLEND));   // acostamento largo: plano até o fim dele
     return t.y + (track.heightAt(car.x, car.z) - t.y) * k * k * (3 - 2 * k);
   }
 

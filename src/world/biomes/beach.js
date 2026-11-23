@@ -1,19 +1,23 @@
 import * as THREE from 'three';
 import { enableCulling } from '../instancing.js';
 import { paintGradient, paintSilhouette } from '../atmosphere.js';
-import { cutTop, speckle } from './wallPaint.js';
-import { acrossRoad, archFrame, EDGE, nearRoad, pickFrom, scatter, solid } from './propKit.js';
+import { alongRoad, EDGE, nearRoad, pickFrom, scatter, solid } from './propKit.js';
+import { grassTuft, palmTree } from './plants.js';
 import { beachGate } from './finishGates.js';
 import { pixelTexture } from '../textures.js';
 import { track } from '../track.js';
 
-// Orla ao pôr do sol: estrada costeira com areia levada pelo vento, coqueiros, guarda-sóis, mar de verdade nas
-// partes baixas do terreno e uma maré alta que alaga um trecho da pista.
+// Acostamento largo (metros a mais de cada lado): o limite da pista e o começo do capim ficam em SIDE.
+const SHOULDER = 6, SIDE = EDGE + SHOULDER;
+
+// Praia selvagem ao pôr do sol: trilha de areia dura no nível da praia, com acostamento de areia molhada e, logo
+// depois, capim de duna, pedras e coqueiros no lugar do muro; mar de verdade nas partes baixas do terreno e uma
+// maré alta que alaga um trecho da pista.
 export const BEACH = {
   id: 'beach', name: 'PRAIA', music: 'beach',
   sky: 0xf4b890, fog: [26, 280], cabinTint: 0xffd8b0,
   // Pista que segue a costa: curvas longas e abertas, subindo e descendo as dunas.
-  shape: { wiggle: 0.26, targetLength: 2350, relief: 8, hillScale: 170, sharpCurves: 2, harmonics: [[2, 0.9], [3, 0.4]], stretch: [1.3, 0.78] },
+  shape: { wiggle: 0.26, targetLength: 2350, relief: 8, hillScale: 170, shoulder: SHOULDER, sharpCurves: 2, harmonics: [[2, 0.9], [3, 0.4]], stretch: [1.3, 0.78] },
   surface: { grip: 0.97, side: 0.9, drag: 0.03, top: 0.99, offroad: 1.9 },
   layout: {
     jump: { fallLabel: 'CAIU NO MAR' },
@@ -31,32 +35,30 @@ export const BEACH = {
       ctx.fillStyle = 'rgba(176,130,86,.7)'; for (let i = 0; i < 6; i++) ctx.fillRect(Math.random() * 64, Math.random() * 64, 1, 1);   // conchinhas
     },
   },
-  // Asfalto de orla: cinza quente coberto de areia, faixa amarela no meio.
+  // Areia dura e molhada, mais escura que a das dunas, com marcas de pneu, conchas e pedrinhas; sem faixa pintada.
   road: {
-    base: [132, 122, 110], variation: 10, edge: '#f4ecd8', center: '#f0c040',
+    base: [196, 168, 118], variation: 10, edge: null, center: null,
     paint(ctx) {
-      ctx.fillStyle = 'rgba(236,214,160,.65)'; for (let i = 0; i < 26; i++) ctx.fillRect(Math.random() * 64, Math.random() * 64, 2 + Math.random() * 9, 1 + Math.random() * 2);
-      ctx.fillStyle = 'rgba(70,64,58,.5)'; ctx.fillRect(14, 0, 4, 64); ctx.fillRect(46, 0, 4, 64);
+      ctx.fillStyle = 'rgba(150,122,80,.5)'; ctx.fillRect(14, 0, 5, 64); ctx.fillRect(45, 0, 5, 64);   // sulcos dos pneus
+      ctx.fillStyle = 'rgba(176,148,100,.6)'; for (let i = 0; i < 20; i++) ctx.fillRect(Math.random() * 64, Math.random() * 64, 3 + Math.random() * 8, 1);   // ondulações do vento
+      ctx.fillStyle = 'rgba(236,214,160,.7)'; for (let i = 0; i < 16; i++) ctx.fillRect(Math.random() * 64, Math.random() * 64, 2 + Math.random() * 4, 1);
+      ctx.fillStyle = 'rgba(244,236,216,.8)'; for (let i = 0; i < 5; i++) ctx.fillRect(Math.random() * 64, Math.random() * 64, 1, 1);   // conchinhas
+      ctx.fillStyle = 'rgba(120,104,84,.7)'; for (let i = 0; i < 5; i++) ctx.fillRect(Math.random() * 64, Math.random() * 64, 1, 1);    // pedrinhas
     },
   },
-  // Beira de pranchas de madeira do calçadão.
+  // Beira de areia molhada, com algas e conchas que o mar trouxe.
   kerb: {
     paint(ctx, n) {
-      ['#b88a54', '#a07646', '#c89a62', '#a07646'].forEach((color, row) => { ctx.fillStyle = color; ctx.fillRect(0, row * 4, n, 3); ctx.fillStyle = '#6a4a28'; ctx.fillRect(0, row * 4 + 3, n, 1); });
-      ctx.fillStyle = '#5a3c20'; ctx.fillRect(2, 1, 1, 1); ctx.fillRect(12, 5, 1, 1); ctx.fillRect(6, 9, 1, 1); ctx.fillRect(13, 13, 1, 1);
+      ctx.fillStyle = '#b89a6a'; ctx.fillRect(0, 0, n, n);
+      ctx.fillStyle = '#a88a5c'; for (let i = 0; i < 10; i++) ctx.fillRect(Math.random() * n, Math.random() * n, 2 + Math.random() * 4, 1);
+      ctx.fillStyle = '#4a6a3a'; for (let i = 0; i < 4; i++) ctx.fillRect(Math.random() * n, Math.random() * n, 2 + Math.random() * 3, 1);   // algas
+      ctx.fillStyle = '#f4ecd8'; for (let i = 0; i < 3; i++) ctx.fillRect(Math.random() * n, Math.random() * n, 1, 1);                       // conchinhas
     },
   },
   gantry: beachGate,
   tunnel: { arch: 'palm', rib: 0x8a6a40, leaves: 0x2f8a3a },
-  // Mureta baixa de madeira pintada de azul e branco.
-  wall: {
-    height: 1.7, tile: 8,
-    paint(ctx, w, h) {
-      for (let x = 0; x < w; x += 6) { ctx.fillStyle = (x / 6) % 2 ? '#f0ece4' : '#2a9ab8'; ctx.fillRect(x, 0, 5, h); ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.fillRect(x + 5, 0, 1, h); }
-      speckle(ctx, w, h, ['#c8a870', '#ffffff'], 40);
-      cutTop(ctx, w, x => (x % 6 < 5 ? 1 : 3));
-    },
-  },
+  // Sem muro: capim, pedras e coqueiros fecham a pista (o limite de colisão continua no mesmo lugar).
+  wall: null,
   epic: { ramp: { stone: [0x8a5a34, 0xa86a38, 0xc88a50, 0x9a6234], mortar: 0x5a3820, moss: [0xe8d8a0, 0xf0e4b8, 0xd8c488] }, abyss: 0x1f9ec0, glow: false, edge: '#f4ecd8', tube: { wall: '#d8b070', speckle: ['#c89a58', '#e8c888', '#a87a40'], rib: 0x8a6a40, portal: 0x2a9ab8, lines: [{ angle: Math.PI * 0.5, width: 0.05, color: 0xf4ecd8 }] } },
   // Respingos de mar e brilho dourado do sol no ar.
   weather: { count: 320, size: 2, fall: 0.6, sway: 5, swaySpeed: 1.2, colors: [0xffffff, 0xffe8b0, 0xcff0f4] },
@@ -91,79 +93,30 @@ export const BEACH = {
     ctx.group.add(sea);
     ctx.onUpdate(time => { seaTexture.offset.set(time * 0.012, time * 0.007); });
 
-    // Coqueiros: tronco curvo, copa achatada e cocos.
-    const trunk = new THREE.CylinderGeometry(0.3, 0.55, 8, 6);
-    trunk.translate(0, 4, 0);
-    trunk.rotateZ(0.16);
-    const crown = new THREE.IcosahedronGeometry(3.2, 0);
-    crown.scale(1, 0.32, 1);
-    crown.translate(-1.25, 8.2, 0);
-    const crownLow = new THREE.IcosahedronGeometry(2.4, 0);
-    crownLow.scale(1, 0.4, 1);
-    crownLow.translate(-1.25, 7.5, 0);
-    const nuts = new THREE.IcosahedronGeometry(0.45, 0);
-    nuts.translate(-1.25, 7.4, 0.6);
-    scatter(ctx, {
-      count: 260, clearance: 12, sizeOf: random => 0.8 + random() * 0.7,
-      parts: [
-        { geometry: trunk, material: solid(0x8a6a40) },
-        { geometry: crown, material: solid(0xffffff), colorOf: pickFrom([0x2f8a3a, 0x3aa048, 0x28783a]) },
-        { geometry: crownLow, material: solid(0x1f6a30) },
-        { geometry: nuts, material: solid(0x5a3c20) },
-      ],
-    });
+    // Coqueiros: tronco fino e curvo em anéis, folhas compridas caindo em arco e cacho de cocos.
+    const FRONDS = [0x2f8a3a, 0x3aa048, 0x28783a, 0x4a9a3a];
+    const palms = [palmTree({ colors: FRONDS }), palmTree({ height: 11, bend: 3.2, colors: FRONDS }), palmTree({ height: 8, bend: 1.6, fronds: 8, colors: FRONDS })];
+    const palmSize = random => 0.85 + random() * 0.5;
+    palms.forEach(parts => scatter(ctx, { count: 90, clearance: SIDE, sizeOf: palmSize, parts }));
+    palms.forEach(parts => nearRoad(ctx, { count: 55, from: SIDE + 1, to: SIDE + 16, sizeOf: palmSize, parts }));
 
-    // Guarda-sóis de cores vivas na beira, com toalha.
-    const pole = new THREE.CylinderGeometry(0.06, 0.06, 2.6, 5);
-    pole.translate(0, 1.3, 0);
-    const canopy = new THREE.ConeGeometry(1.9, 0.8, 8);
-    canopy.translate(0, 2.9, 0);
-    const towel = new THREE.BoxGeometry(1.5, 0.05, 2.6);
-    towel.translate(0.4, 0.04, 1.4);
-    nearRoad(ctx, {
-      count: 70, from: EDGE + 2, to: EDGE + 16,
-      parts: [
-        { geometry: pole, material: solid(0xd8d8d0) },
-        { geometry: canopy, material: solid(0xffffff), colorOf: pickFrom([0xe83a3a, 0x3a7ae8, 0xf0d030, 0xffffff, 0x3aa860]) },
-        { geometry: towel, material: solid(0xffffff), colorOf: pickFrom([0xf0d030, 0xe83a3a, 0x3a7ae8]) },
-      ],
-    });
+    // Borda da pista, no lugar do muro: tufos de capim de duna em fileira logo depois do acostamento, com
+    // pedras da costa entre eles e mais capim e vegetação rasteira atrás.
+    const grass = grassTuft({ colors: [0x9aa858, 0xb0b86a, 0x7a8a48, 0xc8b878] });
+    alongRoad(ctx, { every: 2.5, offset: SIDE, sizeOf: random => 0.9 + random() * 0.5, parts: grass });
+    nearRoad(ctx, { count: 700, from: SIDE, to: SIDE + 12, sizeOf: random => 0.6 + random() * 0.7, parts: grass });
+    const creeper = new THREE.IcosahedronGeometry(1, 0);
+    creeper.scale(1.4, 0.25, 1.4);
+    nearRoad(ctx, { count: 200, from: SIDE, to: SIDE + 10, sizeOf: random => 0.8 + random() * 1.2, parts: [{ geometry: creeper, material: solid(0xffffff), colorOf: pickFrom([0x4a8a3a, 0x5a9a44, 0x6a8a3a]) }] });
+    const rock = new THREE.DodecahedronGeometry(2.4, 0);
+    const rockColors = pickFrom([0x8a7a68, 0x9a8a76, 0x76685a]);
+    alongRoad(ctx, { every: 11, offset: SIDE + 0.5, sizeOf: random => [0.4 + random() * 0.4, 0.3 + random() * 0.3, 0.4 + random() * 0.4], parts: [{ geometry: rock, material: solid(0xffffff), colorOf: rockColors }] });
 
-    // Quiosques e torres de salva-vidas.
-    const shack = new THREE.BoxGeometry(6, 3.6, 5);
-    shack.translate(0, 1.8, 0);
-    const shackRoof = new THREE.BoxGeometry(7, 0.5, 6);
-    shackRoof.translate(0, 3.85, 0);
-    const counter = new THREE.BoxGeometry(5, 0.7, 0.8);
-    counter.translate(0, 1.5, 2.8);
-    nearRoad(ctx, {
-      count: 22, from: EDGE + 8, to: EDGE + 24,
-      parts: [
-        { geometry: shack, material: solid(0xffffff), colorOf: pickFrom([0xf0e0b0, 0x58c0d0, 0xf08a70, 0x90d890]) },
-        { geometry: shackRoof, material: solid(0xb84a2a) },
-        { geometry: counter, material: solid(0xd8b070) },
-      ],
-    });
-    const stilts = new THREE.BoxGeometry(2.4, 2.2, 2.4);
-    stilts.translate(0, 1.1, 0);
-    const cabin = new THREE.BoxGeometry(3.2, 2.4, 3.2);
-    cabin.translate(0, 3.4, 0);
-    const cabinRoof = new THREE.ConeGeometry(2.6, 1, 4);
-    cabinRoof.rotateY(Math.PI / 4);
-    cabinRoof.translate(0, 5.1, 0);
-    nearRoad(ctx, { count: 8, from: EDGE + 6, to: EDGE + 20, parts: [{ geometry: stilts, material: solid(0xe8e4dc) }, { geometry: cabin, material: solid(0xe83a3a) }, { geometry: cabinRoof, material: solid(0xffffff) }] });
-
-    // Pranchas de surfe fincadas na areia.
-    const board = new THREE.BoxGeometry(0.7, 3, 0.1);
-    board.translate(0, 1.5, 0);
-    nearRoad(ctx, { count: 50, from: EDGE + 1, to: EDGE + 12, parts: [{ geometry: board, material: solid(0xffffff), colorOf: pickFrom([0xf0d030, 0xe83a3a, 0x3a7ae8, 0x3aa860, 0xf08a30]) }] });
-
-    // Dunas baixas com capim, e rochas da costa.
+    // Dunas baixas e rochas maiores, mais para trás.
     const dune = new THREE.IcosahedronGeometry(4, 1);
     dune.scale(2.2, 0.5, 1.5);
-    scatter(ctx, { count: 120, clearance: 14, sizeOf: random => [1 + random(), 0.7 + random() * 0.8, 1 + random()], parts: [{ geometry: dune, material: solid(0xffffff), colorOf: pickFrom([0xeed8a4, 0xe4cc90, 0xf4e4b8]) }] });
-    const rock = new THREE.DodecahedronGeometry(2.4, 0);
-    scatter(ctx, { count: 70, clearance: 12, sizeOf: random => [0.6 + random() * 1.4, 0.5 + random(), 0.6 + random() * 1.4], parts: [{ geometry: rock, material: solid(0xffffff), colorOf: pickFrom([0x8a7a68, 0x9a8a76, 0x76685a]) }] });
+    scatter(ctx, { count: 140, clearance: SIDE + 2, sizeOf: random => [1 + random(), 0.7 + random() * 0.8, 1 + random()], parts: [{ geometry: dune, material: solid(0xffffff), colorOf: pickFrom([0xeed8a4, 0xe4cc90, 0xf4e4b8]) }] });
+    scatter(ctx, { count: 90, clearance: SIDE, sizeOf: random => [0.6 + random() * 1.4, 0.5 + random(), 0.6 + random() * 1.4], parts: [{ geometry: rock, material: solid(0xffffff), colorOf: rockColors }] });
 
     // Farol listrado ao longe.
     const tower = new THREE.CylinderGeometry(2.4, 3.4, 26, 8);
@@ -212,19 +165,5 @@ export const BEACH = {
       }
     });
 
-    // Faixas de bandeirolas coloridas sobre a pista.
-    acrossRoad(ctx, {
-      every: 230,
-      build: () => {
-        const arch = archFrame({ height: 10, post: 0x8a6a40, beam: 0xd8b070 });
-        [0xe83a3a, 0xf0d030, 0x3a7ae8, 0xffffff, 0x3aa860, 0xf08a30].forEach((color, i) => {
-          const flag = new THREE.Mesh(new THREE.ConeGeometry(0.6, 1.2, 3), solid(color));
-          flag.rotation.x = Math.PI;
-          flag.position.set(-7.5 + i * 3, 8.8, 0);
-          arch.add(flag);
-        });
-        return arch;
-      },
-    });
   },
 };

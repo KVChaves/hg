@@ -1,6 +1,9 @@
+import { CAR_MAX_HP } from '../config.js';
 import { inGap, surfaceAt, trackAt, wrapDistance } from '../world/track.js';
 import { createTrapVisual } from '../world/trapVisuals.js';
+import { damagePlayer } from './car.js';
 import { shockedByLightning } from './effects.js';
+import { damageOpponent } from './opponents.js';
 import { raiseShield } from './shield.js';
 import { EXTINGUISHER_LIFE, GROUND_FIRE, hazardType, TRAP_TYPES, TRAPS_UNLOCK_TIME } from './trapTypes.js';
 
@@ -9,10 +12,11 @@ const GAP_BACKOFF = 3;
 const DROP_DISTANCE_BEHIND = 8, EXPLOSION_VISIBLE_TIME = 0.4;
 const DROPPER_SAFE_TIME = 2.5;                       // quem soltou a dinamite não a aciona logo em seguida
 const THROW_BACK = 9, THROW_SIDE = 5, THROW_TIME = 0.5, THROW_SPEED_LOSS = 0.25, THROW_SPIN = 3, BOT_THROW_KNOCK = 8;   // o carro que pisa é jogado na diagonal para trás
+const MIN_BLAST_SHARE = 0.4;                         // nas bordas da explosão o dano é 40% do de quem pisou
 const BLAST_PUSH = 8, BOT_BLAST_KNOCK = 12, BLAST_FALLOFF = 0.6;   // m/s; o bot volta para a faixa sozinho, então o empurrão lateral nele é maior
 
 // O bagageiro: armadilhas e power-ups, usados com a tecla E.
-export function createTraps({ scene, car, race, harpoon, burning, mines, nets, emp, onSound, onExtinguisher, onPlaced, onCaught, onDetonated = () => {} }) {
+export function createTraps({ scene, car, race, harpoon, burning, mines, nets, emp, onSound, onExtinguisher, onPlaced, onCaught, onDetonated = () => {}, onDestroyed = () => {} }) {
   const traps = { slots: [], selected: 0, active: [], notice: { text: '', time: 0, good: false } };
   const throws = [];
   traps.aiming = false;                               // mira de arremesso aberta (arpão, mina e rede)
@@ -38,16 +42,17 @@ export function createTraps({ scene, car, race, harpoon, burning, mines, nets, e
   };
 
   traps.unlockIn = () => Math.max(0, TRAPS_UNLOCK_TIME - race.time);
-  traps.isUnlocked = () => race.started && traps.unlockIn() === 0;
+  // Itens de defesa valem desde a largada; os outros esperam TRAPS_UNLOCK_TIME. Sem `type`, pergunta pelos itens que esperam.
+  traps.isUnlocked = type => race.started && (type?.category === 'defense' || traps.unlockIn() === 0);
   // O botão do painel acende só quando o item selecionado pode ser usado.
-  traps.isReady = () => traps.isUnlocked() && Boolean(traps.current) && traps.current.charges > 0;
+  traps.isReady = () => Boolean(traps.current) && traps.isUnlocked(traps.current.type) && traps.current.charges > 0;
 
   const lifeCap = () => 1;                           // o extintor ignora a vida reduzida por destruições
   const showNotice = (text, good = false) => Object.assign(traps.notice, { text, time: NOTICE_TIME, good });
 
   // Motivo de o item selecionado não poder ser usado agora; nulo se puder.
   function blockedBy(type) {
-    if (!traps.isUnlocked()) return `BAGAGEIRO EM ${Math.ceil(traps.unlockIn())}`;
+    if (!traps.isUnlocked(type)) return `BAGAGEIRO EM ${Math.ceil(traps.unlockIn())}`;
     if (type.id === 'extinguisher' && car.health >= lifeCap()) return 'VIDA CHEIA';
     if (type.id === 'harpoon' && harpoon.busy) return 'ARPAO EM USO';
     if (car.effects.emp > 0) return shockedByLightning(car.effects) ? 'SEM ITENS' : 'EMP: SEM ITENS';
@@ -244,12 +249,24 @@ export function createTraps({ scene, car, race, harpoon, burning, mines, nets, e
     }
   }
 
+  // Dano da explosão em quem é simulado aqui (cada navegador cuida dos seus carros). O abate conta para quem soltou a dinamite; quem pisa na própria não conta.
+  function blastDamage(racer, trap, amount) {
+    const owner = trap.owner ?? trap.dropper, attacker = owner && owner !== racer ? owner : null;
+    if (racer.isPlayer) {
+      const wasAlive = car.health > 0;
+      damagePlayer(car, amount / CAR_MAX_HP * car.parts.bullet);
+      if (wasAlive && car.health <= 0) onDestroyed(racer, attacker, 'splash');
+    } else if (damageOpponent(racer, amount, attacker)) {
+      onDestroyed(racer, attacker, 'splash');
+    }
+  }
+
   function explode(trap, trigger) {
     trap.explodedFor = 0;
     onSound(trap.type.id, trap.x, trap.z);
     for (const racer of race.field) {
       if (racer.dead > 0 || racer.remote) continue;
-      if (racer === trigger) { throwCar(racer, trap); onCaught(racer, trap.type, trap.owner); continue; }
+      if (racer === trigger) { throwCar(racer, trap); blastDamage(racer, trap, trap.type.damage); onCaught(racer, trap.type, trap.owner, trap.id); continue; }
       const dx = racer.x - trap.x, dz = racer.z - trap.z, distance = Math.hypot(dx, dz);
       if (distance > trap.type.radius) continue;
       const d = distance || 1, awayX = dx / d, awayZ = dz / d, strength = 1 - BLAST_FALLOFF * distance / trap.type.radius;
@@ -261,7 +278,8 @@ export function createTraps({ scene, car, race, harpoon, burning, mines, nets, e
         racer.v = Math.max(0, racer.v + forward * BLAST_PUSH * strength);
         racer.knock += side * BOT_BLAST_KNOCK * strength;
       }
-      onCaught(racer, trap.type, trap.owner);
+      blastDamage(racer, trap, trap.type.damage * Math.max(MIN_BLAST_SHARE, strength));
+      onCaught(racer, trap.type, trap.owner, trap.id);
     }
   }
 
@@ -279,7 +297,7 @@ export function createTraps({ scene, car, race, harpoon, burning, mines, nets, e
       if (trap.hitBy.has(racer)) continue;
       trap.hitBy.add(racer);
       onSound(trap.type.id, racer.x, racer.z);
-      onCaught(racer, trap.type, trap.owner);
+      onCaught(racer, trap.type, trap.owner, trap.id);
     }
   }
 
@@ -290,7 +308,7 @@ export function createTraps({ scene, car, race, harpoon, burning, mines, nets, e
       trap.hitBy.add(racer);
       racer.effects[trap.type.effect] = trap.type.duration * effectScale(racer, trap.type.effect);
       onSound(trap.type.id, racer.x, racer.z);
-      onCaught(racer, trap.type, trap.owner);
+      onCaught(racer, trap.type, trap.owner, trap.id);
     }
   }
 

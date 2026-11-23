@@ -11,7 +11,8 @@ const position = new THREE.Vector3(), scale = new THREE.Vector3(), tint = new TH
 const MAX_TRIES = 40;
 // Distâncias laterais do cenário contam a partir daqui (o muro). Assim elas acompanham a largura da pista.
 export const EDGE = OPEN_WALL;
-const BEHIND_WALL = OPEN_WALL + 2.6;                 // árvores e enfeites ficam atrás do muro
+// Árvores e enfeites ficam atrás do muro (ou, sem muro, do acostamento: `track.shoulder` o alarga).
+const behindWall = () => OPEN_WALL + track.shoulder + 2.6;
 const ROAD_KEEP = TRACK_WIDTH / 2 + 2;               // nada na altura dos carros chega mais perto do centro de qualquer trecho da pista
 const CAR_ZONE = 8, FOOTPRINT_STEP = 6;              // metros: altura que atrapalha a vista e espaçamento dos pontos testados
 
@@ -72,7 +73,7 @@ function placeInstance(meshes, parts, index, x, y, z, yaw, size, random) {
 // `sizeOf(random)` devolve um número ou [largura, altura, profundidade]; `clearance` é a distância mínima até a pista.
 export function scatter(ctx, { count, clearance, parts, sizeOf = () => 1 }) {
   const { random, spotIsClear, bounds, heightAt } = ctx;
-  const meshes = instancedParts(ctx, parts, count), distance = Math.max(clearance, BEHIND_WALL);
+  const meshes = instancedParts(ctx, parts, count), distance = Math.max(clearance, behindWall());
   let placed = 0;
   for (let i = 0; i < count; i++) {
     const size = sizeOf(random), area = footprintOf(parts, size);
@@ -114,7 +115,7 @@ export function nearRoad(ctx, { count, from, to, parts, sizeOf = () => 1 }) {
   for (let i = 0; i < count; i++) {
     const d = random() * track.length;
     if (!isOpen(d)) continue;
-    const start = Math.max(from, BEHIND_WALL);
+    const start = Math.max(from, behindWall());
     const t = trackAt(d), lateral = (random() < 0.5 ? -1 : 1) * (start + random() * (to - from));
     const x = t.x - t.tz * lateral, z = t.z + t.tx * lateral;
     const yaw = random() * Math.PI * 2, size = sizeOf(random);
@@ -146,7 +147,7 @@ export function alongRoad(ctx, { every, offset, parts, sizeOf = () => 1, facesRo
   for (let d = every / 2; d < track.length; d += every) {
     if (!isOpen(d)) continue;
     for (const side of [-1, 1]) {
-      const distance = Math.max(offset, BEHIND_WALL);
+      const distance = Math.max(offset, behindWall());
       const t = trackAt(d), x = t.x - t.tz * side * distance, z = t.z + t.tx * side * distance;
       const yaw = Math.atan2(-t.tx, -t.tz) + (facesRoad ? side * Math.PI / 2 : 0), size = sizeOf(random);
       if (!footprintIsClear(ctx, footprintOf(parts, size), x, z, yaw)) continue;    // no grampo o outro trecho da pista passa perto
@@ -162,7 +163,7 @@ export function acrossRoad(ctx, { every, build }) {
   for (let d = every * 0.7; d < track.length - 40; d += every + random() * every * 0.4) {
     if (!isOpen(d)) continue;
     const t = trackAt(d);
-    if (![-1, 1].every(side => spotIsClear(t.x - t.tz * side * BEHIND_WALL, t.z + t.tx * side * BEHIND_WALL, ROAD_KEEP))) continue;
+    if (![-1, 1].every(side => spotIsClear(t.x - t.tz * side * behindWall(), t.z + t.tx * side * behindWall(), ROAD_KEEP))) continue;
     const arch = build(random);
     arch.position.set(t.x, t.y, t.z);
     arch.rotation.y = Math.atan2(-t.tx, -t.tz);
@@ -170,7 +171,7 @@ export function acrossRoad(ctx, { every, build }) {
   }
 }
 
-export function archFrame({ halfSpan = BEHIND_WALL, height = 9, post, beam, trim }) {
+export function archFrame({ halfSpan = behindWall(), height = 9, post, beam, trim }) {
   const arch = new THREE.Group();
   const add = (w, h, d, x, y, color, extra) => {
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), solid(color, extra));

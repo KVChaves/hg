@@ -1,5 +1,5 @@
 import { TRACK_WIDTH } from '../config.js';
-import { SHARP_RADIUS, createRandom, track, trackAt } from '../world/track.js';
+import { OPEN_WALL, SHARP_RADIUS, createRandom, track, trackAt } from '../world/track.js';
 import { HAZARD_KINDS } from './hazardKinds.js';
 
 // Decide onde vão os túneis e os trechos épicos. Só depende da pista e da semente: todos veem o mesmo mapa.
@@ -80,6 +80,7 @@ function placeTunnels(plan, placer, random, layout) {
     placer.reserve(start - TUNNEL_MARGIN, start + length + TUNNEL_MARGIN);
     layout.tunnels.push({ start, length, open: Boolean(plan.open) });
     if (!plan.open) narrowWalls(placer, start, length);
+    else if (track.shoulder > 0) narrowWalls(placer, start, length, OPEN_WALL);   // acostamento largo: o carro passa entre os pilares do arco, não por eles
     markEnclosed(start, length);
   }
 }

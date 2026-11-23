@@ -14,7 +14,10 @@ const HALF = TRACK_WIDTH / 2, SIGN_AHEAD = 45;
 const solid = (color, extra = {}) => new THREE.MeshBasicMaterial({ color, ...extra });
 
 // Ponto ao lado da pista: `lateral` positivo é à direita de quem corre; `up` é a altura sobre o chão dali.
-function spot(dist, lateral, up = 0, onRoad = false) {
+// Fora da estrada o ponto se afasta o tanto do acostamento largo (`track.shoulder`), para o carro não atravessar
+// placas e paredões no acostamento; `keep` deixa onde está (o que precisa ficar debruçado sobre a pista).
+function spot(dist, lateral, up = 0, onRoad = false, keep = false) {
+  if (!keep && Math.abs(lateral) > HALF) lateral += Math.sign(lateral) * track.shoulder;
   const t = trackAt(dist), x = t.x - t.tz * lateral, z = t.z + t.tx * lateral;
   const ground = onRoad || Math.abs(lateral) <= HALF ? t.y : Math.max(t.y, track.heightAt(x, z));
   return { x, y: ground + up, z, yaw: Math.atan2(-t.tx, -t.tz) };
@@ -253,12 +256,12 @@ const BUILDERS = {
 
   // Coqueiro torto sobre a pista com cocos pendurados: é de lá que eles caem.
   coconutFall(group, { dist, side }) {
-    const base = spot(dist, side * (HALF + 2.5)), lean = -side * 0.5;
+    const base = spot(dist, side * (HALF + 2.5), 0, false, true), lean = -side * 0.5;
     put(group, new THREE.CylinderGeometry(0.3, 0.5, 11, 6), solid(0x7a5a38), { ...base, y: base.y + 5.5 }, { z: lean });
-    const top = spot(dist, side * (HALF + 2.5 - Math.sin(-lean) * 5.4), 0);
+    const top = spot(dist, side * (HALF + 2.5 - Math.sin(-lean) * 5.4), 0, false, true);
     for (let leaf = 0; leaf < 6; leaf++) put(group, new THREE.BoxGeometry(5, 0.15, 1.1), solid(leaf % 2 ? 0x2f8a3a : 0x3aa048), { ...top, y: top.y + 10.6 }, { y: leaf * 1.05, z: -0.3 });
     const coconut = new THREE.IcosahedronGeometry(0.45, 0);
-    for (let i = 0; i < 4; i++) put(group, coconut, solid(0x6a4a28), spot(dist - 1.2 + i * 0.8, side * (HALF + 0.4), 10.2));
+    for (let i = 0; i < 4; i++) put(group, coconut, solid(0x6a4a28), spot(dist - 1.2 + i * 0.8, side * (HALF + 0.4), 10.2, false, true));
     addSign(group, dist - SIGN_AHEAD, diamondSign(ctx => { ctx.beginPath(); ctx.arc(16, 20, 5, 0, Math.PI * 2); ctx.fill(); ctx.fillRect(15, 7, 2, 8); }));
   },
 

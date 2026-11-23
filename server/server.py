@@ -28,9 +28,16 @@ RANKING_FILE = Path(__file__).resolve().parent / "ranking_v2.json"        # rank
 LEGACY_RANKING_FILE = Path(__file__).resolve().parent / "ranking.json"    # ranking antigo (medalhas): congelado, só leitura
 HISTORY_FILE = Path(__file__).resolve().parent / "history.jsonl"   # uma linha por corrida disputada, só acrescenta
 RANKING_LIMIT = 50
+COMBAT_COUNTS = ("kills", "deaths", "shots", "hits", "trapsPlaced", "trapsScored", "caught")   # contadores da mensagem `combat`
+# Campos da página COMBATE no ranking; "kills" do combate vira "combatKills" (o "kills" antigo vem do fim da partida).
+COMBAT_FIELDS = {"combatRaces": 0, "combatKills": 0, "deaths": 0, "shots": 0, "hits": 0, "trapsPlaced": 0, "trapsScored": 0, "caught": 0,
+                 "victims": dict, "killers": dict, "causes": dict, "leadRaces": 0, "leadTime": 0.0, "leadLost": 0, "leadRaceTime": 0.0}
+KILL_CAUSES = ("shot", "ram", "fire", "splash", "other")
+MAX_COMBAT_COUNT = 5000                            # teto de qualquer contador numa corrida
 PHOTO_FINISH = 0.5                                  # segundos entre dois pilotos vizinhos na chegada para contar como photo finish
 MIN_MAP_RACES = 2                                  # corridas num mapa para ele valer como melhor/pior; se nenhum tiver, vale qualquer um
 RIVALS_SHOWN = 6
+COMBAT_TOP = 3                                     # vítimas e carrascos mostrados
 HISTORY_LIMIT = 40                                  # corridas mais recentes que o ranking mostra
 MIN_RANKED_RACES = 5                                # corridas rankeadas para ganhar posição; antes disso o jogador aparece sem posição
 MEDAL_POINTS = {"gold": 3, "silver": 1.5, "bronze": 1}   # só o ranking antigo usa; mesmo peso do campeonato
@@ -55,6 +62,10 @@ MAX_RESULT_COUNT = 999
 NAME_LENGTH = 12
 ROOM_NAME_LENGTH = 20
 DEFAULT_NAME = "Piloto"
+
+
+def is_number(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
 
 def clean_text(value, length):
@@ -92,7 +103,12 @@ def merged(players):
             result[key] = dict(entry)
             continue
         for field, value in entry.items():
-            result[key][field] = result[key].get(field, 0) + value
+            if isinstance(value, dict):          # tabelas (vítimas, carrascos...): soma por chave
+                table = result[key].setdefault(field, {})
+                for name, count in value.items():
+                    table[name] = table.get(name, 0) + count
+            else:
+                result[key][field] = result[key].get(field, 0) + value
     return result
 
 
@@ -116,7 +132,26 @@ class Ranking:
 
     def entry(self, name):
         known = next((key for key in self.players if key.casefold() == name.casefold()), name)
-        return self.players.setdefault(known, {"races": 0, "score": 0.0, "wins": 0, "podiums": 0, "positionSum": 0, "kills": 0, "matches": 0})
+        entry = self.players.setdefault(known, {"races": 0, "score": 0.0, "wins": 0, "podiums": 0, "positionSum": 0, "kills": 0, "matches": 0})
+        for field, empty in COMBAT_FIELDS.items():   # registros de antes da página COMBATE não têm esses campos
+            entry.setdefault(field, empty() if callable(empty) else empty)
+        return entry
+
+    def record_lead(self, name, seconds, lost, race_time):
+        entry = self.entry(name)
+        entry["leadRaces"] += 1
+        entry["leadTime"] += seconds
+        entry["leadLost"] += lost
+        entry["leadRaceTime"] += race_time
+
+    def record_combat(self, name, stats):
+        entry = self.entry(name)
+        entry["combatRaces"] += 1
+        for field in COMBAT_COUNTS:
+            entry["combatKills" if field == "kills" else field] += stats[field]
+        for field in ("victims", "killers", "causes"):
+            for key, count in stats[field].items():
+                entry[field][key] = entry[field].get(key, 0) + count
 
     def record_race(self, name, position, racers):
         entry = self.entry(name)
@@ -186,6 +221,7 @@ class Room:
         self.race_no = 0
         self.back_shots = True              # liberar tiro com o olhar virado para trás (Q)
         self.phase = "lobby"
+        self.combat_pending = set()          # quem correu a última corrida rankeada e ainda pode mandar as estatísticas de combate
         self.ranked = True                  # partida com bots ou com poucos humanos não conta para ranking nem histórico; decidido na largada
         self.banned = set()
 
@@ -400,11 +436,15 @@ class Lobby:
                 "time": round(seconds, 2) if isinstance(seconds, (int, float)) and not isinstance(seconds, bool) and 0 <= seconds < 36000 else None,
             })
             if member:
-                humans.append((member.name, result["position"]))
+                humans.append((member.name, result["position"], result, racers[-1]["time"]))
         if not humans:
             return
-        for name, position in humans:
+        for name, position, result, seconds in humans:
             self.ranking.record_race(name, position, len(results))
+            lead, lost = result.get("lead"), result.get("lost")
+            if seconds and is_number(lead) and 0 <= lead <= seconds + 1 and isinstance(lost, int) and 0 <= lost <= MAX_COMBAT_COUNT:
+                self.ranking.record_lead(name, min(lead, seconds), lost, seconds)
+        room.combat_pending = {name.casefold() for name, *_ in humans}
         self.ranking.save()
         room.race_no += 1
         self.append_history({"at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "room": room.name, "match": room.match_id, "n": room.race_no,
@@ -493,7 +533,59 @@ class Lobby:
             "worstMap": min(rated, key=lambda row: row["rating"]) if rated else None,
             "mostPlayed": max(map_rows, key=lambda row: row["races"]) if map_rows else None,
             "rivals": sorted(rivals.values(), key=lambda rival: -rival["races"])[:RIVALS_SHOWN],
+            "combat": self.combat_stats(entry or {}),
         }
+
+    @staticmethod
+    def combat_stats(entry):
+        """Página COMBATE: só conta corridas jogadas depois que o jogo passou a mandar esses números."""
+        get = lambda field: entry.get(field, 0)
+        top = lambda table: [{"name": name, "count": count} for name, count in sorted(table.items(), key=lambda item: -item[1])[:COMBAT_TOP]]
+        lead_races = get("leadRaces")
+        return {
+            "races": get("combatRaces"), "kills": get("combatKills"), "deaths": get("deaths"),
+            "shots": get("shots"), "hits": get("hits"), "trapsPlaced": get("trapsPlaced"), "trapsScored": get("trapsScored"), "caught": get("caught"),
+            "victims": top(entry.get("victims", {})), "killers": top(entry.get("killers", {})),
+            "causes": {cause: entry.get("causes", {}).get(cause, 0) for cause in KILL_CAUSES},
+            "leadRaces": lead_races, "leadLost": get("leadLost"),
+            "leadAverage": round(get("leadTime") / lead_races, 1) if lead_races else None,
+            "leadShare": round(100 * get("leadTime") / get("leadRaceTime")) if get("leadRaceTime") else None,
+        }
+
+    @staticmethod
+    def valid_combat(stats):
+        if not isinstance(stats, dict):
+            return None
+        counts = {field: stats.get(field) for field in COMBAT_COUNTS}
+        if not all(isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= MAX_COMBAT_COUNT for value in counts.values()):
+            return None
+        if counts["hits"] > counts["shots"] or counts["trapsScored"] > counts["trapsPlaced"]:
+            return None
+        tables = {}
+        for field, keys in (("victims", None), ("killers", None), ("causes", KILL_CAUSES)):
+            table = stats.get(field, {})
+            if not isinstance(table, dict) or len(table) > MAX_RACERS + len(KILL_CAUSES):
+                return None
+            clean = {}
+            for key, count in table.items():
+                name = clean_text(key, NAME_LENGTH) if keys is None else (key if key in keys else None)
+                if not name or not isinstance(count, int) or isinstance(count, bool) or not 0 < count <= MAX_COMBAT_COUNT:
+                    return None
+                clean[name] = clean.get(name, 0) + count
+            tables[field] = clean
+        return {**counts, **tables}
+
+    def on_combat(self, client, message):
+        """Cada humano manda as próprias estatísticas de combate no fim de uma corrida rankeada; vale uma vez por corrida."""
+        room = client.room
+        if room is None or not room.ranked or client.name.casefold() not in room.combat_pending:
+            return
+        stats = self.valid_combat(message.get("stats"))
+        if stats is None:
+            return
+        room.combat_pending.discard(client.name.casefold())
+        self.ranking.record_combat(client.name, stats)
+        self.ranking.save()
 
     def on_stats(self, client, message):
         players = sorted((name for name, entry in self.ranking.players.items() if entry["races"] > 0), key=str.casefold)
@@ -587,7 +679,7 @@ class Lobby:
         self.publish_room(room)
 
     HANDLERS = {"create": on_create, "join": on_join, "name": on_name, "leave": on_leave,
-                "kick": on_kick, "config": on_config, "start": on_start, "race": on_race, "end": on_end_match, "ranking": on_ranking, "history": on_history, "legacy": on_legacy, "stats": on_stats, "chat": on_chat, "resume": on_resume, "g": on_game}
+                "kick": on_kick, "config": on_config, "start": on_start, "race": on_race, "end": on_end_match, "ranking": on_ranking, "history": on_history, "legacy": on_legacy, "stats": on_stats, "combat": on_combat, "chat": on_chat, "resume": on_resume, "g": on_game}
 
     def handle(self, client, text):
         try:

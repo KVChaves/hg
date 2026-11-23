@@ -23,7 +23,7 @@ export function createWeapon({ scene, camera, targets, extraTargets = () => [], 
   const weapon = {
     type: WEAPON_TYPES.revolver, ammo: 0, capacity: 0, reserve: 0, outOfAmmo: 0, cooldown: 0,
     isReloading: false, roundsToLoad: 0, roundProgress: 0, carryingRound: false,
-    flash: 0, hitMarker: 0, hitPart: null, hitPartTime: 0, kills: 0, sinceShot: Infinity, shots: 0, dryFires: 0,
+    flash: 0, hitMarker: 0, hitPart: null, hitPartTime: 0, kills: 0, sinceShot: Infinity, shots: 0, landed: 0, dryFires: 0,   // `landed`: disparos que machucaram algum carro (mira)
   };
 
   // `reserveFactor` é a melhoria de munição comprada.
@@ -60,17 +60,21 @@ export function createWeapon({ scene, camera, targets, extraTargets = () => [], 
   }
 
   // Lança-granadas: explode onde acertou e machuca quem estiver em volta, menos quanto mais longe.
+  // Devolve se a explosão machucou algum carro (o alvo direto não conta, já contou como acerto).
   function explodeAt(point, direct) {
     const { radius, min } = weapon.type.splash;
+    let hurt = false;
     onSplash(point);
     for (const target of [...targets.filter(t => !t.dead), ...extraTargets()]) {
       if (target === direct) continue;
       const distance = target.group.position.distanceTo(point);
       if (distance > radius) continue;
       const amount = weapon.type.damage * (1 - (1 - min) * distance / radius);
-      if (target.isObstacle) onObstacleHit(target, amount);
-      else if (damageOpponent(target, amount, shooter)) { onKill(target, 'splash'); weapon.hitMarker = 0.4; }
+      if (target.isObstacle) { onObstacleHit(target, amount); continue; }
+      hurt = true;
+      if (damageOpponent(target, amount, shooter)) { onKill(target, 'splash'); weapon.hitMarker = 0.4; }
     }
+    return hurt;
   }
 
   weapon.fire = () => {
@@ -97,7 +101,7 @@ export function createWeapon({ scene, camera, targets, extraTargets = () => [], 
     raycaster.setFromCamera(aimOffset, camera);
     const hits = raycaster.intersectObjects([...targets.filter(t => !t.dead), ...extraTargets()].map(t => t.group), true);
     const { origin, direction } = raycaster.ray;
-    let end = origin.clone().addScaledVector(direction, Math.min(type.range, TRACER_LENGTH));
+    let end = origin.clone().addScaledVector(direction, Math.min(type.range, TRACER_LENGTH)), landed = false;
 
     if (hits.length) {
       end = hits[0].point;
@@ -106,6 +110,7 @@ export function createWeapon({ scene, camera, targets, extraTargets = () => [], 
       if (target.isObstacle) {                      // obstáculos quebram a tiro e não contam como abate
         if (onObstacleHit(target, damageAtDistance(type, hits[0].distance))) weapon.hitMarker = 0.4;
       } else {
+        landed = true;
         onHit(target);
         const part = partHit(hits[0].object, target.group.worldToLocal(hits[0].point.clone()));
         if (part.label) { weapon.hitPart = part.label; weapon.hitPartTime = HIT_PART_TIME; }
@@ -115,15 +120,16 @@ export function createWeapon({ scene, camera, targets, extraTargets = () => [], 
         }
       }
       if (type.burn && !target.isObstacle) onIgnite(target, type.burn);
-      if (type.splash) explodeAt(end, target);
+      if (type.splash && explodeAt(end, target)) landed = true;
     } else if (type.splash || type.burn) {
       const ground = groundHit(origin, direction, type.range);
       if (ground) {
         end = new THREE.Vector3(ground.x, ground.y, ground.z);
-        if (type.splash) explodeAt(end, null);
+        if (type.splash && explodeAt(end, null)) landed = true;
         if (type.burn) onGroundFire(ground);
       }
     }
+    if (landed) weapon.landed++;
     showTracer(origin, direction, end);
   };
 

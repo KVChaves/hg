@@ -64,6 +64,7 @@ import { setGravity } from './game/flight.js';
 import { findRivals } from './game/rivals.js';
 import { createSpectator } from './game/spectator.js';
 import { giveKillReward } from './game/killReward.js';
+import { createCombatStats } from './game/combatStats.js';
 import { deficitOf } from './game/deficit.js';
 import { createObstacles } from './game/obstacles.js';
 import { createLightning } from './game/lightning.js';
@@ -102,12 +103,19 @@ const outOfAction = () => car.wrecked > 0 || car.overturned;
 const featFeed = createFeatFeed();
 
 let matchKills = 0;
+const raceKills = new Map();                         // nome → abates nesta corrida, de todos os pilotos (a tela de resultados mostra o rei dos abates)
+function addRaceKill(killer, victim) {
+  if (killer?.name && killer !== victim) raceKills.set(killer.name, (raceKills.get(killer.name) ?? 0) + 1);
+}
 const killFeed = createKillFeed();
 
 // Todo carro destruído com autor vira linha no feed; se foi o jogador, a tela de destruído mostra quem foi.
 function announceDestruction(victim, killer) {
   if (!victim) return;
-  if (victim.isPlayer) car.destroyedBy = killer?.name ?? null;
+  if (victim.isPlayer) {
+    car.destroyedBy = killer?.name ?? null;
+    combatStats.killedBy(killer);
+  }
   killFeed.add(victim, killer);
 }
 
@@ -116,20 +124,22 @@ function creditKill(victim, cause) {
   announceDestruction(victim, race.field.find(racer => racer.isPlayer));
   weapon.kills++;
   matchKills++;
+  addRaceKill(race.field[0], victim);
+  combatStats.kill(victim, cause);
   audio.playKill();
-  feats.kill(victim, cause);
-  rewardKillFor(race.field.find(racer => racer.isPlayer), victim);
+  const streak = feats.kill(victim, cause);
+  rewardKillFor(race.field.find(racer => racer.isPlayer), victim, streak);
   if (victim) featFeed.setCount(victim, 'Abate', weapon.kills);
 }
 
 // Abate rende itens conforme o atraso de quem abateu para o líder (jogador ou bot); derrubar o líder rende nitro extra.
 // Só quem é simulado neste navegador recebe aqui; os outros recebem no navegador que os simula.
-function rewardKillFor(racer, victim) {
+function rewardKillFor(racer, victim, streak = 1) {
   if (!racer || racer.remote || !race.started || race.finished) return;
   const supplies = roadsideHelp.suppliesFor(racer);
   if (!supplies) return;
   const victimLeads = !!victim && victim !== racer && race.order[0]?.name === victim.name;
-  const labels = giveKillReward(supplies, { deficit: deficitOf(racer, race.field), victimLeads });
+  const labels = giveKillReward(supplies, { deficit: deficitOf(racer, race.field), victimLeads, streak });
   if (!racer.isPlayer) return;
   roadsideHelp.showMessage(labels.map(label => `+${label}`).join(' '));
   audio.playWorldSound('itemCollected', 0, 0);
@@ -141,17 +151,24 @@ function announceTrapCatch(racer, type) {
 }
 
 // `owner` nulo: a armadilha é do jogador deste navegador.
-function onTrapCaught(racer, type, owner) {
-  if (owner?.remote) online.sendCaught(racer, type, owner);
-  else if (!owner && !racer.isPlayer) announceTrapCatch(racer, type);
+function onTrapCaught(racer, type, owner, id) {
+  if (racer.isPlayer && owner) combatStats.caughtInTrap();
+  if (owner?.remote) online.sendCaught(racer, type, owner, id);
+  else if (!owner && !racer.isPlayer) {
+    combatStats.trapScored(id);
+    announceTrapCatch(racer, type);
+  }
 }
 
 function onRacerDestroyed(victim, killer, cause) {
   if (!killer?.isPlayer) announceDestruction(victim, killer);   // o do jogador entra por creditKill
   if (victim.isPlayer) feats.playerDestroyed(killer);
   if (killer?.isPlayer) creditKill(victim, cause);
-  else if (killer?.remote) online.sendKill(victim, killer);
-  else rewardKillFor(killer, victim);                // bot simulado aqui
+  else if (killer?.remote) online.sendKill(victim, killer, cause);
+  else {                                             // bot simulado aqui
+    addRaceKill(killer, victim);
+    rewardKillFor(killer, victim);
+  }
 }
 
 const driftTracker = createDriftTracker(car, duration => feats.drift(duration));
@@ -164,7 +181,7 @@ const race = createRace(car, opponents, {
 const feats = createFeats({ featFeed, race, car, driftTracker });
 const net = createRoomClient();
 let online = null;                                   // criado mais abaixo; os sistemas só avisam quando há partida online
-const pulls = createPullReceiver(car);
+const pulls = createPullReceiver(car, { onKill: onRacerDestroyed });
 // Quem atravessa o cabo de um arpão: o carro de outro navegador avisa pela rede; o jogador vê o aviso.
 function announceRopeTrip(racer) { if (racer.isPlayer) featFeed.announce('ENROSCOU NO CABO', { color: '#ffd060' }); }
 function onRopeTrip(racer, side) {
@@ -182,7 +199,8 @@ const burning = createBurning({
 const weapon = createWeapon({ scene: world, camera, targets: opponents, shooter: race.field[0], canReload: () => race.started, onFired: (id, from, end) => online.sendShot(id, from, end), onHit: target => { featFeed.addCount(target, 'Acerto'); feats.hit(); }, onKill: creditKill, extraTargets: () => obstacles.active, onObstacleHit: (ob, damage) => obstacles.shoot(ob, damage), onSplash: point => { combat.explodeAt(point.x, point.y, point.z); playAt('dynamite', point.x, point.z); },
   onIgnite: (target, seconds) => burning.ignite(target, race.field[0], seconds),
   onGroundFire: ground => traps.burnGround(ground.dist, ground.lane, null, race.field[0]) });   // só recarrega depois do GO
-const harpoon = createHarpoon({ owner: race.field[0], car, race, holdToExtend: false, playerAim: true, aimYaw: () => car.yaw + look.yaw, visual: createHarpoonVisual(world), onSound: playAt, onRemotePull: (target, shooter) => online.sendPull(target, shooter), onTetherEnd: target => online.sendPullEnd(target, race.field[0]), onTrip: onRopeTrip, onHooked: target => {
+const combatStats = createCombatStats({ weapon, car });
+const harpoon = createHarpoon({ owner: race.field[0], car, race, holdToExtend: false, playerAim: true, aimYaw: () => car.yaw + look.yaw, visual: createHarpoonVisual(world), onSound: playAt, onRemotePull: (target, shooter) => online.sendPull(target, shooter), onTetherEnd: target => online.sendPullEnd(target, race.field[0]), onTrip: onRopeTrip, onKill: onRacerDestroyed, onHooked: target => {
   featFeed.announce('ARPOADO', { color: '#8ad0ff' });
   featFeed.addCount(target, 'Arpao');
 } });
@@ -193,10 +211,7 @@ const mines = createMines({
   onExplode: (x, y, z) => combat.explodeAt(x, y, z),
   onAttach: mine => online.sendMine(mine),
   onTransfer: (mine, next) => { if (next.isPlayer) featFeed.announce('MINA PASSOU PARA VOCE', { color: '#ff6a50' }); },
-  onKill: (victim, killer) => {
-    onRacerDestroyed(victim, killer);
-    if (!killer.isPlayer && !killer.remote) rewardKillFor(killer, victim);
-  },
+  onKill: onRacerDestroyed,                          // já anuncia, credita o jogador e premia bot simulado aqui
 });
 const nets = createNets({ scene: world, race, onSound: playAt, onCatch: (target, owner) => online.sendNet(target, owner) });
 const emp = createEmp({ race, mines, visuals: powerVisuals, onSound: playAt, onPulse: racer => online.sendEmp(racer) });
@@ -223,7 +238,7 @@ function powerStatus() {
   if (car.blueNitro > 0) lines.push({ text: `NITRO AZUL ${car.blueNitro.toFixed(1)}S`, color: '#4aa0ff' });
   return lines;
 }
-const traps = createTraps({ scene: world, car, race, harpoon, burning, mines, nets, emp, onCaught: onTrapCaught, onSound: playAt, onExtinguisher: racer => { foam.spray(racer); online.sendExtinguisher(racer); }, onPlaced: (type, dist, lane, owner, id) => online.sendTrap(type, dist, lane, owner, id), onDetonated: id => online.sendTrapBoom(id) });
+const traps = createTraps({ scene: world, car, race, harpoon, burning, mines, nets, emp, onCaught: onTrapCaught, onSound: playAt, onExtinguisher: racer => { foam.spray(racer); online.sendExtinguisher(racer); }, onPlaced: (type, dist, lane, owner, id) => { if (owner?.isPlayer && type.id !== 'fire') combatStats.trapPlaced(id); online.sendTrap(type, dist, lane, owner, id); }, onDetonated: id => online.sendTrapBoom(id), onDestroyed: onRacerDestroyed });
 const obstacles = createObstacles({
   scene: world, race, car, onSound: playAt,
   isAuthority: () => !online.active || net.isAdmin,
@@ -248,6 +263,7 @@ const combat = createOpponentCombat({
   onKill: (victim, killer) => {
     announceDestruction(victim, killer);
     if (victim.isPlayer) feats.playerDestroyed(killer);
+    addRaceKill(killer, victim);
     rewardKillFor(killer, victim);
   },
 });
@@ -366,13 +382,14 @@ const matchSetup = createMatchSetupScreen({
   },
   onBack: () => mainMenu.open(),
 });
-const voteScreen = createVoteScreen({ stage, onVote: biomeId => online?.castVote(biomeId) });   // votação do próximo mapa (multiplayer)
+const voteScreen = createVoteScreen({ stage, onVote: biomeId => online?.castVote(biomeId), onVeto: biomeId => online?.castVeto(biomeId) });   // votação do próximo mapa (multiplayer)
 const results = createResultsScreen({
   stage,
   onNext: () => garage.openBetweenRaces(TIME_BETWEEN_RACES),
   onFinished: () => podium.open(match),
   localName: () => race.field[0].name,
   getUpcomingBiome: () => upcomingBiomeName(),
+  getRaceKills: () => raceKills,
 });
 const podium = createPodiumScreen({
   stage,
@@ -598,7 +615,7 @@ function setRacerCount(cars) {
 online = createOnlineMatch({ onRopeTripped: announceRopeTrip,
   onPlayerKilledBy: killer => { announceDestruction(race.field.find(racer => racer.isPlayer), killer); feats.playerDestroyed(killer); },
   onPlayerShot: () => audio.playBulletHit(),
-  net, scene: world, race, car, opponents, combat, traps, mines, nets, emp, burning, foam, harpoon, pulls, weapon, look, garage, results, podium, voteScreen, playAt, setRacerCount, creditKill, rewardKillFor, announceTrapCatch, obstacles,
+  net, scene: world, race, car, opponents, combat, traps, mines, nets, emp, burning, foam, harpoon, pulls, weapon, look, garage, results, podium, voteScreen, playAt, setRacerCount, creditKill, rewardKillFor, announceTrapCatch, obstacles, raceKills, addRaceKill,
   onLateJoin: () => multiplayer.close(),
   getSpec: () => garage.carSpec(),
   setMatch: created => {
@@ -606,6 +623,7 @@ online = createOnlineMatch({ onRopeTripped: announceRopeTrip,
     matchKills = 0;
   },
   getMatchKills: () => matchKills,
+  combatStats,
   getMatch: () => match,
   getBiome: () => biome,
   beginRace,
@@ -689,6 +707,7 @@ function restartRace() {
 }
 
 function beginRace(chosenBiome, seed, grid) {
+  raceKills.clear();
   lastRace = { biome: chosenBiome, seed, grid };
   biome = chosenBiome;
   setSurface(biome.surface);
@@ -711,6 +730,7 @@ function beginRace(chosenBiome, seed, grid) {
   driftTracker.reset();
   lapSupplies.reset();
   race.reset(grid);
+  combatStats.reset();
   applyEquipment(equipment);
   combat.reset();
   roadsideHelp.reset();
@@ -773,6 +793,7 @@ function updateWindowView() {
 }
 
 function step(frameTime) {
+  combatStats.update();
   mainMenu.update();
   multiplayer.update();
   matchSetup.update();

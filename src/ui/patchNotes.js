@@ -6,9 +6,34 @@ export const PATCH_NOTES = [
   {
     title: 'RANKING: ESTATÍSTICAS',
     items: [
-      'Nova aba ESTATÍSTICAS no lugar do RANKING ANTIGO: desempenho, vitórias, pódios, abates por partida, maiores sequências, distância média para o vencedor e photo finishes (chegadas a menos de 0,5 s).',
-      'Melhor mapa, pior mapa e mapa mais jogado de cada jogador, e o confronto direto contra cada adversário (quem chegou na frente mais vezes).',
+      'Nova aba ESTATÍSTICAS no lugar do RANKING ANTIGO, com duas páginas: GERAL e COMBATE (botões à direita do nome do jogador).',
       'As setas trocam o jogador; clicar no nome volta para as suas. Clicar num jogador da tabela do ranking abre as estatísticas dele.',
+      'GERAL: desempenho, vitórias, pódios, abates por partida, maiores sequências de vitórias e de pódios, distância média para o vencedor e photo finishes (chegadas a menos de 0,5 s de alguém). Vale para todas as corridas rankeadas já jogadas.',
+      'GERAL também mostra o melhor mapa, o pior e o mais jogado, e o confronto direto contra cada adversário: quantas corridas juntos e quem chegou na frente mais vezes.',
+      'COMBATE: abates, mortes, abates por morte, % de mira, armadilhas soltas e quantas pegaram alguém, vezes que caiu em armadilha, vítimas favoritas, carrascos e forma do abate (tiro, pancada, fogo, explosão).',
+      'COMBATE também mostra a liderança: % do tempo na frente, tempo médio na frente por corrida e quantas vezes perdeu a ponta. Quem mede é o admin, então todos veem o mesmo número.',
+      'A mira conta os disparos que machucaram algum carro; a explosão de granada que pega alguém também vale. Toda destruição conta como morte, até queda e obstáculo.',
+      'Os números de COMBATE só contam a partir desta versão e só em partidas rankeadas. Todos da sala precisam estar com o jogo atualizado.',
+      'A aba RANKING não fica mais presa em CARREGANDO... quando aberta logo depois de abrir o jogo.',
+    ],
+  },
+  {
+    title: 'VOTAÇÃO DE MAPA',
+    items: [
+      'A partir da segunda corrida da partida, quem venceu a corrida anterior pode excluir um dos mapas da votação: é o botão X no canto do mapa. O mapa fica riscado e quem tinha votado nele escolhe outro. Se um bot venceu, o direito vai para o humano mais bem colocado.',
+      'Quem mais abateu na corrida anterior tem o voto dobrado (aparecem dois quadradinhos). Empate em abates não dá o voto dobrado a ninguém.',
+      'Quando alguém pode excluir um mapa, a votação dura 4 segundos a mais. Na primeira corrida nada disso vale. Todos da sala precisam estar com o jogo atualizado.',
+    ],
+  },
+  {
+    title: 'MAPAS MAIS NATURAIS',
+    items: [
+      'FLORESTA, PRAIA e PÂNTANO ELÉTRICO não têm mais muro: depois do acostamento vem o próprio cenário (moitas e mata na FLORESTA, capim de duna, pedras e coqueiros na PRAIA, juncal no PÂNTANO).',
+      'Nesses três mapas o acostamento ficou com o dobro da largura, plano e no nível da pista. Fora da pista o carro continua freando.',
+      'Vegetação nova: coqueiros de tronco curvo com folhas caídas e cocos, árvores com galhos e copa cheia, pinheiros, moitas, capim de duna, taboas e ciprestes com barba-de-velho.',
+      'Piso novo: trilha de terra coberta de folhas na FLORESTA, areia dura com marcas de pneu na PRAIA e lama sem faixas pintadas no PÂNTANO.',
+      'PRAIA sem quiosques, torres de salva-vidas, guarda-sóis, pranchas e bandeirolas na beira, e com acostamento de areia molhada no lugar do calçadão. No PÂNTANO os lampiões viraram cogumelos que brilham.',
+      'PÂNTANO ELÉTRICO: os raios caem um pouco menos.',
     ],
   },
   {
@@ -72,7 +97,7 @@ export const PATCH_NOTES = [
     title: 'RANKING E HISTÓRICO',
     items: [
       'Ranking novo do servidor, com desempenho, corridas, vitórias, pódios, posição média, abates e partidas.',
-      'Abas RANKING, HISTÓRICO e RANKING ANTIGO (o ranking local foi substituído).',
+      'Abas RANKING, HISTÓRICO e ESTATÍSTICAS (o ranking local foi substituído).',
       'Histórico das corridas online: detalhe de cada corrida, filtro por jogador e resumo da partida com pontos.',
     ],
   },

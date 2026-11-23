@@ -72,12 +72,15 @@ function addGround(group, biome, bounds, groundMaterial) {
   group.add(new THREE.Mesh(geometry, groundMaterial));
 }
 
-function roadTexture({ base, variation, edge, center, paint, image, shade }) {
+// `paint` só desenha quando não há imagem; `overlay` vai por cima de qualquer um dos dois (folhas, pedrinhas).
+// `edge` e `center` são as faixas pintadas; em piso natural ficam de fora (null).
+function roadTexture({ base, variation, edge, center, paint, overlay, image, shade }) {
   const asphalt = surfaceTexture({ base, variation, image, shade });
   const ctx = asphalt.image.getContext('2d');
   if (!image || !pngReady(image)) paint?.(ctx);
-  ctx.fillStyle = edge; ctx.fillRect(2, 0, 2, 64); ctx.fillRect(60, 0, 2, 64);
-  ctx.fillStyle = center; ctx.fillRect(31, 0, 2, 32);
+  overlay?.(ctx);
+  if (edge) { ctx.fillStyle = edge; ctx.fillRect(2, 0, 2, 64); ctx.fillRect(60, 0, 2, 64); }
+  if (center) { ctx.fillStyle = center; ctx.fillRect(31, 0, 2, 32); }
   asphalt.needsUpdate = true;
   return asphalt;
 }
@@ -143,8 +146,14 @@ function addRoad(group, biome, groundMaterial) {
   group.add(new THREE.Mesh(stripGeometry(-outer, -half, 4, kerbY, kerbY, isGap), kerbMaterial));
   group.add(new THREE.Mesh(stripGeometry(half, outer, 4, kerbY, kerbY, isGap), kerbMaterial));
   // Faixa de terra que desce da beira da estrada até o terreno, para não sobrar degrau.
-  group.add(new THREE.Mesh(stripGeometry(-outer - SHOULDER_WIDTH, -outer, 3, groundY, roadY, overChasm), groundMaterial));
-  group.add(new THREE.Mesh(stripGeometry(outer, outer + SHOULDER_WIDTH, 3, roadY, groundY, overChasm), groundMaterial));
+  // Acostamento largo (`track.shoulder`): faixa plana na altura da estrada antes da descida.
+  const flat = track.shoulder, slopeFrom = outer + flat;
+  if (flat > 0) {
+    group.add(new THREE.Mesh(stripGeometry(-slopeFrom, -outer, 3, roadY, roadY, overChasm), groundMaterial));
+    group.add(new THREE.Mesh(stripGeometry(outer, slopeFrom, 3, roadY, roadY, overChasm), groundMaterial));
+  }
+  group.add(new THREE.Mesh(stripGeometry(-slopeFrom - SHOULDER_WIDTH, -slopeFrom, 3, groundY, roadY, overChasm), groundMaterial));
+  group.add(new THREE.Mesh(stripGeometry(slopeFrom, slopeFrom + SHOULDER_WIDTH, 3, roadY, groundY, overChasm), groundMaterial));
 }
 
 function addStartLine(group, biome) {
