@@ -4,6 +4,18 @@
 
 export const PATCH_NOTES = [
   {
+    title: 'RANKING: ESTATÍSTICAS',
+    items: [
+      'Nova aba ESTATÍSTICAS no lugar do RANKING ANTIGO: desempenho, vitórias, pódios, abates por partida, maiores sequências, distância média para o vencedor e photo finishes (chegadas a menos de 0,5 s).',
+      'Melhor mapa, pior mapa e mapa mais jogado de cada jogador, e o confronto direto contra cada adversário (quem chegou na frente mais vezes).',
+      'As setas trocam o jogador; clicar no nome volta para as suas. Clicar num jogador da tabela do ranking abre as estatísticas dele.',
+    ],
+  },
+  {
+    title: 'ABATES',
+    items: ['Abater um rival agora também devolve vida: 10% da vida total, ou 15% se você estiver atrás.'],
+  },
+  {
     title: 'AJUDA DE BEIRA DE ESTRADA',
     items: [
       'A ajuda mira deixar você a 90 a 110 metros do líder, distância em que ainda dá para se enxergar. Quanto mais longe do líder, maior a ajuda; mais perto que 90 metros ela diminui até sumir aos 30.',

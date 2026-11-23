@@ -22,12 +22,13 @@ const saveConfig = config => {
 
 export function createRoomClient() {
   let socket = null, resumeDeadline = 0;
+  const waiting = [];                                // pedidos à espera da conexão (rodam no `welcome`)
 
   const client = {
-    status: 'offline', id: null, rooms: [], room: null, notice: '', ranking: null, history: null, matchRaces: null, legacy: null, token: null, chat: [],
+    status: 'offline', id: null, rooms: [], room: null, notice: '', ranking: null, history: null, matchRaces: null, stats: null, statsPlayers: null, token: null, chat: [],
     online: null,                                    // jogadores conectados ao servidor (contando este); nulo sem conexão
     onStarted: () => {}, onEnded: () => {}, onGame: () => {}, onRoomChange: () => {}, onLeft: () => {},
-    connect, setName, create, join, leave, kick, configure, start, endRace, endMatch, requestRanking, requestHistory, requestMatch, requestLegacy, sendChat, relay,
+    connect, setName, create, join, leave, kick, configure, start, endRace, endMatch, requestRanking, requestHistory, requestMatch, requestStats, sendChat, relay,
     get isAdmin() { return client.room?.hostId === client.id; },
   };
 
@@ -40,7 +41,7 @@ export function createRoomClient() {
       client.token = message.token;
       client.status = 'online';
       client.notice = '';
-      client.onWelcome?.();
+      waiting.splice(0).forEach(callback => callback());
     },
     rooms(message) { client.rooms = message.rooms; },
     online(message) { client.online = message.count; },
@@ -63,7 +64,7 @@ export function createRoomClient() {
       client.onRoomChange(message.room);
     },
     resume_failed() { giveUp(); },
-    legacy(message) { client.legacy = message.players; },
+    stats(message) { client.statsPlayers = message.players; client.stats = message.stats; },
     room(message) {
       const created = client.room === null && message.room.hostId === client.id;
       client.room = message.room;
@@ -88,12 +89,11 @@ export function createRoomClient() {
     g(message) { client.onGame(message.from, message.d); },
   };
 
+  // Cada pedido feito antes da conexão abrir espera na fila: o menu pede ranking e histórico juntos.
   function connect(onWelcome) {
-    client.onWelcome = onWelcome;
-    if (socket && socket.readyState <= WebSocket.OPEN) {
-      if (client.status === 'online') onWelcome?.();
-      return;
-    }
+    if (client.status === 'online' && socket?.readyState === WebSocket.OPEN) { onWelcome?.(); return; }
+    if (onWelcome) waiting.push(onWelcome);
+    if (socket && socket.readyState <= WebSocket.OPEN) return;
     client.status = resumeDeadline ? 'reconnecting' : 'connecting';
     socket = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${SERVER_ADDRESS}/ws`);
     socket.onopen = () => { if (resumeDeadline) send({ t: 'resume', token: client.token }); };
@@ -149,7 +149,7 @@ export function createRoomClient() {
   // `results` traz o que cada jogador humano fez na partida, para o histórico do servidor.
   function endMatch(results) { send({ t: 'end', results }); }
   function requestRanking() { connect(() => send({ t: 'ranking' })); }
-  function requestLegacy() { connect(() => send({ t: 'legacy' })); }
+  function requestStats(player = '') { client.stats = null; connect(() => send({ t: 'stats', player })); }
   function requestHistory(player = '') { client.history = null; connect(() => send({ t: 'history', player })); }
   function requestMatch(match) { client.matchRaces = null; connect(() => send({ t: 'history', match })); }
   function sendChat(text) { send({ t: 'chat', text }); }

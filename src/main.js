@@ -333,6 +333,7 @@ const mainMenu = createMainMenu({
   stage,
   settings,
   net,
+  getName: () => playerName,
   onSingleplayer: () => matchSetup.open(),
   onMultiplayer: () => multiplayer.open(),
   onGarage: () => garage.openFromMenu(),

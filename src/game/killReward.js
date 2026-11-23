@@ -4,11 +4,19 @@
 const AMMO_BASE = 0.3, AMMO_BEHIND = 0.4;         // fração da reserva padrão
 const BEHIND_FROM = 0.34, FAR_BEHIND_FROM = 0.67;  // atraso (0 a 1, ver deficit.js) a partir do qual conta como atrás / muito atrás
 const NITRO_FAR_BEHIND = 0.2, NITRO_LEADER_KILL = 0.3;
+const LIFE_BASE = 0.1, LIFE_BEHIND = 0.15;         // fração da vida total devolvida a quem abateu
 
 // `supplies` é o que roadsideHelp.suppliesFor(piloto) devolve; `deficit` é o atraso de quem abateu para o líder;
 // `victimLeads` diz se a vítima era o líder. Entrega os itens e devolve os nomes.
 export function giveKillReward(supplies, { deficit, victimLeads }) {
   const labels = [];
+
+  const life = supplies.life();
+  if (life > 0 && life < 1) {                      // destruído (0) não cura; vida cheia não precisa
+    const amount = deficit >= BEHIND_FROM ? LIFE_BEHIND : LIFE_BASE;
+    supplies.give.life({ amount });
+    labels.push(`VIDA ${Math.round(amount * 100)}%`);
+  }
 
   supplies.give.ammo({ amount: deficit >= BEHIND_FROM ? AMMO_BEHIND : AMMO_BASE });
   labels.push('MUNICAO');

@@ -28,6 +28,9 @@ RANKING_FILE = Path(__file__).resolve().parent / "ranking_v2.json"        # rank
 LEGACY_RANKING_FILE = Path(__file__).resolve().parent / "ranking.json"    # ranking antigo (medalhas): congelado, só leitura
 HISTORY_FILE = Path(__file__).resolve().parent / "history.jsonl"   # uma linha por corrida disputada, só acrescenta
 RANKING_LIMIT = 50
+PHOTO_FINISH = 0.5                                  # segundos entre dois pilotos vizinhos na chegada para contar como photo finish
+MIN_MAP_RACES = 2                                  # corridas num mapa para ele valer como melhor/pior; se nenhum tiver, vale qualquer um
+RIVALS_SHOWN = 6
 HISTORY_LIMIT = 40                                  # corridas mais recentes que o ranking mostra
 MIN_RANKED_RACES = 5                                # corridas rankeadas para ganhar posição; antes disso o jogador aparece sem posição
 MEDAL_POINTS = {"gold": 3, "silver": 1.5, "bronze": 1}   # só o ranking antigo usa; mesmo peso do campeonato
@@ -427,6 +430,77 @@ class Lobby:
             pass
         return list(recent) if match else list(reversed(recent))   # a partida em ordem de corrida; o resto, a mais nova primeiro
 
+    @staticmethod
+    def all_history():
+        races = []
+        try:
+            with HISTORY_FILE.open(encoding="utf-8") as file:
+                for line in file:
+                    try:
+                        races.append(json.loads(line))
+                    except ValueError:
+                        continue
+        except OSError:
+            pass
+        return races
+
+    def player_stats(self, name):
+        """Estatísticas de um jogador tiradas do ranking e de todo o histórico de corridas rankeadas."""
+        wanted = name.casefold()
+        entry = next((value for key, value in self.ranking.players.items() if key.casefold() == wanted), None)
+        maps, rivals = {}, {}
+        win_run = podium_run = best_wins = best_podiums = photo = 0
+        gaps, last = [], None
+        for race in self.all_history():
+            racers = race.get("racers") or []
+            me = next((r for r in racers if r.get("human") and str(r.get("name", "")).casefold() == wanted), None)
+            if me is None or len(racers) < 2:
+                continue
+            position, count, last = me["position"], len(racers), race.get("at")
+            score = (count - position) / (count - 1)
+            biome = race.get("biome") or "-"
+            stat = maps.setdefault(biome, {"races": 0, "score": 0.0, "wins": 0})
+            stat["races"] += 1
+            stat["score"] += score
+            stat["wins"] += 1 if position == 1 else 0
+            win_run = win_run + 1 if position == 1 else 0
+            podium_run = podium_run + 1 if position <= 3 else 0
+            best_wins, best_podiums = max(best_wins, win_run), max(best_podiums, podium_run)
+            times = {r["position"]: r.get("time") for r in racers}
+            mine, winner = times.get(position), times.get(1)
+            if mine is not None and winner is not None:
+                gaps.append(mine - winner)
+            if mine is not None and any(times.get(position + d) is not None and abs(times[position + d] - mine) < PHOTO_FINISH for d in (-1, 1)):
+                photo += 1
+            for other in racers:
+                if other is me or not other.get("human"):
+                    continue
+                rival = rivals.setdefault(other["name"], {"name": other["name"], "races": 0, "ahead": 0})
+                rival["races"] += 1
+                rival["ahead"] += 1 if position < other["position"] else 0
+        map_rows = [{"biome": biome, "races": m["races"], "wins": m["wins"], "rating": round(100 * m["score"] / m["races"], 1)} for biome, m in maps.items()]
+        rated = [row for row in map_rows if row["races"] >= MIN_MAP_RACES] or map_rows
+        races = entry["races"] if entry else 0
+        return {
+            "name": name, "races": races, "last": last,
+            "rating": round(100 * entry["score"] / races, 1) if races else None,
+            "wins": entry["wins"] if entry else 0, "podiums": entry["podiums"] if entry else 0,
+            "average": round(entry["positionSum"] / races, 2) if races else None,
+            "kills": entry["kills"] if entry else 0, "matches": entry["matches"] if entry else 0,
+            "winStreak": best_wins, "podiumStreak": best_podiums, "photoFinishes": photo,
+            "gap": round(sum(gaps) / len(gaps), 1) if gaps else None,
+            "bestMap": max(rated, key=lambda row: row["rating"]) if rated else None,
+            "worstMap": min(rated, key=lambda row: row["rating"]) if rated else None,
+            "mostPlayed": max(map_rows, key=lambda row: row["races"]) if map_rows else None,
+            "rivals": sorted(rivals.values(), key=lambda rival: -rival["races"])[:RIVALS_SHOWN],
+        }
+
+    def on_stats(self, client, message):
+        players = sorted((name for name, entry in self.ranking.players.items() if entry["races"] > 0), key=str.casefold)
+        name = clean_text(message.get("player"), NAME_LENGTH)
+        known = next((player for player in players if player.casefold() == (name or "").casefold()), None) or (players[0] if players else None)
+        client.send({"t": "stats", "players": players, "stats": self.player_stats(known) if known else None})
+
     def on_history(self, client, message):
         player, match = clean_text(message.get("player"), NAME_LENGTH), clean_text(message.get("match"), 12)
         reply = {"t": "history", "races": self.recent_history(player or None, match or None)}
@@ -513,7 +587,7 @@ class Lobby:
         self.publish_room(room)
 
     HANDLERS = {"create": on_create, "join": on_join, "name": on_name, "leave": on_leave,
-                "kick": on_kick, "config": on_config, "start": on_start, "race": on_race, "end": on_end_match, "ranking": on_ranking, "history": on_history, "legacy": on_legacy, "chat": on_chat, "resume": on_resume, "g": on_game}
+                "kick": on_kick, "config": on_config, "start": on_start, "race": on_race, "end": on_end_match, "ranking": on_ranking, "history": on_history, "legacy": on_legacy, "stats": on_stats, "chat": on_chat, "resume": on_resume, "g": on_game}
 
     def handle(self, client, text):
         try:

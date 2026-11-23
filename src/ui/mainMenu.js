@@ -1,6 +1,7 @@
 import { MAX_RACERS, VIEW } from '../config.js';
 import { ctxText, textWidth } from '../art/font.js';
 import { PATCH_NOTES } from './patchNotes.js';
+import { BIOMES } from '../world/biomes/index.js';
 import { ACTIONS, codeLabel, defaultBindings, saveSettings, SETTINGS_RANGE } from '../game/settings.js';
 import { QUALITY, QUALITY_LEVELS } from '../game/quality.js';
 import { chamferRect, COLOR, drawButton, drawHeading, drawLogo, drawRowStripe, drawRule, drawSlider, inside, markClickable, MEDALS, outline, panelBox, pointerOnStage } from './panelKit.js';
@@ -28,9 +29,9 @@ const RANKING_PANEL = { x: 30, y: 28, width: 580, height: 268 };
 const RANKING_TABS = [
   { view: 'ranking', label: 'RANKING', x: 230, y: 34, width: 116, height: 22 },
   { view: 'history', label: 'HISTORICO', x: 350, y: 34, width: 116, height: 22 },
-  { view: 'legacy', label: 'RANKING ANTIGO', x: 470, y: 34, width: 116, height: 22 },
+  { view: 'stats', label: 'ESTATISTICAS', x: 470, y: 34, width: 116, height: 22 },
 ];
-const RANKING_TITLES = { ranking: 'RANKING', history: 'HISTORICO', legacy: 'RANKING ANTIGO' };
+const RANKING_TITLES = { ranking: 'RANKING', history: 'HISTORICO', stats: 'ESTATISTICAS' };
 const RANKING_BACK = { x: 245, y: 302, width: 150, height: 26 };
 const RANKING_ROWS = 13;
 const HELP_BUTTON = { x: 588, y: 274, width: 16, height: 16 };       // "?" no canto inferior direito do bloco: abre/fecha a explicação da pontuação
@@ -48,11 +49,12 @@ const RANKING_COLUMNS = [
   { label: 'JOGADOR', x: 40 }, { label: 'DESEMP.', x: 140, color: '#f0c840' }, { label: 'CORRIDAS', x: 196 }, { label: 'VITORIAS', x: 258 },
   { label: 'PODIOS', x: 322 }, { label: 'POS MEDIA', x: 372 }, { label: 'ABATES', x: 440 }, { label: 'PARTIDAS', x: 492 },
 ];
-const LEGACY_COLUMNS = [
-  { label: 'JOGADOR', x: 40 }, { label: 'PONTOS', x: 136, color: '#f0c840' }, { label: 'OURO', x: 196, color: '#f0c840' },
-  { label: 'PRATA', x: 240, color: '#c8d4e4' }, { label: 'BRONZE', x: 288, color: '#cc8448' }, { label: 'ABATES', x: 342 },
-  { label: 'POS MEDIA', x: 396 }, { label: 'PARTIDAS', x: 464 },
-];
+// Estatísticas: seletor de jogador no topo (setas e nome), geral à esquerda, mapas e confrontos à direita.
+const STATS_PREV = { x: 46, y: 68, width: 18, height: 16 };
+const STATS_NAME = { x: 68, y: 68, width: 150, height: 16 };
+const STATS_NEXT = { x: 222, y: 68, width: 18, height: 16 };
+const STATS_TOP = 98, STATS_LINE = 13, STATS_LEFT = 46, STATS_LEFT_VALUE = 196, STATS_RIGHT = 318, STATS_RIGHT_VALUE = 410;
+const biomeLabel = id => BIOMES.find(biome => biome.id === id)?.name ?? String(id || '-').toUpperCase();
 const HISTORY_COLUMNS = [{ label: 'DATA', x: 14 }, { label: 'BIOMA', x: 82 }, { label: 'VENCEDOR', x: 150 }, { label: 'TEMPO', x: 246 }, { label: 'HUMANOS', x: 290 }];
 const MATCH_BUTTON = { x: 46, y: 268, width: 150, height: 24 };
 const FILTER_BOX = { x: 46, y: 58, width: 420, height: 12 };
@@ -88,8 +90,8 @@ function drawPerson(ctx, x, y, color) {
 
 const formatTime = seconds => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
 
-export function createMainMenu({ stage, settings, net, onSingleplayer, onMultiplayer, onGarage, onSettingChange, onEffectsPreview, onQuit }) {
-  let page = 'main', helpOpen = false, notesScroll = 0, pointer = { x: -1, y: -1 }, dragging = null, rebinding = null, swallowClick = false, queued = null, view = 'ranking', selectedRace = null, viewingMatch = null, historyFilter = null;
+export function createMainMenu({ stage, settings, net, getName = () => '', onSingleplayer, onMultiplayer, onGarage, onSettingChange, onEffectsPreview, onQuit }) {
+  let page = 'main', helpOpen = false, notesScroll = 0, pointer = { x: -1, y: -1 }, dragging = null, rebinding = null, swallowClick = false, queued = null, view = 'ranking', selectedRace = null, viewingMatch = null, historyFilter = null, statsPlayer = null;
 
   const screen = { isOpen: true, isRebinding: () => rebinding !== null };
 
@@ -99,7 +101,6 @@ export function createMainMenu({ stage, settings, net, onSingleplayer, onMultipl
       selectedRace = viewingMatch = historyFilter = null;
       net.requestRanking();
       net.requestHistory();
-      net.requestLegacy();
     }
     page = next;
     helpOpen = false;
@@ -204,6 +205,7 @@ export function createMainMenu({ stage, settings, net, onSingleplayer, onMultipl
       view = RANKING_TABS.find(tab => inside(tab, x, y)).view;
       selectedRace = viewingMatch = null;
       helpOpen = false;
+      if (view === 'stats') showStats(net.stats?.name ?? statsPlayer ?? getName());
     } else if (page === 'ranking' && view === 'ranking' && inside(HELP_BUTTON, x, y)) {
       helpOpen = !helpOpen;
     } else if (inside(page === 'ranking' ? RANKING_BACK : BACK, x, y)) {
@@ -211,7 +213,27 @@ export function createMainMenu({ stage, settings, net, onSingleplayer, onMultipl
       else if (page === 'ranking' && selectedRace) selectedRace = null;
       else setPage('main');
     } else if (page === 'ranking' && view === 'history') clickHistory(x, y);
+    else if (page === 'ranking' && view === 'stats') clickStats(x, y);
+    else if (page === 'ranking' && view === 'ranking' && !helpOpen) {
+      const row = (net.ranking ?? []).slice(0, RANKING_ROWS).find((_, i) => inside(historyRowBox(i), x, y));
+      if (row) { view = 'stats'; showStats(row.name); }              // clicar num jogador abre as estatísticas dele
+    }
   });
+
+  function showStats(name) {
+    statsPlayer = name;
+    net.requestStats(name ?? '');
+  }
+
+  // Setas trocam o jogador, dando a volta na lista; clicar no nome volta para você.
+  function clickStats(x, y) {
+    const players = net.statsPlayers ?? [], current = net.stats?.name ?? statsPlayer ?? '';
+    if (inside(STATS_NAME, x, y) && getName()) { showStats(getName()); return; }
+    const step = inside(STATS_PREV, x, y) ? -1 : inside(STATS_NEXT, x, y) ? 1 : 0;
+    if (!step || !players.length) return;
+    const index = players.findIndex(name => name.toLowerCase() === current.toLowerCase());
+    showStats(players[((index < 0 ? 0 : index + step) % players.length + players.length) % players.length]);
+  }
 
   function clickControls(x, y) {
     if (inside(CONTROLS_BACK, x, y)) { setPage('settings'); return; }
@@ -326,7 +348,9 @@ export function createMainMenu({ stage, settings, net, onSingleplayer, onMultipl
     (rows ?? []).slice(0, RANKING_ROWS).forEach((row, i) => {
       const y = top + 16 + i * 16;
       const unranked = row.ranked === false;       // poucas partidas: aparece, mas sem posição
-      drawRowStripe(ctx, { x: RANKING_PANEL.x + 8, y: y - 4, width: RANKING_PANEL.width - 16, height: 16 }, i);
+      const box = { x: RANKING_PANEL.x + 8, y: y - 4, width: RANKING_PANEL.width - 16, height: 16 };
+      markClickable(box);                          // clicar abre as estatísticas do jogador
+      drawRowStripe(ctx, box, i, !helpOpen && inside(box, pointer.x, pointer.y));
       ctxText(ctx, unranked ? `${row.races}/${row.minRaces}` : `${i + 1}.`, RANKING_PANEL.x + 14, y, unranked ? COLOR.muted : MEDALS[i] ?? COLOR.selected);
       ctxText(ctx, row.name, RANKING_PANEL.x + 40, y, unranked ? COLOR.muted : COLOR.text);
       cells(row).forEach((value, column) => ctxText(ctx, String(value), RANKING_PANEL.x + columns[column + 1].x, y, unranked ? COLOR.muted : COLOR.text));
@@ -423,15 +447,85 @@ export function createMainMenu({ stage, settings, net, onSingleplayer, onMultipl
     });
   }
 
+  // Estatísticas de um jogador (só partidas rankeadas), com setas para ver as dos outros.
+  function drawStats(ctx) {
+    panelBox(ctx, RANKING_PANEL);
+    const stats = net.stats, players = net.statsPlayers;
+    const message = net.status === 'offline' ? 'SERVIDOR NAO ENCONTRADO' : !players ? 'CARREGANDO...' : !players.length ? 'NENHUMA CORRIDA RANKEADA AINDA' : '';
+    if (message) { ctxText(ctx, message, Math.round(VIEW.width / 2 - textWidth(message) / 2), RANKING_PANEL.y + 104, COLOR.text); return; }
+
+    const name = stats?.name ?? statsPlayer ?? '';
+    const index = players.findIndex(player => player.toLowerCase() === name.toLowerCase());
+    drawButton(ctx, STATS_PREV, '<', inside(STATS_PREV, pointer.x, pointer.y), { style: 'arrow' });
+    drawButton(ctx, STATS_NEXT, '>', inside(STATS_NEXT, pointer.x, pointer.y), { style: 'arrow' });
+    markClickable(STATS_NAME);
+    const nameHover = inside(STATS_NAME, pointer.x, pointer.y);
+    drawRowStripe(ctx, STATS_NAME, 0, nameHover);
+    const shown = fit(name.toUpperCase(), STATS_NAME.width - 8);
+    ctxText(ctx, shown, Math.round(STATS_NAME.x + STATS_NAME.width / 2 - textWidth(shown) / 2), STATS_NAME.y + 5, COLOR.selected);
+    const hint = nameHover && getName() ? 'CLIQUE PARA VER AS SUAS' : `${index + 1}/${players.length}   SETAS TROCAM O JOGADOR`;
+    ctxText(ctx, hint, STATS_NEXT.x + STATS_NEXT.width + 10, STATS_NAME.y + 5, COLOR.muted);
+    drawRule(ctx, RANKING_PANEL.x + 8, STATS_TOP - 10, RANKING_PANEL.width - 16);
+    if (!stats) { ctxText(ctx, 'CARREGANDO...', STATS_LEFT, STATS_TOP + 20, COLOR.text); return; }
+
+    const percent = (part, whole) => (whole ? `${Math.round(100 * part / whole)}%` : '-');
+    const general = [
+      ['DESEMPENHO', stats.rating == null ? '-' : stats.rating.toFixed(1), COLOR.selected],
+      ['CORRIDAS', stats.races],
+      ['VITORIAS', `${stats.wins}  (${percent(stats.wins, stats.races)})`],
+      ['PODIOS', `${stats.podiums}  (${percent(stats.podiums, stats.races)})`],
+      ['POSICAO MEDIA', stats.average == null ? '-' : stats.average.toFixed(2)],
+      ['ABATES', stats.kills],
+      ['ABATES POR PARTIDA', stats.matches ? (stats.kills / stats.matches).toFixed(1) : '-'],
+      ['PARTIDAS', stats.matches],
+      ['MAIOR SEQ. DE VITORIAS', stats.winStreak],
+      ['MAIOR SEQ. DE PODIOS', stats.podiumStreak],
+      ['ATRAS DO 1o (MEDIA)', stats.gap == null ? '-' : `${stats.gap.toFixed(1)} S`],
+      ['PHOTO FINISHES', stats.photoFinishes],
+    ];
+    ctxText(ctx, 'GERAL', STATS_LEFT, STATS_TOP, COLOR.selected);
+    general.forEach(([label, value, color], i) => {
+      const y = STATS_TOP + (i + 1) * STATS_LINE;
+      ctxText(ctx, label, STATS_LEFT, y, COLOR.muted);
+      ctxText(ctx, String(value), STATS_LEFT_VALUE, y, color ?? COLOR.text);
+    });
+
+    const mapLine = (row, detail) => (row ? fit(`${biomeLabel(row.biome)}  ${detail(row)}`, RANKING_PANEL.x + RANKING_PANEL.width - 12 - STATS_RIGHT_VALUE) : '-');
+    const maps = [
+      ['MELHOR MAPA', mapLine(stats.bestMap, row => row.rating.toFixed(0))],
+      ['PIOR MAPA', mapLine(stats.worstMap, row => row.rating.toFixed(0))],
+      ['MAIS JOGADO', mapLine(stats.mostPlayed, row => `${row.races}X`)],
+    ];
+    ctxText(ctx, 'MAPAS', STATS_RIGHT, STATS_TOP, COLOR.selected);
+    maps.forEach(([label, value], i) => {
+      const y = STATS_TOP + (i + 1) * STATS_LINE;
+      ctxText(ctx, label, STATS_RIGHT, y, COLOR.muted);
+      ctxText(ctx, value, STATS_RIGHT_VALUE, y, COLOR.text);
+    });
+
+    const duelTop = STATS_TOP + 5 * STATS_LINE;
+    ctxText(ctx, 'CONFRONTO DIRETO', STATS_RIGHT, duelTop, COLOR.selected);
+    ctxText(ctx, 'ADVERSARIO', STATS_RIGHT, duelTop + STATS_LINE, COLOR.muted);
+    ctxText(ctx, 'JUNTOS', STATS_RIGHT_VALUE, duelTop + STATS_LINE, COLOR.muted);
+    ctxText(ctx, 'NA FRENTE', STATS_RIGHT_VALUE + 56, duelTop + STATS_LINE, COLOR.muted);
+    if (!stats.rivals.length) ctxText(ctx, '-', STATS_RIGHT, duelTop + 2 * STATS_LINE, COLOR.text);
+    stats.rivals.forEach((rival, i) => {
+      const y = duelTop + (i + 2) * STATS_LINE, ahead = rival.ahead * 2 > rival.races, behind = rival.ahead * 2 < rival.races;
+      ctxText(ctx, fit(rival.name, STATS_RIGHT_VALUE - STATS_RIGHT - 8), STATS_RIGHT, y, COLOR.text);
+      ctxText(ctx, String(rival.races), STATS_RIGHT_VALUE, y, COLOR.text);
+      ctxText(ctx, `${rival.ahead} X ${rival.races - rival.ahead}`, STATS_RIGHT_VALUE + 56, y, ahead ? COLOR.gold : behind ? COLOR.danger : COLOR.text);
+    });
+
+    const footer = `SO PARTIDAS RANKEADAS${stats.last ? `   ULTIMA CORRIDA ${formatDate(stats.last)}` : ''}`;
+    ctxText(ctx, footer, STATS_LEFT, RANKING_PANEL.y + RANKING_PANEL.height - 14, COLOR.muted);
+  }
+
   function drawRanking(ctx) {
     if (view === 'history') drawHistory(ctx);
+    else if (view === 'stats') drawStats(ctx);
     else {
       panelBox(ctx, RANKING_PANEL);
-      if (view === 'legacy') {
-        drawPlayerTable(ctx, LEGACY_COLUMNS, net.legacy, row => [Number(row.points).toString(), row.gold, row.silver, row.bronze, row.kills, row.average.toFixed(1), row.matches], 'NENHUM REGISTRO ANTIGO');
-      } else {
-        drawPlayerTable(ctx, RANKING_COLUMNS, net.ranking, row => [row.rating.toFixed(1), row.races, row.wins, `${row.podiumRate}%`, row.average.toFixed(1), row.kills, row.matches], 'NENHUMA CORRIDA RANKEADA AINDA');
-      }
+      drawPlayerTable(ctx, RANKING_COLUMNS, net.ranking, row => [row.rating.toFixed(1), row.races, row.wins, `${row.podiumRate}%`, row.average.toFixed(1), row.kills, row.matches], 'NENHUMA CORRIDA RANKEADA AINDA');
     }
     drawHeading(ctx, view === 'history' ? (viewingMatch ? 'PARTIDA' : selectedRace ? 'CORRIDA' : 'HISTORICO') : RANKING_TITLES[view], RANKING_PANEL.x + 22, RANKING_PANEL.y + 12, { align: 'left' });
     for (const tab of RANKING_TABS) drawButton(ctx, tab, tab.label, inside(tab, pointer.x, pointer.y), { style: 'tab', active: tab.view === view });

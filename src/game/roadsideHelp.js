@@ -71,7 +71,9 @@ function playerSupplies(car, weapon, traps) {
       trap: traps.slots.length ? fill(traps.slots) : 1,
       extinguisher: extinguisherLevel(traps.slots, car.health / lifeCap()),
     }),
+    life: () => car.health / lifeCap(),           // fora de `levels`: vida não é item que o NPC oferece
     give: {
+      life(item) { car.health = Math.min(lifeCap(), car.health + item.amount); },
       ammo(item) { weapon.reserve = Math.min(weapon.maxReserve, weapon.reserve + Math.ceil(weapon.type.reserve * (item.amount ?? AMMO_GIFT))); },
       nitro(item) { car.nitro = Math.min(1, car.nitro + item.amount / car.nitroCapacity); },
       blueNitro() { car.nitro = 1; car.nitroToFill = 0; car.blueNitro = BLUE_NITRO.time; },
@@ -95,7 +97,9 @@ function opponentSupplies(op) {
       trap: fill(arsenal.traps),
       extinguisher: extinguisherLevel(arsenal.traps, op.hp / lifeCap()),
     }),
+    life: () => op.hp / lifeCap(),
     give: {
+      life(item) { op.hp = Math.min(lifeCap(), op.hp + op.maxHp * item.amount); },
       ammo(item) { arsenal.reserve = Math.min(arsenal.maxReserve, arsenal.reserve + Math.ceil(arsenal.type.reserve * (item.amount ?? AMMO_GIFT))); },
       nitro(item) { op.nitro = Math.min(1, op.nitro + item.amount / op.nitroCapacity); },
       blueNitro() { op.nitro = 1; op.nitroToFill = 0; op.blueNitro = BLUE_NITRO.time; },
