@@ -62,8 +62,8 @@ export const SOUND_FILES = {
   // Escudo, EMP e mina teleguiada.
   shield: `${TRAPS}/shield.mp3`,
   // Camuflagem e barreira inflável ainda sem som próprio: usam o do escudo e o da fumaça (o chiado de encher).
-  cloak: `${TRAPS}/shield.mp3`,
-  barrier: `${TRAPS}/smoke.mp3`,
+  cloak: `${TRAPS}/invisible.mp3`,
+  barrier: `${TRAPS}/inflate.mp3`,
   emp: `${TRAPS}/emp.mp3`,
   mineLaunch: `${TRAPS}/mine-launch.mp3`,
   mineStick: `${TRAPS}/mine-stick.mp3`,
