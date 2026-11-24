@@ -37,8 +37,11 @@ export const HAZARD_KINDS = {
   brokenAntenna: { obstacle: 'antenna', motion: 'topple', warning: 1.1, range: 58, idle: true },
   crystalPatch: { obstacle: 'crystal', motion: 'static', lanes: [2.5, 4.2], idle: true },
   deerCrossing: { obstacle: 'deer', motion: 'cross', speed: 7, warning: 0.8, range: 70, opening: true, zone: 'forest' },
-  carriage: { obstacle: 'carriage', motion: 'drive', speed: 3.5, lanes: [2.6, 5.2], travel: 160, idle: true },
-  cannonFire: { obstacle: 'cannonball', motion: 'drop', height: 24, lanes: [-5, 5], warning: 1.4, range: 70 },
+  boarCrossing: { obstacle: 'boar', motion: 'cross', speed: 11, warning: 0.6, range: 64, opening: true, zone: 'forest' },
+  carriage: { obstacle: 'carriage', motion: 'drive', speed: 3.5, lanes: [2.6, 5.2], travel: 100, idle: true },
+  // `arc` (só no canhão): a bala sai do costado do navio, a `from` m do centro, `muzzle` m de altura, e voa em arco
+  // de `apex` m até a mira em `time` s; enquanto avisa, a mira pisca no chão (obstacles.js).
+  cannonFire: { obstacle: 'cannonball', motion: 'drop', height: 24, lanes: [-5, 5], warning: 1.6, range: 75, arc: { from: 14.5, muzzle: 2.2, apex: 7, time: 0.8 } },
   barrelRoll: { obstacle: 'rollingBarrel', motion: 'cross', speed: 8, warning: 0.8, range: 68, opening: true },
   kaijuCrossing: { obstacle: 'kaiju', motion: 'cross', speed: 3.2, warning: 1.5, range: 95, opening: true },
 };

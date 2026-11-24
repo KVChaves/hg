@@ -1,5 +1,5 @@
 import { CAR_MAX_HP, LAPS, TRACK_WIDTH } from '../config.js';
-import { beltPush, boostAt, CLIFF_EDGE, gustAt, hazardAt, raceClock, inFlightZone, inGap, isEpic, ledgeAt, nearestIndex, onBridge, OPEN_WALL, surfaceAt, track, trackAt, valleyRise, valleySlope, wrapDistance } from '../world/track.js';
+import { beltPush, boostAt, bridgeHalfAt, CLIFF_EDGE, splitAt, gustAt, hazardAt, raceClock, inFlightZone, inGap, isEpic, ledgeAt, nearestIndex, onBridge, OPEN_WALL, surfaceAt, track, trackAt, valleyRise, valleySlope, wrapDistance } from '../world/track.js';
 import { BOOST_SPEED, BOOST_TIME, crashDamage, damagePlayer, resetCar, trackCapsizes } from './car.js';
 import { resetRig, rigLean } from './carRoll.js';
 import { createFlip, flipLandingTime, lifeAfterDestruction, RESPAWN_PROTECTION } from './carFlip.js';
@@ -8,7 +8,7 @@ import { placeOpponent, resetOpponent, updateOpponent, updateRemoteRacer } from 
 import { slipstreamStrength } from './slipstream.js';
 import { cloakLevel } from './cloak.js';
 import { FALL_TIME, fallIsCertain, GRAVITY, hitsGate, sinkStep, stepFlight } from './flight.js';
-import { BRIDGE_HALF, LEDGE_REACH } from './mapLayout.js';
+import { LEDGE_REACH } from './mapLayout.js';
 
 const CRASH_MIN_IMPACT = 4, CRASH_FULL_IMPACT = 25, CRASH_MIN_STRENGTH = 0.25;
 const ROAD_HALF = TRACK_WIDTH / 2 + 1.4, SHOULDER_BLEND = 6;
@@ -172,15 +172,18 @@ export function createRace(car, opponents, { onCrash, onDestroyed, onBlast, onCo
     if (isEpic(race.playerDist)) {
       if (inGap(race.playerDist)) return null;
       // Ponte sem borda: fora dela (ou já abaixo dela, caindo) não há chão.
-      if (onBridge(race.playerDist) && (Math.abs(offset) > BRIDGE_HALF || (car.airborne && car.y < t.y - 0.5))) return null;
+      if (onBridge(race.playerDist) && (Math.abs(offset) > bridgeHalfAt(race.playerDist) || (car.airborne && car.y < t.y - 0.5))) return null;
       return t.y;
     }
     if (track.valley) return t.y + valleyRise(offset);
-    if (track.pier) return t.y;                      // píer: o deque vai até a cerca, tudo na altura da estrada
     // Penhasco: do lado aberto, passou da beira (ou já caiu abaixo dela), não há chão.
     const ledge = ledgeAt(race.playerDist);
     if (ledge && Math.sign(offset) === ledge && Math.abs(offset) > CLIFF_EDGE) return null;
     if (car.jump?.type === 'ledge' && car.airborne && car.y < t.y - 0.5) return null;
+    // Pista dividida: no buraco do meio (ou já caindo nele) não há chão.
+    if (Math.abs(offset) < splitAt(race.playerDist)) return null;
+    if (car.jump?.type === 'split' && car.airborne && car.y < t.y - 0.5) return null;
+    if (track.pier) return t.y;                      // píer: o deque vai até a cerca, tudo na altura da estrada
     const k = Math.min(1, Math.max(0, (Math.abs(offset) - ROAD_HALF - track.shoulder) / SHOULDER_BLEND));   // acostamento largo: plano até o fim dele
     return t.y + (track.heightAt(car.x, car.z) - t.y) * k * k * (3 - 2 * k);
   }

@@ -3,10 +3,10 @@ import { surface } from './surface.js';
 import { ACCEL, BLUE_NITRO, CAR_MAX_HP, MAX_SPEED, NITRO_ACCEL, NITRO_DRAIN, NITRO_MAX_SPEED, SLIPSTREAM_KMH } from '../config.js';
 import { LIVERIES } from '../world/car/carLivery.js';
 import { createCarModel } from '../world/car/carModel.js';
-import { alignToTwist, boostAt, gustAt, hazardAt, jumpBoostAhead, inFlightZone, inGap, onBridge, SHARP_RADIUS, surfaceAt, track, trackAt, turnAt, wrapDistance } from '../world/track.js';
+import { alignToTwist, boostAt, bridgeHalfAt, splitAt, gustAt, hazardAt, jumpBoostAhead, inFlightZone, inGap, onBridge, SHARP_RADIUS, surfaceAt, track, trackAt, turnAt, wrapDistance } from '../world/track.js';
 import { BOOST_SPEED, BOOST_TIME } from './car.js';
 import { FALL_TIME, fallIsCertain, GRAVITY, hitsGate, sinkStep, stepFlight } from './flight.js';
-import { BRIDGE_HALF, CASTLE_JUMP } from './mapLayout.js';
+import { CASTLE_JUMP } from './mapLayout.js';
 import { createFlip, lifeAfterDestruction, poseFlippingCar, RESPAWN_PROTECTION } from './carFlip.js';
 import { createRig, poseRig, resetRig, rigLean } from './carRoll.js';
 import { createEffects, tickEffects } from './effects.js';
@@ -20,6 +20,7 @@ import { WEAPON_TYPES } from './weaponTypes.js';
 import { TRACK_WIDTH } from '../config.js';
 
 const LANE_LIMIT = TRACK_WIDTH / 2 - 1.2, LANE_SPEED = 3.5, DODGE_LANE_SPEED = 7, WALL_MARGIN = 0.3;
+const DECK_MARGIN = 1.3, NARROW_SIGHT = 60;          // folga da beira do convés e do buraco; até onde a IA olha para se preparar
 const BLOCK_LANE = 2.4, PASS_STEP = 2.6;            // quem está nesta distância lateral atrapalha; quanto sai para ultrapassar
 const WRECK_SLOWDOWN = 1.2, DODGE_LOOKAHEAD = 40, DODGE_LOOKAHEAD_TIME = 1.6;   // vê a armadilha a 40 m ou 1,6 s à frente
 const OIL_LANE_SWING = 11, OIL_SWING_RATE = 5.5, OIL_NOSE_SWING = 0.3, LANE_DRIFT_LIMIT = LANE_LIMIT + 1.5;
@@ -231,7 +232,8 @@ function castleSpeedCap(op) {
 
 // Na rampa do rio a IA também voa de verdade: a gravidade a freia na subida e, se sair devagar do bico, cai.
 function flyOpponent(op, dt) {
-  const t = trackAt(op.dist), offBridge = onBridge(op.dist) && (Math.abs(op.lane) > BRIDGE_HALF || (op.airborne && op.y < t.y - 0.5));
+  const t = trackAt(op.dist), offBridge = (onBridge(op.dist) && (Math.abs(op.lane) > bridgeHalfAt(op.dist) || (op.airborne && op.y < t.y - 0.5)))
+    || Math.abs(op.lane) < splitAt(op.dist);       // no buraco da pista dividida também não há chão
   if (!op.airborne && !inFlightZone(op.dist) && !offBridge) { op.flying = false; return; }
   const ground = inGap(op.dist) || offBridge ? null : t.y;
   if (ground === null) op.jump = hazardAt(op.dist) ?? op.jump;
@@ -394,6 +396,26 @@ function hitBoostPad(op) {
   op.boostPad = pad;
 }
 
+// Convés estreito ou pista dividida à frente: a IA já vai para uma faixa que cabe (o meio do convés, ou o lado do
+// buraco em que já está), em vez de ser empurrada de repente na beirada.
+function steerForNarrows(op) {
+  let half = Infinity, hole = 0;
+  for (let ahead = 0; ahead <= NARROW_SIGHT; ahead += track.step) {
+    const d = op.dist + ahead;
+    if (onBridge(d)) half = Math.min(half, bridgeHalfAt(d));
+    hole = Math.max(hole, splitAt(d));
+  }
+  if (half < Infinity) op.laneTarget = Math.max(-(half - DECK_MARGIN - 0.6), Math.min(half - DECK_MARGIN - 0.6, op.laneTarget));
+  if (hole > 0) {
+    op.splitSide ??= Math.sign(op.lane) || (Math.random() < 0.5 ? -1 : 1);
+    const lane = op.splitSide * (hole + DECK_MARGIN + 1.6);
+    if (Math.abs(op.laneTarget) < Math.abs(lane) || Math.sign(op.laneTarget) !== op.splitSide) op.laneTarget = lane;
+  } else {
+    op.splitSide = null;
+  }
+  if (half < Infinity || hole > 0) op.laneHold = Math.max(op.laneHold, 0.3);
+}
+
 // Chegando ao salto grande a IA vai para a placa de turbo da rampa. Cada carro sorteia uma vez o quanto acerta.
 function steerToJumpBoost(op) {
   const pad = jumpBoostAhead(op.dist, JUMP_BOOST_SIGHT);
@@ -427,6 +449,7 @@ export function updateOpponent(op, dt, field, racing, activeTraps, time = 0) {
     steerByTactics(op);
     dodgeTraps(op, activeTraps);
     if (track.boosts.length) steerToJumpBoost(op);
+    if (track.splits.length || track.bridges.some(bridge => bridge.half < TRACK_WIDTH / 2)) steerForNarrows(op);
     op.dodgeTime -= dt;
     const accel = op.acc + (op.nitroActive ? NITRO_ACCEL * (op.blueNitro > 0 ? BLUE_NITRO.accel : 1) : 0);
     if (!op.airborne) op.v = op.v < target ? Math.min(target, op.v + accel * dt) : Math.max(target, op.v - 30 * dt);   // no ar o pé no acelerador não muda nada
@@ -441,10 +464,14 @@ export function updateOpponent(op, dt, field, racing, activeTraps, time = 0) {
     op.lane += op.knock * dt;
     op.knock *= Math.exp(-KNOCK_DECAY * dt);
     if (track.gusts.length) op.lane += (gustAt(op.dist, time)?.push ?? 0) * GUST_LANE_RATE * dt;
-    // Também não passa da parede onde a pista é mais estreita que a faixa dos bots (castelo).
+    // Também não passa da parede onde a pista é mais estreita que a faixa dos bots (castelo), nem da beira do
+    // tabuleiro estreito (convés do navio), nem entra no buraco da pista dividida.
     const wall = track.wall[Math.floor((((op.dist % track.length) + track.length) % track.length) / track.step) % track.count] - WALL_MARGIN;
-    const limit = Math.min(LANE_DRIFT_LIMIT, wall);
+    let limit = Math.min(LANE_DRIFT_LIMIT, wall);
+    if (onBridge(op.dist)) limit = Math.min(limit, bridgeHalfAt(op.dist) - DECK_MARGIN);
     op.lane = Math.max(-limit, Math.min(limit, op.lane));
+    const hole = splitAt(op.dist);
+    if (hole > 0 && Math.abs(op.lane) < hole + DECK_MARGIN) op.lane = (Math.sign(op.lane) || 1) * (hole + DECK_MARGIN);
     op.laneRate = dt > 0 ? (op.lane - laneBefore) / dt : 0;
     if (track.boosts.length && !op.airborne) hitBoostPad(op);
     op.nose += op.spin * dt;

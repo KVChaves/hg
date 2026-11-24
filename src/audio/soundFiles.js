@@ -92,7 +92,7 @@ export const PHASE_MUSIC = {
   saltFlats: 'assets/audio/music/salt-flats.mp3',
   stormSwamp: 'assets/audio/music/storm-swamp.mp3',
   kingsRoad: 'assets/audio/music/kings-road.mp3',
-  piratePort: 'assets/audio/music/pirate.mp3',   // ainda sem música própria: usa a da praia (troque por pirate-port.mp3)
+  piratePort: 'assets/audio/music/pirate-port.mp3',   // ainda sem música própria: usa a da praia (troque por pirate-port.mp3)
 };
 
 

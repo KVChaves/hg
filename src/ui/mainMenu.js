@@ -58,6 +58,7 @@ const STATS_PAGES = [
   { page: 'combat', label: 'COMBATE', x: 536, y: 68, width: 64, height: 16 },
 ];
 const KILL_CAUSE_LABELS = [['shot', 'TIRO'], ['ram', 'PANCADA'], ['fire', 'FOGO'], ['splash', 'EXPLOSAO'], ['other', 'OUTROS']];
+const BEST_COLOR = '#6fe070';   // estatística em que o jogador é o melhor de todos
 const STATS_TOP = 98, STATS_LINE = 13, STATS_LEFT = 46, STATS_LEFT_VALUE = 196, STATS_RIGHT = 318, STATS_RIGHT_VALUE = 410;
 const biomeLabel = id => BIOMES.find(biome => biome.id === id)?.name ?? String(id || '-').toUpperCase();
 const HISTORY_COLUMNS = [{ label: 'DATA', x: 14 }, { label: 'BIOMA', x: 82 }, { label: 'VENCEDOR', x: 150 }, { label: 'TEMPO', x: 246 }, { label: 'HUMANOS', x: 290 }];
@@ -475,28 +476,29 @@ export function createMainMenu({ stage, settings, net, getName = () => '', onSin
     drawRule(ctx, RANKING_PANEL.x + 8, STATS_TOP - 10, RANKING_PANEL.width - 16);
     for (const box of STATS_PAGES) drawButton(ctx, box, box.label, inside(box, pointer.x, pointer.y), { style: 'tab', active: box.page === statsPage });
     if (!stats) { ctxText(ctx, 'CARREGANDO...', STATS_LEFT, STATS_TOP + 20, COLOR.text); return; }
-    if (statsPage === 'combat') { drawCombatStats(ctx, stats.combat); return; }
+    if (statsPage === 'combat') { drawCombatStats(ctx, stats.combat, stats.best?.combat); return; }
 
     const percent = (part, whole) => (whole ? `${Math.round(100 * part / whole)}%` : '-');
+    const best = new Set(stats.best?.general ?? []);
     const general = [
-      ['DESEMPENHO', stats.rating == null ? '-' : stats.rating.toFixed(1), COLOR.selected],
-      ['CORRIDAS', stats.races],
-      ['VITORIAS', `${stats.wins}  (${percent(stats.wins, stats.races)})`],
-      ['PODIOS', `${stats.podiums}  (${percent(stats.podiums, stats.races)})`],
-      ['POSICAO MEDIA', stats.average == null ? '-' : stats.average.toFixed(2)],
-      ['ABATES', stats.kills],
-      ['ABATES POR CORRIDA', stats.races ? (stats.kills / stats.races).toFixed(1) : '-'],
-      ['PARTIDAS', stats.matches],
-      ['MAIOR SEQ. DE VITORIAS', stats.winStreak],
-      ['MAIOR SEQ. DE PODIOS', stats.podiumStreak],
-      ['ATRAS DO 1o (MEDIA)', stats.gap == null ? '-' : `${stats.gap.toFixed(1)} S`],
-      ['PHOTO FINISHES', stats.photoFinishes],
+      ['DESEMPENHO', stats.rating == null ? '-' : stats.rating.toFixed(1), COLOR.selected, 'rating'],
+      ['CORRIDAS', stats.races, null, 'races'],
+      ['VITORIAS', `${stats.wins}  (${percent(stats.wins, stats.races)})`, null, 'wins'],
+      ['PODIOS', `${stats.podiums}  (${percent(stats.podiums, stats.races)})`, null, 'podiums'],
+      ['POSICAO MEDIA', stats.average == null ? '-' : stats.average.toFixed(2), null, 'average'],
+      ['ABATES', stats.kills, null, 'kills'],
+      ['ABATES POR CORRIDA', stats.races ? (stats.kills / stats.races).toFixed(1) : '-', null, 'killsPerRace'],
+      ['PARTIDAS', stats.matches, null, 'matches'],
+      ['MAIOR SEQ. DE VITORIAS', stats.winStreak, null, 'winStreak'],
+      ['MAIOR SEQ. DE PODIOS', stats.podiumStreak, null, 'podiumStreak'],
+      ['ATRAS DO 1o (MEDIA)', stats.gap == null ? '-' : `${stats.gap.toFixed(1)} S`, null, 'gap'],
+      ['PHOTO FINISHES', stats.photoFinishes, null, 'photoFinishes'],
     ];
     ctxText(ctx, 'GERAL', STATS_LEFT, STATS_TOP, COLOR.selected);
-    general.forEach(([label, value, color], i) => {
+    general.forEach(([label, value, color, key], i) => {
       const y = STATS_TOP + (i + 1) * STATS_LINE;
       ctxText(ctx, label, STATS_LEFT, y, COLOR.muted);
-      ctxText(ctx, String(value), STATS_LEFT_VALUE, y, color ?? COLOR.text);
+      ctxText(ctx, String(value), STATS_LEFT_VALUE, y, best.has(key) ? BEST_COLOR : color ?? COLOR.text);
     });
 
     const mapLine = (row, detail) => (row ? fit(`${biomeLabel(row.biome)}  ${detail(row)}`, RANKING_PANEL.x + RANKING_PANEL.width - 12 - STATS_RIGHT_VALUE) : '-');
@@ -530,18 +532,18 @@ export function createMainMenu({ stage, settings, net, getName = () => '', onSin
   }
 
   // Linhas de rótulo e valor; `color` opcional por linha. Linha com `header` vira título da seção.
-  function drawStatLines(ctx, lines, x, valueX) {
+  function drawStatLines(ctx, lines, x, valueX, best = new Set()) {
     lines.forEach((line, i) => {
       if (!line) return;
       const y = STATS_TOP + i * STATS_LINE;
       if (line.header) { ctxText(ctx, line.header, x, y, COLOR.selected); return; }
       ctxText(ctx, line[0], x, y, COLOR.muted);
-      ctxText(ctx, String(line[1]), valueX, y, line[2] ?? COLOR.text);
+      ctxText(ctx, String(line[1]), valueX, y, best.has(line[3]) ? BEST_COLOR : line[2] ?? COLOR.text);
     });
   }
 
   // Página COMBATE: tiro, armadilhas e liderança à esquerda; vítimas, carrascos e forma do abate à direita.
-  function drawCombatStats(ctx, combat) {
+  function drawCombatStats(ctx, combat, best = []) {
     if (!combat || (!combat.races && !combat.leadRaces)) {
       ['SEM DADOS DE COMBATE AINDA', 'CONTA A PARTIR DAS PROXIMAS CORRIDAS RANKEADAS'].forEach((text, i) =>
         ctxText(ctx, text, Math.round(VIEW.width / 2 - textWidth(text) / 2), STATS_TOP + 50 + i * 14, i ? COLOR.muted : COLOR.text));
@@ -551,20 +553,20 @@ export function createMainMenu({ stage, settings, net, getName = () => '', onSin
     const { races, leadRaces } = combat;
     drawStatLines(ctx, [
       { header: 'TIRO E ABATES' },
-      ['ABATES', combat.kills],
-      ['ABATES PARA TRAS', combat.kills ? `${combat.backKills ?? 0}  (${percent(combat.backKills ?? 0, combat.kills)})` : '-'],
-      ['MORTES', combat.deaths],
-      ['ABATES POR MORTE', combat.deaths ? (combat.kills / combat.deaths).toFixed(2) : combat.kills ? 'INVICTO' : '-', COLOR.selected],
-      ['MIRA', combat.shots ? `${percent(combat.hits, combat.shots)}  (${combat.hits}/${combat.shots})` : '-', COLOR.selected],
-      ['ARMADILHAS SOLTAS', combat.trapsPlaced],
-      ['PEGARAM ALGUEM', combat.trapsPlaced ? `${combat.trapsScored}  (${percent(combat.trapsScored, combat.trapsPlaced)})` : '-'],
-      ['CAIU EM ARMADILHA', combat.caught],
+      ['ABATES', combat.kills, null, 'kills'],
+      ['ABATES PARA TRAS', combat.kills ? `${combat.backKills ?? 0}  (${percent(combat.backKills ?? 0, combat.kills)})` : '-', null, 'backKills'],
+      ['MORTES', combat.deaths, null, 'deaths'],
+      ['ABATES POR MORTE', combat.deaths ? (combat.kills / combat.deaths).toFixed(2) : combat.kills ? 'INVICTO' : '-', COLOR.selected, 'killDeath'],
+      ['MIRA', combat.shots ? `${percent(combat.hits, combat.shots)}  (${combat.hits}/${combat.shots})` : '-', COLOR.selected, 'accuracy'],
+      ['ARMADILHAS SOLTAS', combat.trapsPlaced, null, 'trapsPlaced'],
+      ['PEGARAM ALGUEM', combat.trapsPlaced ? `${combat.trapsScored}  (${percent(combat.trapsScored, combat.trapsPlaced)})` : '-', null, 'trapsScored'],
+      ['CAIU EM ARMADILHA', combat.caught, null, 'caught'],
       null,
       { header: 'LIDERANCA' },
-      ['TEMPO NA FRENTE', combat.leadShare == null ? '-' : `${combat.leadShare}%`, COLOR.selected],
-      ['MEDIA POR CORRIDA', combat.leadAverage == null ? '-' : `${combat.leadAverage.toFixed(1)} S`],
-      ['PERDEU A PONTA', leadRaces ? `${combat.leadLost}  (${(combat.leadLost / leadRaces).toFixed(1)}/CORRIDA)` : '-'],
-    ], STATS_LEFT, STATS_LEFT_VALUE);
+      ['TEMPO NA FRENTE', combat.leadShare == null ? '-' : `${combat.leadShare}%`, COLOR.selected, 'leadShare'],
+      ['MEDIA POR CORRIDA', combat.leadAverage == null ? '-' : `${combat.leadAverage.toFixed(1)} S`, null, 'leadAverage'],
+      ['PERDEU A PONTA', leadRaces ? `${combat.leadLost}  (${(combat.leadLost / leadRaces).toFixed(1)}/CORRIDA)` : '-', null, 'leadLost'],
+    ], STATS_LEFT, STATS_LEFT_VALUE, new Set(best));
 
     const people = (list, color) => [0, 1, 2].map(i => (list[i]
       ? [fit(list[i].name, STATS_RIGHT_VALUE - STATS_RIGHT + 40), `${list[i].count}X`, i === 0 ? color : COLOR.text]
@@ -577,6 +579,10 @@ export function createMainMenu({ stage, settings, net, getName = () => '', onSin
     const causes = KILL_CAUSE_LABELS.map(([id, label]) => `${label} ${combat.causes?.[id] ?? 0}`);
     ctxText(ctx, causes.slice(0, 3).join('   '), STATS_RIGHT, STATS_TOP + 11 * STATS_LINE, COLOR.text);
     ctxText(ctx, causes.slice(3).join('   '), STATS_RIGHT, STATS_TOP + 12 * STATS_LINE, COLOR.text);
+
+    const streakY = STATS_TOP + 13 * STATS_LINE;
+    ctxText(ctx, 'MAIOR SEQ. NA CORRIDA', STATS_RIGHT, streakY, COLOR.muted);
+    ctxText(ctx, String(combat.killStreak ?? 0), STATS_RIGHT_VALUE + 100, streakY, best.includes('killStreak') ? BEST_COLOR : COLOR.text);
 
     const footer = `${races} ${races === 1 ? 'CORRIDA' : 'CORRIDAS'} COM DADOS DE COMBATE   SO PARTIDAS RANKEADAS`;
     ctxText(ctx, footer, STATS_LEFT, RANKING_PANEL.y + RANKING_PANEL.height - 14, COLOR.muted);

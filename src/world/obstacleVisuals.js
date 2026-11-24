@@ -181,6 +181,18 @@ const BUILDERS = {
     add(body, box(0.12, 0.2, 0.12), 0x3a3a40, 0.6, 1.62, 0);   // válvula
     for (const x of [-0.65, 0.65]) add(body, box(0.5, 0.06, 1.0), 0x7a1810, x, 0.03, 0);   // abas no chão
   },
+  boar(body) {                                       // de frente para +x: corpo baixo e peludo, focinho comprido e presas
+    const fur = 0x4a3a2e, dark = 0x2a201a;
+    add(body, box(1.6, 0.85, 0.8), fur, 0, 0.85, 0);
+    add(body, box(1.2, 0.25, 0.5), dark, -0.1, 1.38, 0);           // crina no lombo
+    add(body, box(0.6, 0.55, 0.6), fur, 0.95, 0.85, 0);
+    add(body, box(0.4, 0.3, 0.36), 0x6a5040, 1.38, 0.72, 0);       // focinho
+    for (const z of [0.16, -0.16]) {
+      add(body, box(0.24, 0.08, 0.06), 0xf0ead8, 1.45, 0.9, z);    // presas
+      add(body, box(0.14, 0.22, 0.12), dark, 0.85, 1.22, z * 1.4); // orelhas
+    }
+    for (const [x, z] of [[0.55, 0.24], [0.55, -0.24], [-0.55, 0.24], [-0.55, -0.24]]) add(body, box(0.16, 0.5, 0.16), dark, x, 0.25, z);
+  },
   deer(body) {                                       // de frente para +x: corpo alto e fino, pescoço erguido, galhada
     const fur = 0x9a6a3a, dark = 0x5a3a1e, belly = 0xe8dcc8;
     add(body, box(1.6, 0.75, 0.62), fur, 0, 1.45, 0);

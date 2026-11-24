@@ -6,7 +6,7 @@ import { insertCastle, insertWaves, resample } from './trackShapes.js';
 // Pista gerada por semente: uma curva fechada em volta do centro, reamostrada em passos iguais, apoiada
 // num relevo. `track` é sempre o mesmo objeto; gerar outra pista troca o conteúdo dele.
 
-export const track = { length: 1, count: 0, step: 1, px: null, py: null, pz: null, tx: null, tz: null, slope: null, curvature: null, turn: null, wall: null, shoulder: 0, roll: null, gap: null, epic: null, drop: null, bed: null, enclosed: null, lift: null, flight: null, bridge: null, ownFloor: null, pier: null, ledge: null, cliff: null, cliffSide: null, cliffFloor: null, castle: null, zones: {}, jumps: [], bridges: [], ledges: [], darkZones: [], stormZones: [], belts: [], gusts: [], boosts: [], hazards: [], valley: null, openWall: 0, chasmRange: null, heightAt: () => 0, meshHeightAt: () => 0 };
+export const track = { length: 1, count: 0, step: 1, px: null, py: null, pz: null, tx: null, tz: null, slope: null, curvature: null, turn: null, wall: null, shoulder: 0, roll: null, gap: null, epic: null, drop: null, bed: null, enclosed: null, lift: null, flight: null, bridge: null, ownFloor: null, pier: null, bridgeHalf: null, split: null, ledge: null, cliff: null, cliffSide: null, cliffFloor: null, castle: null, zones: {}, jumps: [], bridges: [], ledges: [], splits: [], darkZones: [], stormZones: [], belts: [], gusts: [], boosts: [], hazards: [], valley: null, openWall: 0, chasmRange: null, heightAt: () => 0, meshHeightAt: () => 0 };
 
 const CONTROL_COUNT = 18, HARMONICS = [[2, 0.8], [3, 0.55], [4, 0.3]];
 export const OPEN_WALL = TRACK_WIDTH / 2 + 3;         // até onde o centro do carro pode sair da pista, onde ficam os muros
@@ -216,7 +216,8 @@ function countSharpCurves({ count, curvature }, radius) {
 
 // Trechos desenhados à mão (trackShapes.js): `shape.castle` põe o castelo com a ponte levadiça e `shape.waves` uma
 // sequência de curvas onduladas. Devolve a pista nova e as distâncias (m) dos pontos que importam, ou nulo.
-const CASTLE_SHAPE = { radius: 16, exit: 120, rejoin: 460, keepClear: [320, 220], maxRejoinCurve: 1 / 140 };
+export const CASTLE_RADIUS = 12;                     // raio das curvas de 90° do pátio do castelo
+const CASTLE_SHAPE = { radius: CASTLE_RADIUS, exit: 120, rejoin: 460, keepClear: [320, 220], maxRejoinCurve: 1 / 140 };
 const WAVE_SHAPE = { keepClear: [220, 160] };
 function shapeTrack(sampled, random, shape) {
   let points = sampled.points.slice(0, sampled.count), castle = null, zones = {};
@@ -303,8 +304,9 @@ export function generateTrack(seed, shape) {
     roll: new Float32Array(geometry.count), gap: new Uint8Array(geometry.count), epic: new Uint8Array(geometry.count),
     drop: new Float32Array(geometry.count), bed: new Float32Array(geometry.count), enclosed: new Uint8Array(geometry.count),
     lift: new Float32Array(geometry.count), flight: new Uint8Array(geometry.count), bridge: new Uint8Array(geometry.count), ownFloor: new Uint8Array(geometry.count),
+    bridgeHalf: new Float32Array(geometry.count), split: new Float32Array(geometry.count),
     ledge: new Int8Array(geometry.count), cliff: new Float32Array(geometry.count), cliffSide: new Int8Array(geometry.count), cliffFloor: new Float32Array(geometry.count),
-    castle: extras.castle, zones: extras.zones, jumps: [], bridges: [], ledges: [], darkZones: [], stormZones: [], belts: [], gusts: [], boosts: [], hazards: [],
+    castle: extras.castle, zones: extras.zones, jumps: [], bridges: [], ledges: [], splits: [], darkZones: [], stormZones: [], belts: [], gusts: [], boosts: [], hazards: [],
     heightAt: groundAt, meshHeightAt: meshAt,
   });
 }
@@ -375,7 +377,9 @@ export const inGap = distance => track.gap[sampleIndex(distance)] === 1;
 export const inFlightZone = distance => track.flight[sampleIndex(distance)] === 1;
 
 export const onBridge = distance => track.bridge[sampleIndex(distance)] > 0;   // 1: ponte de gelo, 2: ponte seca
-export const ledgeAt = distance => track.ledge[sampleIndex(distance)];   // -1 ou 1: lado aberto do penhasco; 0: sem penhasco
+export const ledgeAt = distance => track.ledge[sampleIndex(distance)];
+export const bridgeHalfAt = distance => track.bridgeHalf[sampleIndex(distance)];   // meia largura do tabuleiro (ponte, convés de navio)
+export const splitAt = distance => track.split[sampleIndex(distance)];             // meia largura do buraco no meio da pista dividida (0: sem buraco)   // -1 ou 1: lado aberto do penhasco; 0: sem penhasco
 
 const offsetInto = (distance, from) => (((distance - from) % track.length) + track.length) % track.length;
 
@@ -384,7 +388,8 @@ const offsetInto = (distance, from) => (((distance - from) % track.length) + tra
 export function hazardAt(distance) {
   return track.jumps.find(jump => jump.gaps.some(([from, to]) => offsetInto(distance, from) < to - from))
     ?? track.bridges.find(bridge => offsetInto(distance, bridge.start) < bridge.length)
-    ?? track.ledges.find(ledge => offsetInto(distance, ledge.start) < ledge.length) ?? null;
+    ?? track.ledges.find(ledge => offsetInto(distance, ledge.start) < ledge.length)
+    ?? track.splits.find(split => offsetInto(distance, split.start) < split.length) ?? null;
 }
 
 // Quanto o trecho escuro (caverna, túnel sem luz) envolve o ponto: 0 fora, 1 dentro, com transição na boca.

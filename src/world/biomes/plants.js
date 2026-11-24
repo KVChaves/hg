@@ -12,6 +12,10 @@ const AMBIENT = 0.48, FACE_JITTER = 0.1;
 const UP = new THREE.Vector3(0, 1, 0);
 const solidShaded = new THREE.MeshBasicMaterial({ vertexColors: true });
 const doubleShaded = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
+// Peças com cor por instância usam materiais só delas. No three r128 o programa do material é montado uma vez,
+// com ou sem a cor por instância, e não muda: um tronco sem cor desenhado com o programa das copas quebra o quadro
+// inteiro (some o mundo todo e só fica o HUD).
+const solidTinted = solidShaded.clone(), doubleTinted = doubleShaded.clone();
 
 // Junta as peças `{ geometry, color }` numa geometria com cor por vértice. `twoSided`: folhas finas, vistas dos
 // dois lados (o tom usa o ângulo sem sinal).
@@ -38,7 +42,7 @@ function shade(pieces, twoSided = false) {
 }
 
 // Parte que recebe cor por instância (lista de cores) ou fica com a cor já pintada.
-const tinted = (part, colors) => (colors ? { ...part, colorOf: pickFrom(colors) } : part);
+const tinted = (part, colors) => (colors ? { ...part, material: part.material === doubleShaded ? doubleTinted : solidTinted, colorOf: pickFrom(colors) } : part);
 
 // Cilindro (ou tronco de cone) de `from` até `to`.
 function bar(from, to, radius, radiusEnd = radius, sides = 6) {

@@ -31,7 +31,7 @@ RANKING_LIMIT = 50
 COMBAT_COUNTS = ("kills", "backKills", "deaths", "shots", "hits", "trapsPlaced", "trapsScored", "caught")   # contadores da mensagem `combat`
 # Campos da página COMBATE no ranking; "kills" do combate vira "combatKills" (o "kills" antigo vem do fim da partida).
 COMBAT_FIELDS = {"combatRaces": 0, "combatKills": 0, "backKills": 0, "deaths": 0, "shots": 0, "hits": 0, "trapsPlaced": 0, "trapsScored": 0, "caught": 0,
-                 "victims": dict, "killers": dict, "causes": dict, "leadRaces": 0, "leadTime": 0.0, "leadLost": 0, "leadRaceTime": 0.0}
+                 "killStreak": 0, "victims": dict, "killers": dict, "causes": dict, "leadRaces": 0, "leadTime": 0.0, "leadLost": 0, "leadRaceTime": 0.0}
 KILL_CAUSES = ("shot", "ram", "fire", "splash", "other")
 MAX_COMBAT_COUNT = 5000                            # teto de qualquer contador numa corrida
 PHOTO_FINISH = 0.5                                  # segundos entre dois pilotos vizinhos na chegada para contar como photo finish
@@ -149,6 +149,7 @@ class Ranking:
         entry["combatRaces"] += 1
         for field in COMBAT_COUNTS:
             entry["combatKills" if field == "kills" else field] += stats[field]
+        entry["killStreak"] = max(entry["killStreak"], stats["killStreak"])   # recorde de uma corrida, não soma
         for field in ("victims", "killers", "causes"):
             for key, count in stats[field].items():
                 entry[field][key] = entry[field].get(key, 0) + count
@@ -484,14 +485,53 @@ class Lobby:
             pass
         return races
 
-    def player_stats(self, name):
+    # Estatísticas em que ter o maior (1) ou o menor (-1) valor é ser o melhor; as outras não entram na comparação.
+    BEST_DIRECTION = {"rating": 1, "races": 1, "wins": 1, "podiums": 1, "average": -1, "kills": 1, "killsPerRace": 1, "matches": 1,
+                      "winStreak": 1, "podiumStreak": 1, "gap": -1, "photoFinishes": 1}
+    BEST_COMBAT_DIRECTION = {"kills": 1, "killStreak": 1, "backKills": 1, "deaths": -1, "killDeath": 1, "accuracy": 1, "trapsPlaced": 1,
+                             "trapsScored": 1, "caught": -1, "leadShare": 1, "leadAverage": 1, "leadLost": -1}
+
+    @staticmethod
+    def comparable(stats):
+        """Números de um jogador que entram na comparação de melhor (None = sem dado)."""
+        combat = stats["combat"]
+        general = {key: stats.get(key) for key in Lobby.BEST_DIRECTION}
+        general["killsPerRace"] = stats["kills"] / stats["races"] if stats["races"] else None
+        if not combat["races"]:                      # sem dados de combate: nada a comparar (0 mortes não é ser o melhor)
+            return {"general": general, "combat": dict.fromkeys(Lobby.BEST_COMBAT_DIRECTION)}
+        mine = {key: combat.get(key) for key in Lobby.BEST_COMBAT_DIRECTION}
+        mine["killDeath"] = combat["kills"] / combat["deaths"] if combat["deaths"] else None
+        mine["accuracy"] = combat["hits"] / combat["shots"] if combat["shots"] else None
+        return {"general": general, "combat": mine}
+
+    def best_flags(self, name, history):
+        """Chaves das estatísticas em que `name` tem o melhor valor entre todos os jogadores (empate com o melhor vale)."""
+        table = {player: self.comparable(self.player_stats(player, history, with_best=False)) for player in self.ranking.players
+                 if self.ranking.players[player]["races"] > 0}
+        mine = table.get(next((player for player in table if player.casefold() == name.casefold()), None))
+        if mine is None or len(table) < 2:
+            return {"general": [], "combat": []}
+        flags = {}
+        for page, directions in (("general", self.BEST_DIRECTION), ("combat", self.BEST_COMBAT_DIRECTION)):
+            flags[page] = []
+            for key, direction in directions.items():
+                values = [row[page][key] for row in table.values() if row[page][key] is not None]
+                value = mine[page][key]
+                if value is None or not values or (direction > 0 and value <= 0):
+                    continue
+                if (value == max(values)) if direction > 0 else (value == min(values)):
+                    flags[page].append(key)
+        return flags
+
+    def player_stats(self, name, history=None, with_best=True):
         """Estatísticas de um jogador tiradas do ranking e de todo o histórico de corridas rankeadas."""
         wanted = name.casefold()
+        history = self.all_history() if history is None else history
         entry = next((value for key, value in self.ranking.players.items() if key.casefold() == wanted), None)
         maps, rivals = {}, {}
         win_run = podium_run = best_wins = best_podiums = photo = 0
         gaps, last = [], None
-        for race in self.all_history():
+        for race in history:
             racers = race.get("racers") or []
             me = next((r for r in racers if r.get("human") and str(r.get("name", "")).casefold() == wanted), None)
             if me is None or len(racers) < 2:
@@ -521,7 +561,7 @@ class Lobby:
         map_rows = [{"biome": biome, "races": m["races"], "wins": m["wins"], "rating": round(100 * m["score"] / m["races"], 1)} for biome, m in maps.items()]
         rated = [row for row in map_rows if row["races"] >= MIN_MAP_RACES] or map_rows
         races = entry["races"] if entry else 0
-        return {
+        result = {
             "name": name, "races": races, "last": last,
             "rating": round(100 * entry["score"] / races, 1) if races else None,
             "wins": entry["wins"] if entry else 0, "podiums": entry["podiums"] if entry else 0,
@@ -535,6 +575,9 @@ class Lobby:
             "rivals": sorted(rivals.values(), key=lambda rival: -rival["races"])[:RIVALS_SHOWN],
             "combat": self.combat_stats(entry or {}),
         }
+        if with_best:
+            result["best"] = self.best_flags(name, history)
+        return result
 
     @staticmethod
     def combat_stats(entry):
@@ -543,7 +586,7 @@ class Lobby:
         top = lambda table: [{"name": name, "count": count} for name, count in sorted(table.items(), key=lambda item: -item[1])[:COMBAT_TOP]]
         lead_races = get("leadRaces")
         return {
-            "races": get("combatRaces"), "kills": get("combatKills"), "backKills": get("backKills"), "deaths": get("deaths"),
+            "races": get("combatRaces"), "killStreak": get("killStreak"), "kills": get("combatKills"), "backKills": get("backKills"), "deaths": get("deaths"),
             "shots": get("shots"), "hits": get("hits"), "trapsPlaced": get("trapsPlaced"), "trapsScored": get("trapsScored"), "caught": get("caught"),
             "victims": top(entry.get("victims", {})), "killers": top(entry.get("killers", {})),
             "causes": {cause: entry.get("causes", {}).get(cause, 0) for cause in KILL_CAUSES},
@@ -573,7 +616,10 @@ class Lobby:
                     return None
                 clean[name] = clean.get(name, 0) + count
             tables[field] = clean
-        return {**counts, **tables}
+        streak = stats.get("killStreak", 0)   # versões antigas não mandam
+        if not isinstance(streak, int) or isinstance(streak, bool) or not 0 <= streak <= counts["kills"]:
+            return None
+        return {**counts, **tables, "killStreak": streak}
 
     def on_combat(self, client, message):
         """Cada humano manda as próprias estatísticas de combate no fim de uma corrida rankeada; vale uma vez por corrida."""

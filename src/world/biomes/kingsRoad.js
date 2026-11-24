@@ -4,14 +4,19 @@ import { track } from '../track.js';
 import { alongRoad, EDGE, nearRoad, pickFrom, scatter, solid } from './propKit.js';
 import { barGeometry, broadleafTree, bush, coneGeometry, grassTuft, pineTree, shadedPart } from './plants.js';
 import { kingsGate } from './finishGates.js';
+import { pixelTexture } from '../textures.js';
+import { enableCulling } from '../instancing.js';
 
 // Estrada do Rei: estrada de pedra entre campos de grama, aldeias de telhado de palha e moinhos; uma mata fechada
-// de curvas onduladas, onde cervos cruzam a pista; carruagens indo devagar pela estrada; e o castelo do rei, em que
+// longa, de curvas onduladas e pista estreita, onde cervos e javalis cruzam a pista; carruagens indo devagar pela estrada; e o castelo do rei, em que
 // se entra voando pela ponte levadiça (rápido demais, bate na muralha) e se corre por dentro, num pátio estreito de
-// duas curvas de 90° (o traçado do castelo e da mata vem de trackShapes.js; a ponte e o portão, de mapLayout.js).
+// quatro curvas de 90° (o traçado do castelo e da mata vem de trackShapes.js; a ponte e o portão, de mapLayout.js).
 
 const SHOULDER = 6, SIDE = EDGE + SHOULDER;
 const FOREST_MARGIN = 30;                            // a mata começa e termina um pouco antes e depois das curvas
+// Na mata a pista fecha: o centro do carro vai só até FOREST_WALL do meio (uns 12 m de pista, em vez de 18). Chão de
+// folhas cobre a beira da estrada e uma fileira de moitas e troncos marca o limite.
+const FOREST_WALL = 5.9, CAR_HALF = 1.05, EDGE_GAP = 1.2;
 
 const forestZone = () => track.zones.forest ?? null;
 function inForest(d, margin = FOREST_MARGIN) {
@@ -28,13 +33,14 @@ export const KINGS_ROAD = {
   // Volta larga de campo aberto; o castelo e a mata ondulada entram por cima dela (trackShapes.js).
   shape: {
     wiggle: 0.18, targetLength: 2600, relief: 9, hillScale: 200, sharpCurves: 1, harmonics: [[2, 0.8], [3, 0.4]], shoulder: SHOULDER,
-    castle: { approach: 134, inside: [60, 50, 50] },   // corrida + rampa (40) + fosso (24); pátio: reta, curva, reta, curva, reta
-    waves: { amplitude: 8, wavelength: 120, length: 480, zone: 'forest' },
+    castle: { approach: 134, inside: [55, 30, 40, 30, 50] },   // corrida + rampa (40) + fosso (24); pátio em Π: quatro curvas de 90°
+    waves: { amplitude: 8, wavelength: 120, length: 800, zone: 'forest' },
   },
   surface: { grip: 1, side: 0.95, drag: 0.01, offroad: 1.3 },   // pedra assentada segura quase como asfalto
   layout: {
     castle: { fallLabel: 'CAIU NO FOSSO' },
-    hazards: [{ kind: 'deerCrossing', count: 2 }, { kind: 'carriage', count: 6 }],
+    narrow: [{ zone: 'forest', half: FOREST_WALL }],
+    hazards: [{ kind: 'deerCrossing', count: 3 }, { kind: 'boarCrossing', count: 3 }, { kind: 'carriage', count: 10 }],
     tunnels: { count: 0 },
   },
   ground: {
@@ -116,12 +122,13 @@ export const KINGS_ROAD = {
     const pine = pineTree({ colors: [0x1e4a26, 0x24522a, 0x1a3e22] });
     const zone = forestZone(), outside = d => !inForest(d), treeSize = random => 0.8 + random() * 0.7;
 
-    // Mata fechada: árvores coladas no acostamento e muitas atrás, nos dois lados das curvas.
+    // Mata fechada: pista estreita entre moitas e troncos, árvores coladas e muitas atrás, nos dois lados das curvas.
+    if (zone) addNarrowForest(ctx, oaks, pine);
     if (zone) {
       const wide = { start: zone.start - FOREST_MARGIN, length: zone.length + FOREST_MARGIN * 2 };
-      oaks.forEach(parts => nearRoad(ctx, { count: 260, from: SIDE, to: SIDE + 34, sizeOf: treeSize, parts, zone: wide }));
-      nearRoad(ctx, { count: 220, from: SIDE + 1, to: SIDE + 34, sizeOf: random => 0.8 + random() * 0.6, parts: pine, zone: wide });
-      nearRoad(ctx, { count: 260, from: SIDE, to: SIDE + 8, sizeOf: random => 0.7 + random() * 0.6, parts: bush({ colors: [0x2e6a26, 0x3a7a2a, 0x4a6a24] }), zone: wide });
+      oaks.forEach(parts => nearRoad(ctx, { count: 150, from: SIDE, to: SIDE + 34, sizeOf: treeSize, parts, zone: wide }));
+      nearRoad(ctx, { count: 130, from: SIDE + 1, to: SIDE + 34, sizeOf: random => 0.8 + random() * 0.6, parts: pine, zone: wide });
+      nearRoad(ctx, { count: 160, from: SIDE, to: SIDE + 8, sizeOf: random => 0.7 + random() * 0.6, parts: bush({ colors: [0x2e6a26, 0x3a7a2a, 0x4a6a24] }), zone: wide });
     }
     // Campo aberto: árvores soltas e bosques longe da estrada.
     oaks.forEach(parts => scatter(ctx, { count: 90, clearance: SIDE + 12, sizeOf: treeSize, parts }));
@@ -173,6 +180,115 @@ export const KINGS_ROAD = {
     addWindmills(ctx, 2);
   },
 };
+
+// Trechos em que a pista está estreitada (track.wall abaixo do normal), com o lado (-1/1) e quanto: a mata.
+function narrowedSpots(spacing) {
+  const spots = [];
+  for (let d = 0; d < track.length; d += spacing) {
+    const k = Math.floor(d / track.step) % track.count, wall = track.wall[k];
+    if (wall < track.openWall - 0.5 && inForest(d, 60)) spots.push({ d, k, wall });
+  }
+  return spots;
+}
+
+// Instâncias de `parts` nos pontos dados ({ x, z, yaw, size }), assentadas no chão.
+function placeAll(ctx, parts, spots) {
+  if (!spots.length) return;
+  const meshes = parts.map(part => new THREE.InstancedMesh(part.geometry, part.material, spots.length));
+  const matrix = new THREE.Matrix4(), quaternion = new THREE.Quaternion(), euler = new THREE.Euler(), position = new THREE.Vector3(), scale = new THREE.Vector3(), color = new THREE.Color();
+  spots.forEach(({ x, z, yaw, size }, i) => {
+    matrix.compose(position.set(x, ctx.heightAt(x, z), z), quaternion.setFromEuler(euler.set(0, yaw, 0)), scale.setScalar(size));
+    meshes.forEach((mesh, m) => {
+      mesh.setMatrixAt(i, matrix);
+      if (parts[m].colorOf) mesh.setColorAt(i, color.setHex(parts[m].colorOf(ctx.random)));
+    });
+  });
+  meshes.forEach(mesh => { enableCulling(mesh); ctx.group.add(mesh); });
+}
+
+const lateralPoint = (k, lateral) => ({ x: track.px[k] - track.tz[k] * lateral, z: track.pz[k] + track.tx[k] * lateral });
+
+// Chão de folhas sobre a beira da estrada: só a faixa do meio fica de pedra.
+function forestFloorTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 16;
+  const art = canvas.getContext('2d');
+  art.fillStyle = '#4a3a22'; art.fillRect(0, 0, 16, 16);
+  for (const color of ['#3a5a24', '#5a4a2a', '#2e4a1e', '#6a5a30']) { art.fillStyle = color; for (let i = 0; i < 14; i++) art.fillRect(Math.random() * 16, Math.random() * 16, 1 + Math.random() * 2, 1); }
+  const texture = pixelTexture(canvas);
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  return texture;
+}
+
+function addNarrowForest(ctx, oaks, pine) {
+  // Chão de folhas: de um pouco além do limite até o fim do acostamento, acompanhando o estreitamento.
+  const material = new THREE.MeshBasicMaterial({ map: forestFloorTexture(), polygonOffset: true, polygonOffsetFactor: -5, polygonOffsetUnits: -5 });
+  const spots = narrowedSpots(track.step);
+  for (const side of [-1, 1]) {
+    const pos = [], uv = [], index = [];
+    spots.forEach(({ k, wall }, i) => {
+      const inner = wall + CAR_HALF + 0.15, outer = SIDE + 1;
+      for (const [lateral, u] of [[inner, 0], [outer, (outer - inner) / 4]]) {
+        const p = lateralPoint(k, side * lateral);
+        pos.push(p.x, track.py[k] + 0.02, p.z);
+        uv.push(u, k * track.step / 4);
+      }
+      const prev = spots[i - 1];
+      if (prev && prev.k === (k - 1 + track.count) % track.count) {
+        const a = (i - 1) * 2, b = i * 2;
+        index.push(a, b, a + 1, a + 1, b, b + 1);
+      }
+    });
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    geometry.setIndex(index);
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.material.side = THREE.DoubleSide;
+    ctx.group.add(mesh);
+  }
+  // Fileira de moitas no limite, com troncos caídos de vez em quando.
+  const shrubs = bush({ radius: 1.2, colors: [0x2e6a26, 0x3a7a2a, 0x4a6a24, 0x24561e] });
+  const edge = [], logs = [];
+  for (const { d, k, wall } of narrowedSpots(2.4)) {
+    for (const side of [-1, 1]) {
+      const p = lateralPoint(k, side * (wall + CAR_HALF + EDGE_GAP + ctx.random() * 0.6));
+      const yaw = Math.atan2(-track.tx[k], -track.tz[k]);
+      if (ctx.random() < 0.08) logs.push({ ...p, yaw, size: 0.8 + ctx.random() * 0.5 });
+      else edge.push({ ...p, yaw: ctx.random() * Math.PI * 2, size: 0.8 + ctx.random() * 0.5 });
+    }
+  }
+  placeAll(ctx, shrubs, edge);
+  const log = shadedPart([{ geometry: barGeometry([0, 0.45, -2.4], [0, 0.45, 2.4], 0.45, 0.4, 7), color: 0x4a3018 }, { geometry: new THREE.CircleGeometry(0.42, 7).translate(0, 0.45, 2.41), color: 0xc8a070 }]);
+  placeAll(ctx, [log], logs);
+  // Árvores grossas logo atrás das moitas, de tronco quase encostado na pista.
+  const trees = [];
+  for (const { k, wall } of narrowedSpots(4.5)) {
+    for (const side of [-1, 1]) {
+      if (ctx.random() < 0.35) continue;
+      trees.push({ ...lateralPoint(k, side * (wall + CAR_HALF + 3.5 + ctx.random() * 9)), yaw: ctx.random() * Math.PI * 2, size: 0.8 + ctx.random() * 0.6, kind: Math.floor(ctx.random() * 4) });
+    }
+  }
+  [...oaks, pine].forEach((parts, kind) => placeAll(ctx, parts, trees.filter(tree => tree.kind === kind)));
+  // Bichos da mata parados entre as árvores: cervos pastando e coelhos.
+  const deer = shadedPart([
+    { geometry: new THREE.BoxGeometry(1.5, 0.7, 0.6).translate(0, 1.4, 0), color: 0x9a6a3a },
+    { geometry: new THREE.BoxGeometry(0.3, 0.8, 0.28).rotateZ(-0.9).translate(0.95, 1.2, 0), color: 0x9a6a3a },   // pescoço baixo: pastando
+    { geometry: new THREE.BoxGeometry(0.5, 0.3, 0.3).translate(1.35, 0.85, 0), color: 0x9a6a3a },
+    ...[[0.55, 0.2], [0.55, -0.2], [-0.55, 0.2], [-0.55, -0.2]].map(([x, z]) => ({ geometry: new THREE.BoxGeometry(0.13, 1.05, 0.13).translate(x, 0.52, z), color: 0x5a3a1e })),
+    { geometry: new THREE.BoxGeometry(0.2, 0.22, 0.2).translate(-0.82, 1.55, 0), color: 0xe8dcc8 },
+  ]);
+  const rabbit = shadedPart([
+    { geometry: new THREE.BoxGeometry(0.5, 0.35, 0.3).translate(0, 0.22, 0), color: 0x8a7a6a },
+    { geometry: new THREE.BoxGeometry(0.24, 0.24, 0.22).translate(0.3, 0.38, 0), color: 0x8a7a6a },
+    { geometry: new THREE.BoxGeometry(0.06, 0.3, 0.08).translate(0.3, 0.62, 0.06), color: 0x8a7a6a },
+    { geometry: new THREE.BoxGeometry(0.06, 0.3, 0.08).translate(0.3, 0.62, -0.06), color: 0x8a7a6a },
+    { geometry: new THREE.BoxGeometry(0.1, 0.1, 0.1).translate(-0.28, 0.3, 0), color: 0xf0ece0 },
+  ]);
+  const critters = side => narrowedSpots(9).filter(() => ctx.random() < 0.5).map(({ k, wall }) => ({ ...lateralPoint(k, side * (wall + CAR_HALF + 4 + ctx.random() * 16)), yaw: ctx.random() * Math.PI * 2, size: 0.9 + ctx.random() * 0.3 }));
+  placeAll(ctx, [deer], [...critters(-1), ...critters(1)].filter(() => ctx.random() < 0.45));
+  placeAll(ctx, [rabbit], [...critters(-1), ...critters(1)].filter(() => ctx.random() < 0.6));
+}
 
 // Moinho: torre de pedra afinando, telhado cônico e quatro pás de madeira que giram devagar.
 function addWindmills(ctx, wanted) {

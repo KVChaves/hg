@@ -18,12 +18,26 @@ const RESPAWN_CLEAR = 150;                           // o que fica esperando (á
 const FALL_TIME = 0.55, TOPPLE_TIME = 0.9, TOPPLE_SOLID_AT = 0.65, TOPPLE_LEAN = 0.12, WOBBLE = 0.06, WOBBLE_RATE = 18;
 const SHAKE = 0.25, SHAKE_RATE = 30, DUST_COLORS = { rock: [0x8a867e, 0x6a665e], stalactite: [0xd8f4ff, 0x9ad8f0], barrels: [0xe8c020, 0x5a5a5a], crates: [0x9a7038, 0x5a5a5a], pillar: [0xe0b078, 0xc88a50], meteor: [0x8a8480, 0x5a5450], coconut: [0xd8c090, 0xa89a70], cactus: [0xd8c090, 0x9a8a60], cannonball: [0x5a5a5e, 0x8a8a8e] };
 const LEAF_COLORS = [0x2f7a2a, 0x3a8c30, 0x5a3a20];
+const CANNON_SMOKE = [0xd8d4cc, 0xa8a49c, 0xffb040], SPLINTERS = [0x7a5430, 0x5a3a20, 0x2a2a2e];
+
+// Mira no chão onde a bala de canhão vai cair: anel vermelho com uma cruz, que pisca até o tiro chegar.
+function createTarget() {
+  const target = new THREE.Group(), material = () => new THREE.MeshBasicMaterial({ color: 0xff2a1a, transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide });
+  const ring = new THREE.Mesh(new THREE.RingGeometry(1.5, 2.1, 24).rotateX(-Math.PI / 2), material());
+  target.add(ring);
+  for (const angle of [Math.PI / 4, -Math.PI / 4]) {
+    const bar = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 0.35).rotateX(-Math.PI / 2).rotateY(angle), material());
+    target.add(bar);
+  }
+  target.position.y = 0.08;
+  return target;
+}
 // Som de quebrar por material (nomes em audio/soundFiles.js); o que não está aqui usa `crash`.
 const OBSTACLE_SOUND = {
   barrier: 'crash',
   tree: 'obstacleWood', crates: 'obstacleWood', umbrella: 'obstacleWood', cactus: 'obstacleWood', coconut: 'obstacleWood', tumbleweed: 'obstacleWood',
   carriage: 'obstacleWood', rollingBarrel: 'obstacleWood',
-  animal: 'obstacleFlesh', deer: 'obstacleFlesh', camel: 'obstacleFlesh', crab: 'obstacleFlesh', kaiju: 'obstacleFlesh',
+  animal: 'obstacleFlesh', deer: 'obstacleFlesh', boar: 'obstacleFlesh', camel: 'obstacleFlesh', crab: 'obstacleFlesh', kaiju: 'obstacleFlesh',
   stalactite: 'obstacleIce', snowball: 'obstacleIce', crystal: 'obstacleCrystal',
   rock: 'obstacleRock', pillar: 'obstacleRock', meteor: 'obstacleRock', cannonball: 'obstacleRock',
   barrels: 'obstacleMetal', antenna: 'obstacleMetal', rover: 'obstacleMetal',
@@ -32,7 +46,10 @@ const CAR_HALF_WIDTH = 0.95, CAR_HALF_LENGTH = 1.8, HIT_SLOWDOWN = 0.55, LEADER_
 const PASSED_MARGIN = 35, LINGER = 8, CLEAR_VIEW = 120;   // caído na pista sem ninguém por perto, some depois de LINGER s
 const EDGE_LANE = TRACK_WIDTH / 2 - 1.2, CROSS_FROM = TRACK_WIDTH / 2 + 4, BOT_LANE_LIMIT = TRACK_WIDTH / 2 - 1.2;
 const DODGE_CHANCE = 0.65, DODGE_SIGHT = 55, DODGE_CLEARANCE = 2.4, DODGE_HOLD = 1;
-const DRIVE_PASSED_RANGE = 400;                      // carroça: sai quando todos já a passaram (e ninguém ficou muito para trás nela)
+const DRIVE_PASSED_RANGE = 400;
+// Batida em obstáculo sólido: fração da velocidade de encontro com que se quica, velocidade que sobra de lado e
+// impactos (m/s) mínimo e de dano cheio.
+const BUMP_BOUNCE = 0.25, BUMP_SIDE_KEEP = 0.85, BUMP_REHIT = 0.6, BUMP_MIN_IMPACT = 2, BUMP_FULL_IMPACT = 25;                      // carroça: sai quando todos já a passaram (e ninguém ficou muito para trás nela)
 
 const between = ([low, high]) => low + Math.random() * (high - low);
 const clamp = (v, limit) => Math.max(-limit, Math.min(limit, v));
@@ -79,11 +96,16 @@ export function createObstacles({ scene, race, car, isAuthority, onSound, onPlay
       ob.shadow = createShadow(Math.max(type.halfWidth, type.halfLength) * 1.2);
       ob.shadow.scale.setScalar(0.2);
       ob.group.add(ob.shadow);
+      if (kind.arc) {                                // tiro de canhão: a bala ainda está no navio; no chão, a mira
+        ob.body.visible = false;
+        ob.marker = createTarget();
+        ob.group.add(ob.marker);
+      }
     }
     if (ob.motion === 'topple') ob.body.rotation.z = side * TOPPLE_LEAN;
     if (ob.motion === 'cross') ob.walk = -side;
     if (ob.motion === 'drive') { ob.travelled = 0; ob.body.rotation.y = Math.PI / 2; }   // de frente para +x: vira para o sentido da pista
-    if (type.inflate) ob.body.scale.setScalar(0.05);   // a barreira cai murcha e enche
+    if (type.inflate) { ob.body.scale.setScalar(0.05); ob.solid = false; }   // a barreira cai murcha e só vale depois de encher
     if (site) { site.ob = ob; site.state = 'active'; }
     scene.add(ob.group);
     place(ob);
@@ -106,7 +128,10 @@ export function createObstacles({ scene, race, car, isAuthority, onSound, onPlay
   obstacles.spawnFromNetwork = ({ n, i, d, l, s, w = -1, p, by }) => {
     if (!OBSTACLE_TYPES[i] || obstacles.active.some(ob => ob.id === n)) return;
     const ob = add(n, i, d, l, s, w, p);
-    if (by !== undefined) spare(ob, race.field.find(racer => racer.netId === by) ?? null);
+    if (by !== undefined) {
+      spare(ob, race.field.find(racer => racer.netId === by) ?? null);
+      onSound('barrier', ob.owner?.x ?? 0, ob.owner?.z ?? 0, 0.8);   // o chiado de encher, ouvido de longe
+    }
   };
 
   // Quem já está em cima quando ela cai não bate (só vale para quem a vê no chão).
@@ -156,7 +181,7 @@ export function createObstacles({ scene, race, car, isAuthority, onSound, onPlay
 
   // Tiro do jogador: devolve true se quebrou.
   obstacles.shoot = (ob, amount) => {
-    if (ob.dead) return false;
+    if (ob.dead || ob.type.solid) return false;      // o que é sólido (carruagem) aguenta o tiro
     ob.hp -= amount;
     if (ob.hp > 0) return false;
     destroy(ob);
@@ -189,6 +214,57 @@ export function createObstacles({ scene, race, car, isAuthority, onSound, onPlay
     }
     if (ob.owner) onCaught(racer, ob);
     destroy(ob);
+  }
+
+  // Obstáculo sólido (`solid` em obstacleTypes.js, como a carruagem): não quebra. Quem bate é empurrado para fora
+  // dele pelo lado em que entrou menos, perde a velocidade de encontro (quica um pouco) e toma dano conforme o
+  // impacto; ele segue o caminho. O dano e o aviso valem uma vez por encontro (BUMP_REHIT s sem encostar).
+  function bump(racer, ob) {
+    const t = trackAt(ob.dist), nx = -t.tz, nz = t.tx, along = wrapDistance(racer.dist - ob.dist), lateral = racer.lane - ob.lane;
+    const alongIn = ob.type.halfLength + CAR_HALF_LENGTH - Math.abs(along), sideIn = ob.type.halfWidth + CAR_HALF_WIDTH - Math.abs(lateral);
+    const own = ob.motion === 'drive' && ob.travelled < ob.kind.travel ? ob.kind.speed : 0;   // a carruagem anda junto com a pista
+    let impact = 0;
+    if (alongIn < sideIn) {                          // na traseira (ou de frente): volta para trás dela
+      const sign = Math.sign(along) || -1;
+      if (racer.isPlayer) {
+        car.x += t.tx * sign * alongIn;
+        car.z += t.tz * sign * alongIn;
+        const v = car.vx * t.tx + car.vz * t.tz, closing = (own - v) * sign;
+        if (closing > 0) { const dv = closing * sign * (1 + BUMP_BOUNCE); car.vx += t.tx * dv; car.vz += t.tz * dv; impact = closing; }
+      } else {
+        racer.dist += sign * alongIn;
+        const closing = (own - racer.v) * sign;
+        if (closing > 0) { racer.v += closing * sign * (1 + BUMP_BOUNCE); impact = closing; }
+      }
+    } else {                                         // de lado: sai de lado
+      const sign = Math.sign(lateral) || 1;
+      if (racer.isPlayer) {
+        car.x += nx * sign * sideIn;
+        car.z += nz * sign * sideIn;
+        const vn = car.vx * nx + car.vz * nz;
+        if (vn * sign < 0) { car.vx -= nx * vn * (1 + BUMP_BOUNCE); car.vz -= nz * vn * (1 + BUMP_BOUNCE); impact = Math.abs(vn); }
+        car.vx *= BUMP_SIDE_KEEP;
+        car.vz *= BUMP_SIDE_KEEP;
+      } else {
+        racer.lane += sign * sideIn;
+        racer.v *= BUMP_SIDE_KEEP;
+        impact = Math.abs(racer.laneRate ?? 0);
+      }
+    }
+    const now = race.time, last = ob.bumps?.get(racer) ?? -Infinity;
+    (ob.bumps ??= new Map()).set(racer, now);
+    if (now - last < BUMP_REHIT || impact < BUMP_MIN_IMPACT) return;
+    const share = Math.min(1, impact / BUMP_FULL_IMPACT), kick = (ob.type.spin ?? 0) * share * (Math.random() < 0.5 ? -1 : 1);
+    if (racer.isPlayer) {
+      crashDamage(car, ob.type.damage * share);
+      car.spin += kick;
+      onPlayerHit(ob.type);
+    } else {
+      damageOpponent(racer, ob.type.damage * share * CAR_MAX_HP, null);
+      racer.spin += kick;
+    }
+    ob.group.getWorldPosition(position);
+    onSound(OBSTACLE_SOUND[ob.type.id] ?? 'crash', position.x, position.z, 0.3 + 0.5 * share);
   }
 
   function touches(racer, ob) {
@@ -232,15 +308,55 @@ export function createObstacles({ scene, race, car, isAuthority, onSound, onPlay
     debris.push(createDebris(scene, position, DUST_COLORS[ob.type.id] ?? ob.type.debris, 7, { dust: true }));
   }
 
+  // O que cai pousou: fica sólido. Quem já está embaixo quando pousa não bate: só vale para quem o vê no chão.
+  function landDrop(ob) {
+    ob.phase = 'solid';
+    ob.solid = true;
+    ob.spared = new Set(race.field.filter(racer => touches(racer, ob)));
+    ob.body.position.set(0, 0, 0);
+    ob.group.remove(ob.shadow);
+    if (ob.marker) { ob.group.remove(ob.marker); ob.marker = null; }
+    ob.group.getWorldPosition(position);
+    onSound('crash', position.x, position.z, 0.5);
+    if (ob.kind.arc) debris.push(createDebris(scene, position, SPLINTERS, 10));   // a bala estilhaça as tábuas
+  }
+
+  // Estrondo e fumaça na boca do canhão, no costado do navio do lado do ponto.
+  function fireCannon(ob, kind) {
+    ob.group.updateMatrixWorld(true);                // recém-criado: a matriz ainda não foi atualizada pelo desenho
+    position.set(ob.side * kind.arc.from - ob.lane, kind.arc.muzzle, 0);
+    ob.group.localToWorld(position);
+    debris.push(createDebris(scene, position, CANNON_SMOKE, 9, { dust: true }));
+    onSound('dynamite', position.x, position.z, 0.8);
+  }
+
   function animate(ob, dt) {
     ob.t += dt;
     const { kind } = ob;
     if (ob.type.inflate) {                           // enche em `inflate` s, com um pequeno exagero no fim
       const k = Math.min(1, ob.t / ob.type.inflate);
       ob.body.scale.set(0.05 + 0.95 * k, (0.05 + 0.95 * k) * (1 + Math.sin(k * Math.PI) * 0.15), 0.05 + 0.95 * k);
+      if (k >= 1 && !ob.solid) {                     // cheia: passa a bloquear (quem está em cima nessa hora não bate)
+        ob.solid = true;
+        ob.spared = new Set(race.field.filter(racer => touches(racer, ob)));
+      }
     }
     if (ob.motion === 'drop') {
-      if (ob.phase === 'warning') {
+      if (ob.phase === 'warning' && kind.arc) {
+        // Canhão: fumaça e estrondo no navio quando ele mira; no chão, a mira vermelha pisca cada vez mais rápido.
+        if (ob.t - dt <= 0) fireCannon(ob, kind);
+        const urgency = Math.min(1, ob.t / kind.warning), blink = Math.sin(ob.t * (8 + urgency * 22));
+        ob.marker.scale.setScalar(1 + 0.12 * blink);
+        ob.marker.children.forEach(part => { part.material.opacity = 0.55 + 0.45 * Math.max(0, blink); });
+        ob.shadow.scale.setScalar(ob.shadow.userData.radius * (0.2 + 0.8 * urgency));
+        if (ob.t >= kind.warning) { ob.phase = 'falling'; ob.t = 0; ob.body.visible = true; }
+      } else if (ob.phase === 'falling' && kind.arc) {
+        // A bala voa em arco do costado do navio até a mira.
+        const k = Math.min(1, ob.t / kind.arc.time), from = ob.side * kind.arc.from - ob.lane;
+        ob.body.position.x = from * (1 - k);
+        ob.body.position.y = kind.arc.muzzle * (1 - k) + kind.arc.apex * 4 * k * (1 - k);
+        if (k >= 1) landDrop(ob);
+      } else if (ob.phase === 'warning') {
         // Sacode lá em cima, solta poeira e a sombra cresce no chão onde vai cair.
         ob.body.position.x = Math.sin(ob.t * SHAKE_RATE) * SHAKE;
         ob.shadow.scale.setScalar(ob.shadow.userData.radius * (0.2 + 0.8 * Math.min(1, ob.t / kind.warning)));
@@ -250,16 +366,7 @@ export function createObstacles({ scene, race, car, isAuthority, onSound, onPlay
         const k = Math.min(1, ob.t / FALL_TIME);
         ob.body.position.y = kind.height * (1 - k * k);
         ob.body.rotation.y += dt * 4;
-        if (k >= 1) {
-          ob.phase = 'solid';
-          ob.solid = true;
-          // Quem já está embaixo quando ela pousa não bate: a rocha só vale para quem a vê no chão.
-          ob.spared = new Set(race.field.filter(racer => touches(racer, ob)));
-          ob.body.position.y = 0;
-          ob.group.remove(ob.shadow);
-          ob.group.getWorldPosition(position);
-          onSound('crash', position.x, position.z, 0.5);
-        }
+        if (k >= 1) landDrop(ob);
       }
     } else if (ob.motion === 'topple') {
       if (ob.phase === 'idle' && approaching(ob.dist, kind.range)) { ob.phase = 'warning'; ob.t = 0; }
@@ -339,7 +446,8 @@ export function createObstacles({ scene, race, car, isAuthority, onSound, onPlay
       if (ob.solid) {
         if (ob.spared) { for (const racer of ob.spared) if (!touches(racer, ob)) ob.spared.delete(racer); }
         const hitter = race.field.find(racer => !ob.spared?.has(racer) && !racer.remote && racer.dead <= 0 && !racer.airborne && !(racer.isPlayer && (car.wrecked > 0 || car.overturned || car.airborne)) && touches(racer, ob));
-        if (hitter) { crash(hitter, ob); continue; }
+        if (hitter && ob.type.solid) bump(hitter, ob);
+        else if (hitter) { crash(hitter, ob); continue; }
       }
       // Pedra caída, árvore tombada: saem quando todos passaram, ou depois de um tempo longe de todo mundo.
       // As obras (static) ficam até alguém bater.

@@ -21,13 +21,13 @@ export const TRAP_TYPES = {
   dynamite: { id: 'dynamite', category: 'attack', label: 'DINAMITE', caughtText: 'NA DINAMITE', price: 75, maxCharges: 4, summary: 'DANO EM AREA E JOGA O CARRO PARA TRAS', charges: 2, halfLength: 1.0, halfWidth: 1.3, life: 90, radius: 8, damage: 50 },
   smoke: { id: 'smoke', category: 'control', label: 'FUMACA', caughtText: 'NA FUMACA', price: 50, maxCharges: 3, summary: 'ESCONDE A PISTA', charges: 1, halfLength: 8, halfWidth: 6.5, life: 9, effect: 'smoke', duration: 3 },
   extinguisher: { id: 'extinguisher', category: 'defense', label: 'EXTINTOR', price: 75, maxCharges: 3, summary: 'RECUPERA 20% DA VIDA', charges: 1, powerup: true },
-  shield: { id: 'shield', category: 'defense', label: 'ESCUDO', price: 130, maxCharges: 2, summary: 'ABSORVE 80% DA VIDA POR 8 S', charges: 1, powerup: true },
-  emp: { id: 'emp', category: 'defense', label: 'PULSO EMP', price: 115, maxCharges: 3, summary: 'SEM NITRO, TIRO E ITENS POR 8 S, A 80 M', charges: 1, powerup: true },
+  shield: { id: 'shield', category: 'defense', label: 'ESCUDO', price: 90, maxCharges: 2, summary: 'ABSORVE 80% DA VIDA POR 8 S', charges: 1, powerup: true },
+  emp: { id: 'emp', category: 'defense', label: 'PULSO EMP', price: 80, maxCharges: 3, summary: 'SEM NITRO, TIRO E ITENS POR 8 S, A 80 M', charges: 1, powerup: true },
   mine: { id: 'mine', category: 'attack', label: 'MINA TELEGUIADA', price: 135, maxCharges: 3, summary: 'PERSEGUE O CARRO A FRENTE, GRUDA E EXPLODE', charges: 1, powerup: true },
-  net: { id: 'net', category: 'control', label: 'LANCA-REDES', price: 95, maxCharges: 3, summary: 'PERSEGUE O CARRO NA MIRA ATE 60 M E TRAVA A DIRECAO DELE POR 4 S', charges: 1, powerup: true },
+  net: { id: 'net', category: 'control', label: 'LANCA-REDES', price: 95, maxCharges: 3, summary: 'PERSEGUE O CARRO NA MIRA ATE 60 M E TRAVA A DIRECAO DELE POR 2,8 S', charges: 1, powerup: true },
   barrier: { id: 'barrier', category: 'control', label: 'BARREIRA INFLAVEL', caughtText: 'NA BARREIRA', price: 60, maxCharges: 4, summary: 'FECHA UMA FAIXA. QUEM BATE PERDE MUITA VELOCIDADE. O TIRO ESTOURA', charges: 2, halfWidth: 1.1, barrier: true },
   cloak: { id: 'cloak', category: 'defense', label: 'CAMUFLAGEM', price: 120, maxCharges: 2, summary: 'O CARRO SOME POR 6 S: NINGUEM TRAVA A MIRA EM VOCE', charges: 1, powerup: true },
-  harpoon: { id: 'harpoon', category: 'attack', label: 'ARPAO', price: 85, maxCharges: 3, summary: 'DANO BAIXO. PERSEGUE O CARRO NA MIRA ATE 60 M E PRENDE POR 8 S. SO O EMP SOLTA. OUTROS CARROS BATEM NO CABO', charges: 1, powerup: true },
+  harpoon: { id: 'harpoon', category: 'attack', label: 'ARPAO', price: 60, maxCharges: 3, summary: 'DANO BAIXO. PERSEGUE O CARRO NA MIRA ATE 60 M E PRENDE POR 8 S. SO O EMP SOLTA. OUTROS CARROS BATEM NO CABO', charges: 1, powerup: true },
 };
 
 // Chão queimando onde a flecha incendiária caiu. Não se compra: só a besta cria. Quem passa por cima pega fogo
@@ -42,7 +42,7 @@ export const EMP_RADIUS = 80, EMP_TIME = 8;
 export const MINE_RANGE = 70, MINE_CONE = 0.8, MINE_SPEED = 45, MINE_FUSE = 3, MINE_DAMAGE = 0.3, MINE_FLIGHT_MAX = 3;
 
 // Lança-redes: alcance para travar o alvo, cone de mira dos bots (cosseno; a mira do jogador é a linha de visada, ver aim.js), velocidade da rede, tempo máximo de voo e tempo com a direção travada.
-export const NET_RANGE = 60, NET_CONE = 0.8, NET_SPEED = 70, NET_FLIGHT_MAX = 2, NET_TIME = 4;
+export const NET_RANGE = 60, NET_CONE = 0.8, NET_SPEED = 70, NET_FLIGHT_MAX = 2, NET_TIME = 2.8;
 
 // Camuflagem: segundos para sumir (da frente para trás), invisível e para reaparecer (game/cloak.js).
 export const CLOAK_FADE = 0.8, CLOAK_TIME = 6, CLOAK_REVEAL = 0.5;

@@ -140,7 +140,8 @@ function addRoad(group, biome, groundMaterial) {
 
   const roadY = k => py[k], kerbY = k => py[k] + 0.005, groundY = (k, x, z) => track.heightAt(x, z);
   const isGap = k => track.gap[k] === 1 || track.bridge[k] > 0 || track.ownFloor[k] === 1, overChasm = k => track.drop[k] > 0 || track.bed[k] > 0 || track.lift[k] > 0;   // a rampa é de pedra e a ponte, de gelo (desenhadas em epicVisuals): sem estrada comum nem barranco
-  group.add(new THREE.Mesh(stripGeometry(-half, half, 10, roadY, roadY, isGap), roadMaterial));
+  group.add(new THREE.Mesh(stripGeometry(-half, half, 10, roadY, roadY, k => isGap(k) || track.split[k] > 0), roadMaterial));
+  if (track.splits.length) addSplitLanes(group, roadMaterial, biome);
   if (track.valley) {                                // vale: sem zebra nem acostamento, a terra sobe direto da estrada
     for (const side of [-1, 1]) group.add(new THREE.Mesh(valleyGeometry(side), groundMaterial));
     return;
@@ -159,6 +160,54 @@ function addRoad(group, biome, groundMaterial) {
   const cliffOn = side => k => overChasm(k) || (track.cliff[k] > 0 && track.cliffSide[k] === side);
   group.add(new THREE.Mesh(stripGeometry(-slopeFrom - SHOULDER_WIDTH, -slopeFrom, 3, groundY, roadY, cliffOn(-1)), groundMaterial));
   group.add(new THREE.Mesh(stripGeometry(slopeFrom, slopeFrom + SHOULDER_WIDTH, 3, roadY, groundY, cliffOn(1)), groundMaterial));
+}
+
+// Pista dividida (track.split): as duas faixas de cada lado do buraco, com a borda de dentro acompanhando a
+// abertura dele, faixa clara na quina e uma boia na ponta onde ele começa e termina.
+const SPLIT_EDGE = 0.5, BUOY_IN = 14;
+function addSplitLanes(group, roadMaterial, biome) {
+  const { count, step, split, py } = track, half = TRACK_WIDTH / 2;
+  const edgeMaterial = new THREE.MeshBasicMaterial({ color: biome.epic?.edge ?? '#f0e0a0', side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
+  for (const side of [-1, 1]) {
+    const lane = { pos: [], uv: [], index: [] }, edge = { pos: [], index: [] };
+    let vertex = 0;
+    for (let k = 0; k < count; k++) {
+      const next = (k + 1) % count;
+      if (!(split[k] > 0 || split[next] > 0)) continue;
+      const base = vertex;
+      for (const i of [k, next]) {
+        const t = { x: track.px[i], z: track.pz[i], tx: track.tx[i], tz: track.tz[i] }, inner = split[i], v = i * step / 10;
+        const point = lateral => [t.x - t.tz * side * lateral, py[i], t.z + t.tx * side * lateral];
+        lane.pos.push(...point(inner), ...point(half));
+        lane.uv.push((side * inner + half) / (2 * half), v, (side * half + half) / (2 * half), v);
+        edge.pos.push(...point(inner), ...point(Math.min(half, inner + SPLIT_EDGE)));
+        vertex += 2;
+      }
+      lane.index.push(base, base + 2, base + 1, base + 1, base + 2, base + 3);
+      edge.index.push(base, base + 2, base + 1, base + 1, base + 2, base + 3);
+    }
+    const laneGeometry = new THREE.BufferGeometry();
+    laneGeometry.setAttribute('position', new THREE.Float32BufferAttribute(lane.pos, 3));
+    laneGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(lane.uv, 2));
+    laneGeometry.setIndex(lane.index);
+    group.add(new THREE.Mesh(laneGeometry, roadMaterial));
+    const edgeGeometry = new THREE.BufferGeometry();
+    edgeGeometry.setAttribute('position', new THREE.Float32BufferAttribute(edge.pos, 3));
+    edgeGeometry.setIndex(edge.index);
+    group.add(new THREE.Mesh(edgeGeometry, edgeMaterial));
+  }
+  // Boias listradas nas pontas do buraco: dá para ver de longe onde a pista se divide.
+  const buoy = new THREE.Group();
+  buoy.add(new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.8, 2.2, 8).translate(0, 1.1, 0), new THREE.MeshBasicMaterial({ color: 0xd83a2a })));
+  buoy.add(new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.7, 0.5, 8).translate(0, 1.2, 0), new THREE.MeshBasicMaterial({ color: 0xf0ece0 })));
+  buoy.add(new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.4, 0.3).translate(0, 2.4, 0), new THREE.MeshBasicMaterial({ color: 0xffd060, fog: false })));
+  for (const { start, length } of track.splits) {
+    for (const d of [start + BUOY_IN, start + length - BUOY_IN]) {   // já dentro do buraco: ninguém passa por cima dela
+      const t = trackAt(d), mesh = buoy.clone();
+      mesh.position.set(t.x, t.y - 1.2, t.z);
+      group.add(mesh);
+    }
+  }
 }
 
 // Píer (`track.pier`): o deque de tábuas continua da zebra até além da cerca, com viga de borda, e estacas descem

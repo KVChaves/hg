@@ -53,14 +53,16 @@ function maxCurvature(points, span = 6) {
 }
 
 // Castelo: a partir de um ponto `s` da pista sai uma reta na direção dela (`approach` m: corrida, rampa da ponte
-// levadiça e fosso), entra pelo portão e faz, por dentro, reta `inside[0]`, curva de 90° de raio `radius` para
-// fora da volta, reta `inside[1]`, curva de 90° de volta e reta `inside[2]` até o portão de saída; depois mais
+// levadiça e fosso), entra pelo portão e corre por dentro em retas (`inside`) ligadas por curvas de 90° de raio
+// `radius`: as retas pares seguem em frente e as ímpares vão de lado. Com cinco retas o pátio faz um Π: sai para
+// fora da volta, segue em frente e volta para a linha de entrada, e o portão de saída fica nela; depois mais
 // `exit` m retos (a descida do castelo) e uma curva longa e suave (Hermite) que devolve a pista ao traçado
 // original `rejoin` m adiante. Escolhe o `s` em que essa volta fica mais suave; nulo se nenhum serve.
 // `keepClear`: [de, até] metros do início em que nada pode mudar (largada e grid).
 export function insertCastle(points, step, random, spec) {
-  const { approach, inside: [first, middle, last], radius, exit, rejoin, keepClear: [clearFrom, clearTo], maxRejoinCurve } = spec;
-  const n = points.length, forward = first + radius * 2 + last;
+  const { approach, inside, radius, exit, rejoin, keepClear: [clearFrom, clearTo], maxRejoinCurve } = spec;
+  const n = points.length, turns = inside.length - 1;
+  const forward = inside.filter((_, i) => i % 2 === 0).reduce((sum, length) => sum + length, 0) + radius * turns;   // cada curva avança um raio
   const centre = points.reduce((sum, p) => sum.add(p), new THREE.Vector3()).multiplyScalar(1 / n);
   const options = [];
   for (let s = Math.ceil(clearFrom / step); s < n; s += 2) {
@@ -83,7 +85,7 @@ export function insertCastle(points, step, random, spec) {
   return { points: out, marks, side: path.side, forward };
 }
 
-function castlePath(points, s, b, centre, { approach, inside: [first, middle, last], radius, exit }) {
+function castlePath(points, s, b, centre, { approach, inside, radius, exit }) {
   const start = points[s], h = tangentAt(points, s), normal = new THREE.Vector3(-h.z, 0, h.x);
   const side = Math.sign(normal.dot(start.clone().sub(centre))) || 1, out = normal.multiplyScalar(side);   // vira para fora da volta
   const pts = [], marks = {};
@@ -99,11 +101,19 @@ function castlePath(points, s, b, centre, { approach, inside: [first, middle, la
   };
   const mark = name => { marks[name] = pts.length - 1; };
   straight(h, approach); mark('gate');
-  straight(h, first); mark('turn1');
-  arc(h, out); mark('turn1End');
-  straight(out, middle); mark('turn2');
-  arc(out, h); mark('turn2End');
-  straight(h, last); mark('exitGate');
+  // Reta em frente, curva para o lado, reta de lado, curva de volta... O lado alterna a cada ida: sai e volta.
+  let sideways = out;
+  inside.forEach((length, i) => {
+    const along = i % 2 === 0 ? h : sideways;
+    straight(along, length);
+    if (i === inside.length - 1) return;
+    const turn = i + 1;                              // curvas numeradas de 1 em diante
+    mark(`turn${turn}`);
+    if (i % 2 === 0) arc(h, sideways);
+    else { arc(sideways, h); sideways = sideways.clone().negate(); }
+    mark(`turn${turn}End`);
+  });
+  mark('exitGate');
   straight(h, exit); mark('causewayEnd');
   const end = p.clone(), target = points[b % points.length];
   const rejoinPoints = hermite(end, h, target, tangentAt(points, b % points.length));

@@ -41,7 +41,7 @@ export function stepFlight(state, ground, groundRate, dt) {
 
 // Altura da borda que o carro precisaria alcançar: a outra margem do salto, ou a estrada (ponte, beira do penhasco) onde ele está.
 function edgeHeight(hazard, distance) {
-  return trackAt(hazard.type === 'bridge' || hazard.type === 'ledge' ? distance : hazard.gaps[0][1]).y;   // ponte e penhasco: a própria estrada
+  return trackAt(hazard.type === 'bridge' || hazard.type === 'ledge' || hazard.type === 'split' ? distance : hazard.gaps[0][1]).y;   // ponte e penhasco: a própria estrada
 }
 
 // Já não dá para pousar: está descendo e abaixo da borda. A partir daqui conta o FALL_TIME.

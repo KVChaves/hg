@@ -3,7 +3,7 @@ import { CASTLE_HALF, CASTLE_JUMP } from '../game/mapLayout.js';
 import { deckGeometry, masonryTexture, plankTexture, slabGeometry } from './epicVisuals.js';
 import { enableCulling } from './instancing.js';
 import { pixelTexture } from './textures.js';
-import { track, trackAt, turnAt } from './track.js';
+import { CASTLE_RADIUS, track, trackAt, turnAt } from './track.js';
 
 // O castelo da Estrada do Rei (trecho `castle` de mapLayout.js): ponte levadiça de tábuas meio erguida (a rampa),
 // portaria com o vão baixo por onde o carro voa, pátio estreito de muralhas altas com piso de mármore e tapete,
@@ -164,8 +164,21 @@ export function castleFootprint(layout) {
   return (x, z) => points.some(p => (p.x - x) ** 2 + (p.z - z) ** 2 < reach) || (keep && (keep.x - x) ** 2 + (keep.z - z) ** 2 < (KEEP.half + 10) ** 2);
 }
 
-// A torre de menagem fica ao lado do meio da reta entre as curvas, do lado para onde a pista vai depois.
+// As curvas do pátio ([começo, fim] em metros), na ordem: turn1, turn2... (trackShapes.js marca quantas houver).
+const turnsOf = castle => {
+  const turns = [];
+  for (let k = 1; castle[`turn${k}`] !== undefined; k++) turns.push([castle[`turn${k}`], castle[`turn${k}End`]]);
+  return turns;
+};
+
+// A torre de menagem fica no meio do pátio: com o pátio em Π, entre a linha de entrada e a reta do fundo; com só
+// duas curvas, ao lado da reta entre elas, do lado para onde a pista vai depois.
 function keepSpot({ castle }) {
+  const turns = turnsOf(castle);
+  if (turns.length >= 4) {
+    const back = at((turns[1][1] + turns[2][0]) / 2, 0), entry = at(turns[0][0], 0), leave = at(turns[3][1], 0);
+    return back.clone().add(entry.add(leave).multiplyScalar(0.5)).multiplyScalar(0.5);
+  }
   const middle = (castle.turn1End + castle.turn2) / 2, turn = Math.sign(turnAt((castle.turn2 + castle.turn2End) / 2)) || 1;
   return at(middle, turn * (INNER + WALL_THICK + KEEP.half + 4));
 }
@@ -178,7 +191,7 @@ export function buildCastle(group, layout, biome, onUpdate) {
   const end = section.start + section.length, floorY = trackAt(gate.at).y;
   const groundY = floorY - track.lift[Math.floor(gate.at / track.step) % track.count];   // chão de fora, sem o que a rampa ergueu
   const mats = {
-    stone: new THREE.MeshBasicMaterial({ map: masonryTexture(look.stone) }),
+    stone: new THREE.MeshBasicMaterial({ map: masonryTexture(look.stone), side: THREE.DoubleSide }),   // as muralhas se veem de dentro do pátio e de fora
     base: new THREE.MeshBasicMaterial({ map: masonryTexture(look.base ?? look.stone), side: THREE.DoubleSide }),
     roof: basic(look.roof), iron: basic(0x2a2a30), wood: basic(0x5a3a20), chain: basic(0x3a3a40),
     flag: new THREE.MeshBasicMaterial({ color: look.flag, side: THREE.DoubleSide }),
@@ -186,7 +199,7 @@ export function buildCastle(group, layout, biome, onUpdate) {
   // Caixas e torres têm uv de 0 a 1 por face: a pedra delas repete mais, para não ficar gigante.
   const blockMap = masonryTexture(look.stone);
   blockMap.repeat.set(3, 3);
-  mats.block = new THREE.MeshBasicMaterial({ map: blockMap });
+  mats.block = new THREE.MeshBasicMaterial({ map: blockMap, side: THREE.DoubleSide });
   const merlons = [];
 
   // Ponte levadiça: tábuas sobre vigas, com correntes do bico até o alto da portaria.
@@ -224,9 +237,9 @@ export function buildCastle(group, layout, biome, onUpdate) {
   for (const [distance, offsetAlong] of [[gate.at, 1.5], [exitFrom, gate.depth - 1.5]]) {
     for (const sign of [-1, 1]) banners.push(addTower(group, mats, at(distance + offsetAlong, sign * (GATEHOUSE_HALF + 2)), floorY, groundY));
   }
-  // Torres no canto de fora das duas curvas e uma no de dentro.
-  const diagonal = 16 * (Math.SQRT2 - 1);
-  for (const [from, to] of [[castle.turn1, castle.turn1End], [castle.turn2, castle.turn2End]]) {
+  // Torres no canto de fora de cada curva e uma menor no de dentro.
+  const diagonal = CASTLE_RADIUS * (Math.SQRT2 - 1);
+  for (const [from, to] of turnsOf(castle)) {
     const middle = (from + to) / 2, turn = Math.sign(turnAt(middle)) || 1;
     banners.push(addTower(group, mats, at(middle, -turn * (outer + diagonal + 1.5)), floorY, groundY));
     banners.push(addTower(group, mats, at(middle, turn * (INNER + 4.5)), floorY, groundY, { radius: 2.6, above: WALL_HIGH + 5 }));

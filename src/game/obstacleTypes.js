@@ -1,6 +1,7 @@
 // Obstáculos da pista. Quem decide onde e como cada um aparece (cai, tomba, atravessa, fica parado) são os pontos
 // de perigo de hazardKinds.js. `keep` é a fração da velocidade que sobra na batida e `spin` o giro causado; `damage` é a fração da vida padrão do carro; `hp` é quanto de tiro ele aguenta
-// (o revólver dá 34 por tiro); `radius`: a bola de neve rola enquanto atravessa.
+// (o revólver dá 34 por tiro); `radius`: a bola de neve rola enquanto atravessa; `solid`: não quebra (nem batendo
+// nem a tiro), quem bate é empurrado para fora (obstacles.js, bump).
 
 export const OBSTACLE_TYPES = {
   stalactite: { id: 'stalactite', keep: 0.45, spin: 0, hitText: 'NA ESTALACTITE', halfLength: 1.4, halfWidth: 1.3, damage: 0.25, hp: 70, debris: [0x9ad8f0, 0xd8f4ff] },
@@ -27,11 +28,12 @@ export const OBSTACLE_TYPES = {
   crystal: { id: 'crystal', keep: 0.5, spin: 0.9, hitText: 'NOS CRISTAIS', halfLength: 1.0, halfWidth: 1.4, damage: 0.2, hp: 70, debris: [0x40e0f0, 0xa0f4ff, 0x2a90c0] },
   cannonball: { id: 'cannonball', keep: 0.25, spin: 1.6, hitText: 'NA BALA DE CANHAO', halfLength: 1.1, halfWidth: 1.1, damage: 0.3, hp: 220, debris: [0x2a2a2e, 0x4a4a50, 0x8a8478] },
   rollingBarrel: { id: 'rollingBarrel', keep: 0.6, spin: 0.9, hitText: 'NO BARRIL', halfLength: 1.0, halfWidth: 1.1, damage: 0.15, hp: 45, radius: 0.8, debris: [0x7a4a24, 0x5a3a20, 0x3a3a3a] },
+  boar: { id: 'boar', keep: 0.55, spin: 1.0, hitText: 'NO JAVALI', halfLength: 1.2, halfWidth: 0.8, damage: 0.18, hp: 70, debris: [0x4a3a2e, 0x2a201a] },
   deer: { id: 'deer', keep: 0.6, spin: 0.8, hitText: 'NO CERVO', halfLength: 1.5, halfWidth: 0.9, damage: 0.15, hp: 60, debris: [0x9a6a3a, 0xe8dcc8, 0x3a2a1a] },
-  carriage: { id: 'carriage', keep: 0.3, spin: 1.4, hitText: 'NA CARRUAGEM', halfLength: 3.6, halfWidth: 1.4, damage: 0.25, hp: 140, debris: [0x7a4a24, 0xc8a040, 0x5a3a20, 0x8a2a2a] },
-  // Barreira inflável (item do bagageiro, game/traps.js): não vem de ponto de perigo. Larga como um carro; `life` são
+  carriage: { id: 'carriage', solid: true, keep: 0.3, spin: 1.4, hitText: 'NA CARRUAGEM', halfLength: 3.6, halfWidth: 1.4, damage: 0.25, hp: 140, debris: [0x7a4a24, 0xc8a040, 0x5a3a20, 0x8a2a2a] },
+  // Barreira inflável (item do bagageiro, game/traps.js): não vem de ponto de perigo. Larga como um carro; só bloqueia depois de cheia. `life` são
   // os segundos até murchar sozinha e `inflate` o tempo que leva para encher depois de cair.
-  barrier: { id: 'barrier', keep: 0.3, spin: 0.6, hitText: 'NA BARREIRA', halfLength: 0.6, halfWidth: 1.1, damage: 0.04, hp: 90, life: 25, inflate: 0.35, debris: [0xd02820, 0xf0ece4, 0x7a1810] },
+  barrier: { id: 'barrier', keep: 0.3, spin: 0.6, hitText: 'NA BARREIRA', halfLength: 0.6, halfWidth: 1.1, damage: 0.04, hp: 90, life: 25, inflate: 1, debris: [0xd02820, 0xf0ece4, 0x7a1810] },
   crates: { id: 'crates', keep: 0.55, spin: 0.7, hitText: 'NAS CAIXAS', halfLength: 1.3, halfWidth: 1.6, damage: 0.18, hp: 60, debris: [0x8a6030, 0x9a7038] },
 };
 

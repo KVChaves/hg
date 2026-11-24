@@ -118,11 +118,13 @@ function riverProfile({ ramp, lip, gap, flat, descent }) {
 }
 
 // A inclinação calculada por diferença entre amostras arredonda o bico e a beira do vão: aqui ela é a exata.
+// O fio (EDGE_NUDGE) empurra as amostras que caem em cima de uma divisa para o trecho de depois (o pátio, não o vão).
+const EDGE_NUDGE = 1e-6;
 function fixRiverSlopes({ start, length, river }) {
   const { count, step, py, lift, slope } = track, { slopeAt } = riverProfile(river);
   const base = i => py[i] - lift[i];
   forEachSample(start, length, (i, d) => {
-    slope[i] = (base((i + 1) % count) - base((i - 1 + count) % count)) / (2 * step) + slopeAt(d);
+    slope[i] = (base((i + 1) % count) - base((i - 1 + count) % count)) / (2 * step) + slopeAt(d + EDGE_NUDGE);
   });
 }
 
@@ -191,7 +193,8 @@ function placeCastle(plan, placer, layout) {
   const { heightAt } = riverProfile(river), span = [start + ramp, start + ramp + gap], bankN = Math.round(bank / step);
   for (let k = 0; k * step <= length; k++) {
     const i = ((firstIndex + k) % count + count) % count;
-    lift[i] = heightAt(k * step);
+    // A amostra que abre o pátio cai bem em cima do fim do fosso: um fio a mais garante que ela é chão, não a linha do bico.
+    lift[i] = heightAt(k * step + (k >= rampN + gapN ? EDGE_NUDGE : 0));
     py[i] += lift[i];
     epic[i] = flight[i] = 1;
     if (k >= rampN - bankN && k < rampN + gapN + bankN) bed[i] = bedDepth;
@@ -210,21 +213,46 @@ function placeCastle(plan, placer, layout) {
 }
 
 // `icy: false` faz uma ponte seca (de tábuas, no cânion): track.bridge vale 2 nela, e o carro não escorrega.
-// `style`: como epicVisuals.js desenha ('ice' ou 'wood').
+// `style`: como epicVisuals.js desenha ('ice', 'wood' ou 'ship'). `half`: meia largura do tabuleiro (padrão: a
+// estrada toda). `rise` e `ramp`: o tabuleiro fica `rise` metros acima da estrada, com rampas de `ramp` metros nas
+// duas pontas — o navio atravessado no Porto dos Piratas, em que se sobe pela prancha, corre no convés e desce.
+// Nas rampas e no convés o carro pode sair do chão (voo livre), e quem sai pela beirada cai no mar.
 function placeBridge(plan, placer, layout) {
   const { length } = plan, start = placer.seek(EPIC_MARGIN, length + EPIC_MARGIN, EPIC_MAX_CURVE);
   if (start === null) return;
   placer.reserve(start - EPIC_MARGIN, start + length + EPIC_MARGIN);
-  const below = plan.below ?? 16, icy = plan.icy ?? true;
-  forEachSample(start, length, i => {
+  const below = plan.below ?? 16, icy = plan.icy ?? true, half = plan.half ?? BRIDGE_HALF, rise = plan.rise ?? 0, ramp = plan.ramp ?? 0;
+  forEachSample(start, length, (i, d) => {
     track.bridge[i] = icy ? 1 : 2;                  // sem voo livre: na ponte o carro só sai do chão pela beirada
+    track.bridgeHalf[i] = half;
     track.epic[i] = 1;
     track.bed[i] = Math.max(BRIDGE_DEPTH, below + 6);
-    track.wall[i] = BRIDGE_REACH;
+    track.wall[i] = half + BRIDGE_REACH - BRIDGE_HALF;
+    if (rise > 0) {
+      track.lift[i] = rise * easing(Math.min(1, d / ramp, (length - d) / ramp));
+      track.py[i] += track.lift[i];
+      track.flight[i] = 1;
+    }
   });
-  const section = { type: 'bridge', start, length, gaps: [[start, start + length]], respawn: start - RESPAWN_BACK, water: 0, below, fallLabel: plan.fallLabel ?? 'CAIU', style: plan.style ?? 'ice' };
+  const section = { type: 'bridge', start, length, gaps: [[start, start + length]], respawn: start - RESPAWN_BACK, water: 0, below, fallLabel: plan.fallLabel ?? 'CAIU', style: plan.style ?? 'ice', half, rise, ramp };
   layout.epics.push(section);
   track.bridges.push(section);
+}
+
+// Pista dividida (`split`: { count, length, hole, fallLabel }): no meio do trecho a pista abre um buraco para o mar
+// e sobram duas faixas, uma de cada lado. O buraco começa numa ponta fina e alarga até `hole` metros de meia
+// largura (dá tempo de escolher o lado) e fecha do mesmo jeito no fim; quem cai nele vai para a água.
+const SPLIT_TAPER = 30;
+function placeSplits(plan, placer, layout) {
+  for (let n = 0; n < (plan.count ?? 1); n++) {
+    const { length, hole } = plan, start = placer.seek(EPIC_MARGIN, length + EPIC_MARGIN, 1 / 90);
+    if (start === null) return;
+    placer.reserve(start - EPIC_MARGIN, start + length + EPIC_MARGIN);
+    forEachSample(start, length, (i, d) => { track.split[i] = hole * easing(Math.min(1, d / SPLIT_TAPER, (length - d) / SPLIT_TAPER)); });
+    const section = { type: 'split', start, length, hole, gaps: [[start, start + length]], respawn: start - RESPAWN_BACK, water: 0, below: plan.below ?? 1.8, fallLabel: plan.fallLabel ?? 'CAIU' };
+    track.splits.push(section);
+    layout.splits.push(section);
+  }
 }
 
 // Beira de penhasco (`ledges`: { count, length: [min, max], depth, fallLabel }): trechos em que um lado da pista não
@@ -360,7 +388,7 @@ function placeBoosts(plan, placer, layout) {
 // logo depois da entrada de um túnel fechado (sem ser o escuro). `side`: de que lado da pista vem o perigo.
 // `zone` (hazardKinds.js): só dentro desse trecho da pista (track.zones), com curva ou não. `travel`: o obstáculo anda
 // pela pista; o ponto reserva a reta toda por onde ele vai, para não entrar em salto, túnel ou castelo.
-const HAZARD_MARGIN = 45, HAZARD_MAX_CURVE = 1 / 70, TUNNEL_HAZARD_IN = 10, TRAVEL_MAX_CURVE = 1 / 30, BEFORE_CASTLE_STOP = 50;
+const HAZARD_MARGIN = 45, HAZARD_MAX_CURVE = 1 / 70, TUNNEL_HAZARD_IN = 10, TRAVEL_MAX_CURVE = 1 / 30, BEFORE_CASTLE_STOP = 50, TRAVEL_MARGIN = 20, ZONE_MARGIN = 30;   // bichos na mata: mais juntos que os outros perigos   // carruagens: folga curta, cabem mais
 function placeHazards(plans, placer, layout) {
   const random = placer.random;
   for (const { kind, count, onLedges } of plans) {
@@ -376,8 +404,8 @@ function placeHazards(plans, placer, layout) {
         if (n < tunnels.length) dist = tunnels[n].start + TUNNEL_HAZARD_IN;
       } else if (type.zone) {
         const zone = track.zones[type.zone];
-        dist = zone ? placer.seek(HAZARD_MARGIN, HAZARD_MARGIN, Infinity, zone) : null;
-        if (dist !== null) placer.reserve(dist - HAZARD_MARGIN, dist + HAZARD_MARGIN);
+        dist = zone ? placer.seek(ZONE_MARGIN, ZONE_MARGIN, Infinity, zone) : null;
+        if (dist !== null) placer.reserve(dist - ZONE_MARGIN, dist + ZONE_MARGIN);
       } else if (type.travel) {
         // A primeira vai pela estrada que chega ao castelo e para na beira pouco antes da ponte levadiça: quem vem
         // embalado para o salto tem de passar por ela. Fica nesse lugar fixo, sem sorteio (a reta da ponte já está
@@ -388,9 +416,9 @@ function placeHazards(plans, placer, layout) {
           dist = before;
           placer.reserve(dist - HAZARD_MARGIN, castle.start);
         } else {
-          dist = placer.seek(HAZARD_MARGIN, type.travel + HAZARD_MARGIN, TRAVEL_MAX_CURVE);
+          dist = placer.seek(TRAVEL_MARGIN, type.travel + TRAVEL_MARGIN, TRAVEL_MAX_CURVE);
         }
-        if (dist !== null) placer.reserve(dist - HAZARD_MARGIN, dist + type.travel + HAZARD_MARGIN);
+        if (dist !== null) placer.reserve(dist - TRAVEL_MARGIN, dist + type.travel + TRAVEL_MARGIN);
       } else {
         dist = placer.seek(HAZARD_MARGIN, HAZARD_MARGIN, HAZARD_MAX_CURVE);
         if (dist !== null) placer.reserve(dist - HAZARD_MARGIN, dist + HAZARD_MARGIN);
@@ -457,12 +485,19 @@ function recomputeSlope() {
 
 export function createMapLayout(plan, seed) {
   const random = createRandom(seed + 5), placer = createPlacer(random);
-  const layout = { tunnels: [], epics: [], hazards: [], storms: [], belts: [], gusts: [], boosts: [], ledges: [] };
+  const layout = { tunnels: [], epics: [], hazards: [], storms: [], belts: [], gusts: [], boosts: [], ledges: [], splits: [] };
   if (plan.castle) placeCastle(plan.castle, placer, layout);   // o castelo já tem lugar marcado no traçado: vem antes de tudo
+  // `narrow` ([{ zone, half }]): trecho marcado no traçado (track.zones) em que a pista fica mais estreita, com o
+  // limite a `half` metros do centro (o bioma desenha o que fecha a beira: mata, moitas).
+  for (const { zone, half } of plan.narrow ?? []) {
+    const range = track.zones[zone];
+    if (range) narrowWalls(placer, range.start, range.length, half);
+  }
   if (plan.twist) placeTwist(placer, layout);        // os trechos épicos pedem retas longas: escolhem primeiro
   if (!plan.castle) placeRiverJump(plan.jump ?? {}, placer, layout);   // no castelo, a ponte levadiça é o salto
   if (plan.ledges) placeLedges(plan.ledges, placer, layout);   // antes das pontes: a beira do penhasco pede um lado livre de outros braços
   for (const bridge of [plan.bridge ?? []].flat()) placeBridge(bridge, placer, layout);   // uma ponte ou uma lista delas
+  if (plan.split) placeSplits(plan.split, placer, layout);
   if (plan.dark) placeDarkTunnel(plan.dark, placer, layout);
   if (plan.storm) placeStorm(plan.storm, placer, layout);
   if (plan.belts) placeBelts(plan.belts, placer, layout);
@@ -474,7 +509,7 @@ export function createMapLayout(plan, seed) {
   recomputeSlope();
   for (const jump of track.jumps) fixRiverSlopes(jump);
   // A água fica abaixo do ponto mais baixo do chão no trecho (sem contar o que a rampa ergueu); o leito, abaixo dela.
-  for (const section of [...track.jumps, ...track.bridges]) {
+  for (const section of [...track.jumps, ...track.bridges, ...track.splits]) {
     let lowest = Infinity, deepest = Infinity;
     forEachSample(section.start, section.length, i => {
       lowest = Math.min(lowest, track.py[i] - track.lift[i]);

@@ -4,6 +4,21 @@
 
 export const PATCH_NOTES = [
   {
+    title: 'ESTATÍSTICAS',
+    items: [
+      'Nas estatísticas, o número fica verde quando aquele jogador é o melhor de todos naquele item (nas mortes, quedas em armadilha e lideranças perdidas, o melhor é o menor).',
+      'Nova estatística no COMBATE: maior sequência de abates numa corrida, sem morrer no meio. Conta a partir das próximas corridas rankeadas.',
+    ],
+  },
+  {
+    title: 'CORREÇÕES',
+    items: [
+      'Em alguns pontos da Floresta, Praia, Pântano Elétrico, Estrada do Rei e Porto dos Piratas o cenário inteiro sumia e só sobrava a mão. Corrigido.',
+      'As muralhas do castelo da Estrada do Rei não deixam mais ver através delas por dentro do pátio.',
+      'Em algumas pistas da Estrada do Rei a ponte levadiça era impossível: o começo do pátio virava uma parede e todo mundo caía no fosso. Corrigido.',
+    ],
+  },
+  {
     title: 'RANKING: ESTATÍSTICAS',
     items: [
       'Nova aba ESTATÍSTICAS no lugar do RANKING ANTIGO, com duas páginas: GERAL e COMBATE (botões à direita do nome do jogador).',
@@ -22,7 +37,7 @@ export const PATCH_NOTES = [
     items: [
       'CAMUFLAGEM (defesa): o carro some da frente para trás em 0,8 s e fica invisível por 6 s. Só a lataria some: fogo, tinta, rede, escudo e mina grudada continuam à vista, e o motor continua roncando. A fumaça do dano some junto.',
       'Camuflado, ninguém trava a mira em você: os bots não atiram e mina, rede e arpão não o escolhem como alvo (a mina já em voo perde o rastro). Bala perdida e batida ainda pegam. Destruído, a camuflagem acaba.',
-      'BARREIRA INFLÁVEL (controle): cai atrás do carro, com a largura de um carro, e enche na hora. Quem bate estoura a barreira e perde muita velocidade. Aguenta uns 3 tiros de revólver e murcha sozinha depois de 25 s.',
+      'BARREIRA INFLÁVEL (controle): cai atrás do carro, com a largura de um carro, e enche em 1 s (só bloqueia depois de cheia). Quem bate estoura a barreira e perde muita velocidade. Aguenta uns 3 tiros de revólver e murcha sozinha depois de 25 s.',
       'Dino agora leva a barreira no lugar da fumaça, e Ruiva a camuflagem no lugar do escudo.',
     ],
   },
@@ -30,9 +45,10 @@ export const PATCH_NOTES = [
     title: 'MAPA NOVO: PORTO DOS PIRATAS',
     items: [
       'A pista inteira é um píer de tábuas sobre palafitas, com mar dos dois lados, ao entardecer. Navios piratas ficam atracados colados no píer e ancorados pelo mar, com botes, gaivotas e faróis em ilhotas de pedra.',
-      'Os navios atracados de lado para a pista atiram com os canhões: a sombra da bala cresce no chão onde ela vai cair. Saia de cima.',
-      'Barris escapam dos atracadouros de carga e atravessam a pista rolando.',
-      'Duas pontes de corda sem mureta: quem sai pela beirada cai no mar. Num trecho a maré alta alaga o píer e as tábuas molhadas escorregam.',
+      'Duas travessias por cima de navios: uma prancha sobe até o convés, que é bem mais estreito que a pista e não tem mureta, e outra prancha desce. Quem sai pela beirada cai no mar.',
+      'Pista dividida: num trecho o meio do píer abre para o mar e sobram duas faixas, uma de cada lado. A boia vermelha marca a ponta; quem segue pelo meio cai.',
+      'Navios atracados bem perto da pista atiram com os canhões: uma mira vermelha pisca no chão onde a bala vai cair, o canhão estoura no costado e a bala chega em arco. Saia de cima da mira.',
+      'Barris escapam dos atracadouros de carga e atravessam a pista rolando. Uma ponte de corda sem mureta e a maré alta, que alaga o píer e deixa as tábuas escorregando.',
     ],
   },
   {
@@ -46,10 +62,10 @@ export const PATCH_NOTES = [
     title: 'MAPA NOVO: ESTRADA DO REI',
     items: [
       'Estrada de pedra entre campos de grama, aldeias com telhado de palha, moinhos e cercas de madeira.',
-      'Mata fechada com curvas bem onduladas, onde cervos atravessam a pista.',
-      'Carruagens andam devagar pela estrada. Bater nelas segura bastante o carro.',
+      'Mata fechada longa (uns 800 m) de curvas bem onduladas e pista estreita, cercada de moitas e árvores coladas na estrada. Cervos e javalis (bem mais rápidos) atravessam a pista, e há bichos pastando entre as árvores.',
+      'Carruagens andam devagar pela estrada (umas 7 ou 8 por pista, uma delas parada logo antes da ponte). Elas não quebram: quem bate quica e perde velocidade, e tiro não as derruba.',
       'Ponte levadiça: ela é a rampa sobre o fosso e joga o carro pelo portão do castelo. O portão é baixo: quem sai do bico entre ~75 e ~105 km/h passa. Mais rápido que isso o carro bate na muralha e cai no fosso, então tire o pé antes da ponte. Devagar demais, não alcança a outra margem.',
-      'Dentro do castelo a pista é um carro mais estreita, com piso de mármore e tapete do rei, reta e com duas curvas de 90°.',
+      'Dentro do castelo a pista é um carro mais estreita, com piso de mármore e tapete do rei, e faz quatro curvas fechadas de 90° em volta do pátio da torre de menagem.',
     ],
   },
   {

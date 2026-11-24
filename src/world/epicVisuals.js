@@ -317,6 +317,63 @@ function addWoodBridge(group, { start, length, water }) {
   }
 }
 
+// Navio atravessado (Porto dos Piratas): prancha de tábuas sobe do píer até o convés, o convés do navio é a pista
+// (mais estreito que ela, sem mureta: só um friso dourado marca a beira) e outra prancha desce do outro lado. Por
+// baixo do convés, o casco escuro com portinholas até dentro d'água; por baixo das pranchas, cavaletes.
+const SHIP_HULL = 0x4a2e18, SHIP_TRIM = 0xc8a040, GANGWAY_POST_EVERY = 5;
+function addShipCrossing(group, { start, length, half, ramp, water }) {
+  const deckFrom = start + ramp, deckTo = start + length - ramp, map = plankTexture();
+  group.add(new THREE.Mesh(deckGeometry(start, start + length, half), new THREE.MeshBasicMaterial({ map, side: THREE.DoubleSide })));
+  group.add(new THREE.Mesh(slabGeometry(start, start + length, -half, half, t => t.y - 0.02, t => t.y - 0.5), new THREE.MeshBasicMaterial({ color: 0x3a2414 })));   // espessura das tábuas
+  const hull = new THREE.MeshBasicMaterial({ color: SHIP_HULL }), trim = new THREE.MeshBasicMaterial({ color: SHIP_TRIM });
+  group.add(new THREE.Mesh(slabGeometry(deckFrom - 4, deckTo + 4, -half - 0.4, half + 0.4, t => t.y - 0.5, () => water - 2.5), hull));
+  for (const side of [-1, 1]) {
+    const [a, b] = side < 0 ? [-half - 0.45, -half + 0.3] : [half - 0.3, half + 0.45];
+    group.add(new THREE.Mesh(slabGeometry(deckFrom - 4, deckTo + 4, a, b, t => t.y + 0.22, t => t.y - 0.9), trim));   // friso dourado na beirada
+  }
+  const yawAt = t => Math.atan2(-t.tx, -t.tz), black = new THREE.MeshBasicMaterial({ color: 0x141414 });
+  // Proa em ponta na frente e popa arredondada atrás, por baixo das pranchas: de longe ele é um navio, não uma caixa.
+  for (const [distance, ahead] of [[deckTo + 4, 1], [deckFrom - 4, -1]]) {
+    const t = trackAt(distance), top = t.y - 0.6, height = top - (water - 2.5);
+    const end = ahead > 0
+      ? new THREE.ConeGeometry(half + 0.4, 9, 4).rotateX(Math.PI / 2).rotateZ(Math.PI / 4).scale(1, height / (half + 0.4) / 2 * 1.4, 1)
+      : new THREE.CylinderGeometry(half + 0.4, half + 0.4, height, 10, 1, false, 0, Math.PI).rotateY(Math.PI / 2);
+    const mesh = new THREE.Mesh(end, hull);
+    mesh.position.set(t.x + t.tx * ahead * (ahead > 0 ? 4.5 : 0), top - height / 2, t.z + t.tz * ahead * (ahead > 0 ? 4.5 : 0));
+    mesh.rotation.y = yawAt(t) + (ahead > 0 ? Math.PI : 0);
+    group.add(mesh);
+  }
+  for (let d = deckFrom; d <= deckTo; d += 5) {
+    const t = trackAt(d);
+    for (const side of [-1, 1]) {
+      const lateral = side * (half + 0.42), port = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.8, 1), black);
+      port.position.set(t.x - t.tz * lateral, t.y - 1.6, t.z + t.tx * lateral);
+      port.rotation.y = yawAt(t);
+      group.add(port);
+    }
+  }
+  // Mastro curto com a bandeira negra no canto do convés, do lado de fora da beirada.
+  const corner = trackAt(deckFrom + 3), mast = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.28, 12, 6), new THREE.MeshBasicMaterial({ color: 0x3a2410 }));
+  mast.position.set(corner.x - corner.tz * (half + 1), corner.y + 4, corner.z + corner.tx * (half + 1));
+  group.add(mast);
+  const flag = new THREE.Mesh(new THREE.PlaneGeometry(3, 1.9), new THREE.MeshBasicMaterial({ color: 0x141414, side: THREE.DoubleSide }));
+  flag.position.set(mast.position.x, corner.y + 9, mast.position.z);
+  flag.rotation.y = yawAt(corner);
+  group.add(flag);
+  // Cavaletes sob as pranchas, até a água.
+  const post = new THREE.MeshBasicMaterial({ color: 0x3a2a1a });
+  for (const [from, to] of [[start, deckFrom - 2], [deckTo + 2, start + length]]) {
+    for (let d = from + 2; d < to; d += GANGWAY_POST_EVERY) {
+      const t = trackAt(d), height = t.y - water + 2;
+      for (const side of [-1, 1]) {
+        const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.4, height, 0.4), post);
+        mesh.position.set(t.x - t.tz * side * (half - 0.4), water - 2 + height / 2, t.z + t.tx * side * (half - 0.4));
+        group.add(mesh);
+      }
+    }
+  }
+}
+
 // Vulcão sob o vão: cone de rocha saindo do fundo do buraco, cratera com lava (a lava em que o carro cai) e
 // fumaça e brasas subindo da boca.
 // A borda fica 4 m acima do pé da rampa: logo abaixo do bico, então o cone aparece mas não atrapalha o voo.
@@ -403,6 +460,8 @@ export function buildEpicSections(group, layout, biome, onUpdate) {
       addTube(group, section, biome.epic.tube);
     } else if (section.type === 'castle') {
       addRiver(group, section, section.water, biome.epic.abyss, false, onUpdate);   // o fosso; o resto é de castle.js
+    } else if (section.type === 'bridge' && section.style === 'ship') {
+      addShipCrossing(group, section);               // o mar em volta já é do bioma (Porto dos Piratas)
     } else if (section.type === 'bridge') {
       addRiver(group, section, section.water, biome.epic.abyss, false, onUpdate);
       if (section.style === 'wood') addWoodBridge(group, section);

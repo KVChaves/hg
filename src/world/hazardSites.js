@@ -12,7 +12,7 @@ import { pirateShip } from './pirateShip.js';
 // tem perigo e aprende a pista. Os obstáculos em si ficam em game/obstacles.js.
 
 const HALF = TRACK_WIDTH / 2, SIGN_AHEAD = 45;
-const SHIP_FROM_ROAD = 13, SHIP_BELOW_DECK = 2.6;   // navio dos canhões: a borda do casco fica logo depois do píer
+const SHIP_FROM_ROAD = 10, SHIP_BELOW_DECK = 2.6;   // navio dos canhões: o casco quase encosta no píer (os canos ficam a 14,5 m do centro, hazardKinds.cannonFire.arc)
 const solid = (color, extra = {}) => new THREE.MeshBasicMaterial({ color, ...extra });
 
 // Ponto ao lado da pista: `lateral` positivo é à direita de quem corre; `up` é a altura sobre o chão dali.
@@ -160,6 +160,7 @@ const BUILDERS = {
 
   // Travessia de cervos na mata: a mesma trilha de terra e a placa de animais.
   deerCrossing(group, site) { BUILDERS.animalCrossing(group, site); },
+  boarCrossing(group, site) { BUILDERS.animalCrossing(group, site); },
 
   // Guindaste na beira com a carga pendurada sobre a faixa do lado dele.
   crane(group, { dist, side }) {

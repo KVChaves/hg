@@ -4,10 +4,11 @@
 export const KILL_CAUSES = ['shot', 'ram', 'fire', 'splash'];   // o resto conta como 'other'
 
 export function createCombatStats({ weapon, car }) {
-  let stats, baseShots, baseLanded, lastDestroyed, placed, scored;
+  let stats, streak, baseShots, baseLanded, lastDestroyed, placed, scored;
 
   function reset() {
-    stats = { kills: 0, backKills: 0, deaths: 0, victims: {}, killers: {}, causes: {}, trapsPlaced: 0, trapsScored: 0, caught: 0 };
+    stats = { killStreak: 0, kills: 0, backKills: 0, deaths: 0, victims: {}, killers: {}, causes: {}, trapsPlaced: 0, trapsScored: 0, caught: 0 };
+    streak = 0;                                      // abates seguidos sem morrer
     baseShots = weapon.shots;
     baseLanded = weapon.landed;
     lastDestroyed = car.destroyed;
@@ -22,12 +23,13 @@ export function createCombatStats({ weapon, car }) {
     reset,
     // Toda destruição do carro conta como morte, até as sem autor (queda, obstáculo, raio).
     update() {
-      if (car.destroyed > lastDestroyed) stats.deaths += car.destroyed - lastDestroyed;
+      if (car.destroyed > lastDestroyed) { stats.deaths += car.destroyed - lastDestroyed; streak = 0; }
       lastDestroyed = car.destroyed;
     },
     // `behind`: a vítima estava atrás do jogador (na pista) quando foi abatida.
     kill(victim, cause, behind = false) {
       stats.kills++;
+      stats.killStreak = Math.max(stats.killStreak, ++streak);
       if (behind) stats.backKills++;
       if (victim?.name) add(stats.victims, victim.name);
       add(stats.causes, KILL_CAUSES.includes(cause) ? cause : 'other');

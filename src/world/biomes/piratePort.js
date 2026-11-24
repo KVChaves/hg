@@ -20,21 +20,25 @@ const PIER_DECK = EDGE + 1.05 + 2.4, PIER_DEPTH = 9;
 
 export const PIRATE_PORT = {
   id: 'piratePort', name: 'PORTO DOS PIRATAS', music: 'piratePort',
-  challenge: ['CANHOES ATIRAM NA PISTA: SAIA DE CIMA DA SOMBRA', 'PONTES DE CORDA SEM MURETA E MARE ALTA NO CAIS'],
+  challenge: ['CANHOES: SAIA DE CIMA DA MIRA VERMELHA', 'NO CONVES DOS NAVIOS E NA PISTA DIVIDIDA, QUEM SAI CAI NO MAR'],
   sky: 0xe8a070, fog: [26, 260], cabinTint: 0xffd8b0,
   // Píer quase plano serpenteando pelo mar, com curvas longas e algumas fechadas.
   shape: { wiggle: 0.26, targetLength: 2400, relief: 2, hillScale: 220, sharpCurves: 2, harmonics: [[2, 0.8], [3, 0.5], [5, 0.2]], stretch: [1.15, 0.85], pier: { deck: PIER_DECK, depth: PIER_DEPTH } },
   surface: { grip: 0.97, side: 0.92, drag: 0.02, offroad: 1.5 },   // tábuas gastas e úmidas: um pouco menos de aderência
   layout: {
     jump: { fallLabel: 'CAIU NO MAR', below: 1.2 },
-    // Pontes de corda e tábua sobre os canais, sem mureta e baixas sobre o mar.
+    // Travessias por cima de navios atracados de través: prancha sobe 3 m até o convés (10 m de largura, bem mais
+    // estreito que a pista, sem mureta), corre-se no convés e outra prancha desce. E uma ponte de corda sem mureta.
     bridge: [
-      { length: 110, below: 7, icy: false, style: 'wood', fallLabel: 'CAIU NO MAR' },
+      { length: 110, half: 5, rise: 3.2, ramp: 24, below: 1.8, icy: false, style: 'ship', fallLabel: 'CAIU DO NAVIO' },
+      { length: 100, half: 5, rise: 3.2, ramp: 24, below: 1.8, icy: false, style: 'ship', fallLabel: 'CAIU DO NAVIO' },
       { length: 90, below: 7, icy: false, style: 'wood', fallLabel: 'CAIU NO MAR' },
     ],
+    // Pista dividida: o meio do píer abre para o mar (buraco de até 7 m) e sobram duas faixas.
+    split: { count: 1, length: 170, hole: 3.6, fallLabel: 'CAIU NO MAR' },
     // Maré alta: a água do mar cobre o cais num trecho e as tábuas molhadas quase não seguram.
     storm: { length: 230, label: 'MARE ALTA', color: 0x9ac0c8, fog: [14, 110], wind: 10, grip: 0.66, flooded: true, waterColor: '#2a7a9a' },
-    hazards: [{ kind: 'cannonFire', count: 3 }, { kind: 'barrelRoll', count: 2 }],
+    hazards: [{ kind: 'cannonFire', count: 4 }, { kind: 'barrelRoll', count: 2 }],
     tunnels: { count: 0 },
   },
   ground: {
