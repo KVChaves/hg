@@ -1,5 +1,5 @@
 import { TRACK_WIDTH } from '../config.js';
-import { OPEN_WALL, SHARP_RADIUS, createRandom, track, trackAt } from '../world/track.js';
+import { CLIFF_EDGE, OPEN_WALL, SHARP_RADIUS, createRandom, nearestIndex, track, trackAt, wrapDistance } from '../world/track.js';
 import { HAZARD_KINDS } from './hazardKinds.js';
 
 // Decide onde vão os túneis e os trechos épicos. Só depende da pista e da semente: todos veem o mesmo mapa.
@@ -227,6 +227,55 @@ function placeBridge(plan, placer, layout) {
   track.bridges.push(section);
 }
 
+// Beira de penhasco (`ledges`: { count, length: [min, max], depth, fallLabel }): trechos em que um lado da pista não
+// tem muro nem chão. Depois da zebra o terreno despenca `depth` metros até o rio no fundo do cânion; quem sai por ali
+// cai e volta ao começo do trecho, como da ponte. O outro lado continua com o muro. O lado aberto alterna de um
+// trecho para o outro e nunca fica virado para outro braço da pista (o fundo do cânion cortaria o chão dele).
+export const LEDGE_REACH = CLIFF_EDGE + 8;           // do lado aberto o carro pode passar da beira até aqui (já caindo)
+// Outro braço a menos de LEDGE_CLEAR m do lado aberto não pode: entre os dois o fundo do cânion vira um paredão.
+const LEDGE_RAMP = 40, LEDGE_MAX_CURVE = 1 / 55, LEDGE_CLEAR = 100, LEDGE_TRIES = 90, WATER_OVER_FLOOR = 3;
+function sideIsClear(start, length, side) {
+  for (let d = start - LEDGE_RAMP; d <= start + length + LEDGE_RAMP; d += 9) {
+    const t = trackAt(d), tx = t.tx, tz = t.tz, x = t.x, z = t.z;
+    for (let out = CLIFF_EDGE + 20; out <= LEDGE_CLEAR; out += 20) {
+      const i = nearestIndex(x - tz * side * out, z + tx * side * out, -1);
+      if (Math.abs(wrapDistance(i * track.step - d)) > out + 60) return false;   // o ponto mais perto é outro braço
+    }
+  }
+  return true;
+}
+
+function placeLedges(plan, placer, layout) {
+  const random = placer.random;
+  let side = random() < 0.5 ? -1 : 1;
+  for (let n = 0; n < plan.count; n++, side = -side) {
+    const length = plan.length[0] + random() * (plan.length[1] - plan.length[0]);
+    let start = null, open = side;
+    for (let tries = 0; tries < LEDGE_TRIES && start === null; tries++) {
+      const spot = placer.seek(EPIC_MARGIN + LEDGE_RAMP, length + LEDGE_RAMP + EPIC_MARGIN, LEDGE_MAX_CURVE);
+      if (spot === null) break;
+      if (sideIsClear(spot, length, open)) start = spot;
+      else if (tries >= LEDGE_TRIES * 0.8 && sideIsClear(spot, length, -open)) { start = spot; open = -open; }   // não deu do lado da vez: aceita o outro
+    }
+    if (start === null) continue;
+    side = open;
+    placer.reserve(start - LEDGE_RAMP - EPIC_MARGIN, start + length + LEDGE_RAMP + EPIC_MARGIN);
+    // O fundo é plano, `depth` abaixo do ponto mais baixo da estrada no trecho: o rio corre nivelado.
+    let lowest = Infinity;
+    forEachSample(start - LEDGE_RAMP, length + LEDGE_RAMP * 2, i => { lowest = Math.min(lowest, track.py[i]); });
+    const floor = lowest - plan.depth;
+    forEachSample(start - LEDGE_RAMP, length + LEDGE_RAMP * 2, (i, d) => {
+      track.cliff[i] = easing(Math.min(1, d / LEDGE_RAMP, (length + LEDGE_RAMP * 2 - d) / LEDGE_RAMP));
+      track.cliffSide[i] = open;
+      track.cliffFloor[i] = floor;
+      if (d >= LEDGE_RAMP && d <= LEDGE_RAMP + length) track.ledge[i] = open;
+    });
+    const section = { type: 'ledge', start, length, side: open, gaps: [[start, start + length]], respawn: start - LEDGE_RAMP - RESPAWN_BACK, water: floor + WATER_OVER_FLOOR, floor, below: 0, fallLabel: plan.fallLabel ?? 'CAIU NO PENHASCO' };
+    track.ledges.push(section);
+    layout.ledges.push(section);
+  }
+}
+
 // Trecho escuro: um túnel fechado em que só se enxerga o que brilha (`dark.fog`: neblina [perto, longe] lá dentro).
 function placeDarkTunnel(plan, placer, layout) {
   const length = plan.length[0] + placer.random() * (plan.length[1] - plan.length[0]);
@@ -276,6 +325,7 @@ const GUST_MARGIN = 30, GUST_BRIDGE_EXTRA = 25;
 function placeGusts(plan, placer, layout) {
   const random = placer.random, zones = [];
   if (plan.onBridges) for (const bridge of track.bridges) zones.push({ start: bridge.start - GUST_BRIDGE_EXTRA, length: bridge.length + GUST_BRIDGE_EXTRA * 2 });
+  if (plan.onLedges) for (const ledge of track.ledges) zones.push({ start: ledge.start, length: ledge.length });   // o vento empurra para o abismo (ou para o muro)
   for (let n = 0; n < (plan.count ?? 0); n++) {
     const start = placer.seek(GUST_MARGIN, plan.length + GUST_MARGIN, 1 / 60);
     if (start === null) break;
@@ -313,11 +363,16 @@ function placeBoosts(plan, placer, layout) {
 const HAZARD_MARGIN = 45, HAZARD_MAX_CURVE = 1 / 70, TUNNEL_HAZARD_IN = 10, TRAVEL_MAX_CURVE = 1 / 30, BEFORE_CASTLE_STOP = 50;
 function placeHazards(plans, placer, layout) {
   const random = placer.random;
-  for (const { kind, count } of plans) {
+  for (const { kind, count, onLedges } of plans) {
     const tunnels = layout.tunnels.filter(tunnel => !tunnel.open && !tunnel.dark), type = HAZARD_KINDS[kind];
+    // `onLedges`: primeiro um em cada beira de penhasco, vindo do lado fechado (o paredão); os que sobram, onde der.
+    const ledgeSpots = onLedges ? track.ledges.map(ledge => ({ dist: ledge.start + ledge.length / 2, side: -ledge.side })) : [];
     for (let n = 0; n < count; n++) {
-      let dist = null;
-      if (type.atTunnel) {
+      let dist = null, side = null;
+      const ledgeSpot = ledgeSpots.shift();
+      if (ledgeSpot) {
+        ({ dist, side } = ledgeSpot);
+      } else if (type.atTunnel) {
         if (n < tunnels.length) dist = tunnels[n].start + TUNNEL_HAZARD_IN;
       } else if (type.zone) {
         const zone = track.zones[type.zone];
@@ -341,7 +396,7 @@ function placeHazards(plans, placer, layout) {
         if (dist !== null) placer.reserve(dist - HAZARD_MARGIN, dist + HAZARD_MARGIN);
       }
       if (dist === null) continue;
-      const site = { kind, dist, side: random() < 0.5 ? -1 : 1 };
+      const site = { kind, dist, side: side ?? (random() < 0.5 ? -1 : 1) };
       layout.hazards.push(site);
       track.hazards.push(site);
     }
@@ -402,10 +457,11 @@ function recomputeSlope() {
 
 export function createMapLayout(plan, seed) {
   const random = createRandom(seed + 5), placer = createPlacer(random);
-  const layout = { tunnels: [], epics: [], hazards: [], storms: [], belts: [], gusts: [], boosts: [] };
+  const layout = { tunnels: [], epics: [], hazards: [], storms: [], belts: [], gusts: [], boosts: [], ledges: [] };
   if (plan.castle) placeCastle(plan.castle, placer, layout);   // o castelo já tem lugar marcado no traçado: vem antes de tudo
   if (plan.twist) placeTwist(placer, layout);        // os trechos épicos pedem retas longas: escolhem primeiro
   if (!plan.castle) placeRiverJump(plan.jump ?? {}, placer, layout);   // no castelo, a ponte levadiça é o salto
+  if (plan.ledges) placeLedges(plan.ledges, placer, layout);   // antes das pontes: a beira do penhasco pede um lado livre de outros braços
   for (const bridge of [plan.bridge ?? []].flat()) placeBridge(bridge, placer, layout);   // uma ponte ou uma lista delas
   if (plan.dark) placeDarkTunnel(plan.dark, placer, layout);
   if (plan.storm) placeStorm(plan.storm, placer, layout);

@@ -6,9 +6,11 @@ import { acrossRoad, archFrame, EDGE, nearRoad, pickFrom, scatter, solid } from 
 // Desfiladeiro de arenito vermelho cortado por um rio lá embaixo. O desafio é o vento: em ciclos de calmaria,
 // aviso e rajada ele empurra o carro de lado (as birutas e o HUD mostram para onde). Três pontes pênseis de
 // tábua atravessam o cânion sem mureta, e é nelas que a rajada sopra mais: quem não contraesterça cai no rio.
+// Em alguns trechos a estrada corre na beira do penhasco: um lado (que alterna de trecho para trecho) não tem muro,
+// e depois da zebra é o abismo até o rio lá embaixo.
 export const WIND_CANYON = {
   id: 'windCanyon', name: 'DESFILADEIRO', music: 'windCanyon',
-  challenge: ['RAJADAS DE VENTO EMPURRAM O CARRO: OLHE AS BIRUTAS', 'AS PONTES NAO TEM MURETA. CONTRAESTERCE OU CAI NO RIO'],   // aparece no pop-up de antes da largada
+  challenge: ['RAJADAS DE VENTO EMPURRAM O CARRO: OLHE AS BIRUTAS', 'PONTES E BEIRA DO PENHASCO SEM MURETA: CONTRAESTERCE OU CAI'],   // aparece no pop-up de antes da largada
   sky: 0x9cc0dc, fog: [24, 260], cabinTint: 0xf4dcc4,
   // Sobe e desce entre mesas de pedra, com curvas médias e algumas fechadas na beira do cânion.
   shape: { wiggle: 0.22, targetLength: 2500, relief: 26, hillScale: 210, banks: 9, sharpCurves: 3, harmonics: [[2, 0.7], [3, 0.55], [5, 0.2]], stretch: [1.2, 0.85] },
@@ -21,9 +23,11 @@ export const WIND_CANYON = {
       { length: 120, below: 30, icy: false, style: 'wood', fallLabel: 'CAIU DA PONTE' },
       { length: 105, below: 28, icy: false, style: 'wood', fallLabel: 'CAIU DA PONTE' },
     ],
-    // Rajadas em cada ponte e em duas retas na beira do penhasco.
-    gusts: { force: 18, period: 7.5, onBridges: true, count: 2, length: 170 },
-    hazards: [{ kind: 'rockfall', count: 3 }],
+    // Beira de penhasco: três trechos em que um dos lados (alternando) é o abismo, sem muro.
+    ledges: { count: 3, length: [150, 230], depth: 40, fallLabel: 'CAIU DO PENHASCO' },
+    // Rajadas em cada ponte e em cada beira de penhasco.
+    gusts: { force: 18, period: 7.5, onBridges: true, onLedges: true },
+    hazards: [{ kind: 'rockfall', count: 3, onLedges: true }],   // na beira do penhasco a pedra cai do paredão do outro lado
     tunnels: { count: 2, length: [80, 130] },        // túneis escavados na rocha: ali dentro o vento não pega
   },
   ground: {

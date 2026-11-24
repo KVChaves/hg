@@ -18,6 +18,13 @@ export const PATCH_NOTES = [
     ],
   },
   {
+    title: 'DESFILADEIRO: BEIRA DO PENHASCO',
+    items: [
+      'Em dois ou três trechos a estrada corre na beira do penhasco: um dos lados não tem muro, e depois da zebra é o abismo até o rio lá embaixo. O lado aberto muda de um trecho para o outro.',
+      'Quem passa da beira cai e volta no começo do trecho, como quem cai da ponte. As rajadas de vento sopram nesses trechos, e as pedras caem do paredão do outro lado.',
+    ],
+  },
+  {
     title: 'MAPA NOVO: ESTRADA DO REI',
     items: [
       'Estrada de pedra entre campos de grama, aldeias com telhado de palha, moinhos e cercas de madeira.',

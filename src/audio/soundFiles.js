@@ -88,7 +88,7 @@ export const PHASE_MUSIC = {
   windCanyon: 'assets/audio/music/wind-canyon.mp3',
   saltFlats: 'assets/audio/music/salt-flats.mp3',
   stormSwamp: 'assets/audio/music/storm-swamp.mp3',
-  kingsRoad: 'assets/audio/music/forest-field.mp3',   // ainda sem música própria: usa a da floresta
+  kingsRoad: 'assets/audio/music/kings-road.mp3',
 };
 
 

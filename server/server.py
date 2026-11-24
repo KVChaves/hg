@@ -28,9 +28,9 @@ RANKING_FILE = Path(__file__).resolve().parent / "ranking_v2.json"        # rank
 LEGACY_RANKING_FILE = Path(__file__).resolve().parent / "ranking.json"    # ranking antigo (medalhas): congelado, só leitura
 HISTORY_FILE = Path(__file__).resolve().parent / "history.jsonl"   # uma linha por corrida disputada, só acrescenta
 RANKING_LIMIT = 50
-COMBAT_COUNTS = ("kills", "deaths", "shots", "hits", "trapsPlaced", "trapsScored", "caught")   # contadores da mensagem `combat`
+COMBAT_COUNTS = ("kills", "backKills", "deaths", "shots", "hits", "trapsPlaced", "trapsScored", "caught")   # contadores da mensagem `combat`
 # Campos da página COMBATE no ranking; "kills" do combate vira "combatKills" (o "kills" antigo vem do fim da partida).
-COMBAT_FIELDS = {"combatRaces": 0, "combatKills": 0, "deaths": 0, "shots": 0, "hits": 0, "trapsPlaced": 0, "trapsScored": 0, "caught": 0,
+COMBAT_FIELDS = {"combatRaces": 0, "combatKills": 0, "backKills": 0, "deaths": 0, "shots": 0, "hits": 0, "trapsPlaced": 0, "trapsScored": 0, "caught": 0,
                  "victims": dict, "killers": dict, "causes": dict, "leadRaces": 0, "leadTime": 0.0, "leadLost": 0, "leadRaceTime": 0.0}
 KILL_CAUSES = ("shot", "ram", "fire", "splash", "other")
 MAX_COMBAT_COUNT = 5000                            # teto de qualquer contador numa corrida
@@ -543,7 +543,7 @@ class Lobby:
         top = lambda table: [{"name": name, "count": count} for name, count in sorted(table.items(), key=lambda item: -item[1])[:COMBAT_TOP]]
         lead_races = get("leadRaces")
         return {
-            "races": get("combatRaces"), "kills": get("combatKills"), "deaths": get("deaths"),
+            "races": get("combatRaces"), "kills": get("combatKills"), "backKills": get("backKills"), "deaths": get("deaths"),
             "shots": get("shots"), "hits": get("hits"), "trapsPlaced": get("trapsPlaced"), "trapsScored": get("trapsScored"), "caught": get("caught"),
             "victims": top(entry.get("victims", {})), "killers": top(entry.get("killers", {})),
             "causes": {cause: entry.get("causes", {}).get(cause, 0) for cause in KILL_CAUSES},
@@ -556,10 +556,10 @@ class Lobby:
     def valid_combat(stats):
         if not isinstance(stats, dict):
             return None
-        counts = {field: stats.get(field) for field in COMBAT_COUNTS}
+        counts = {field: stats.get(field, 0 if field == "backKills" else None) for field in COMBAT_COUNTS}   # backKills: versões antigas não mandam
         if not all(isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= MAX_COMBAT_COUNT for value in counts.values()):
             return None
-        if counts["hits"] > counts["shots"] or counts["trapsScored"] > counts["trapsPlaced"]:
+        if counts["hits"] > counts["shots"] or counts["trapsScored"] > counts["trapsPlaced"] or counts["backKills"] > counts["kills"]:
             return None
         tables = {}
         for field, keys in (("victims", None), ("killers", None), ("causes", KILL_CAUSES)):

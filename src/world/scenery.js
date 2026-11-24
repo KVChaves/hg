@@ -4,7 +4,7 @@ import { createMapLayout } from '../game/mapLayout.js';
 import { createAtmosphere } from './atmosphere.js';
 import { buildTunnels } from './tunnels.js';
 import { buildWalls } from './walls.js';
-import { buildEpicSections } from './epicVisuals.js';
+import { buildEpicSections, buildLedges } from './epicVisuals.js';
 import { buildCastle, castleFootprint } from './castle.js';
 import { buildBeltSites, buildBoostSites, buildGustSites, buildHazardSites, buildStormSites } from './hazardSites.js';
 import { createRandom, generateTrack, isOverChasm, surfaceAt, track, trackAt, valleyReach } from './track.js';
@@ -153,8 +153,10 @@ function addRoad(group, biome, groundMaterial) {
     group.add(new THREE.Mesh(stripGeometry(-slopeFrom, -outer, 3, roadY, roadY, overChasm), groundMaterial));
     group.add(new THREE.Mesh(stripGeometry(outer, slopeFrom, 3, roadY, roadY, overChasm), groundMaterial));
   }
-  group.add(new THREE.Mesh(stripGeometry(-slopeFrom - SHOULDER_WIDTH, -slopeFrom, 3, groundY, roadY, overChasm), groundMaterial));
-  group.add(new THREE.Mesh(stripGeometry(slopeFrom, slopeFrom + SHOULDER_WIDTH, 3, roadY, groundY, overChasm), groundMaterial));
+  // Do lado aberto do penhasco não há acostamento: a face de pedra (epicVisuals.buildLedges) desce da beira.
+  const cliffOn = side => k => overChasm(k) || (track.cliff[k] > 0 && track.cliffSide[k] === side);
+  group.add(new THREE.Mesh(stripGeometry(-slopeFrom - SHOULDER_WIDTH, -slopeFrom, 3, groundY, roadY, cliffOn(-1)), groundMaterial));
+  group.add(new THREE.Mesh(stripGeometry(slopeFrom, slopeFrom + SHOULDER_WIDTH, 3, roadY, groundY, cliffOn(1)), groundMaterial));
 }
 
 function addStartLine(group, biome) {
@@ -264,6 +266,7 @@ export function createWorldScene() {
     biomeAnimations = [];
     buildEpicSections(content, layout, biome, animation => biomeAnimations.push(animation));
     buildCastle(content, layout, biome, animation => biomeAnimations.push(animation));
+    buildLedges(content, layout, biome, animation => biomeAnimations.push(animation));
     buildWalls(content, layout, biome.wall);
     buildHazardSites(content, layout, animation => biomeAnimations.push(animation));
     buildStormSites(content, layout, animation => biomeAnimations.push(animation));

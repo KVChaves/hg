@@ -7,7 +7,7 @@ export function createCombatStats({ weapon, car }) {
   let stats, baseShots, baseLanded, lastDestroyed, placed, scored;
 
   function reset() {
-    stats = { kills: 0, deaths: 0, victims: {}, killers: {}, causes: {}, trapsPlaced: 0, trapsScored: 0, caught: 0 };
+    stats = { kills: 0, backKills: 0, deaths: 0, victims: {}, killers: {}, causes: {}, trapsPlaced: 0, trapsScored: 0, caught: 0 };
     baseShots = weapon.shots;
     baseLanded = weapon.landed;
     lastDestroyed = car.destroyed;
@@ -25,8 +25,10 @@ export function createCombatStats({ weapon, car }) {
       if (car.destroyed > lastDestroyed) stats.deaths += car.destroyed - lastDestroyed;
       lastDestroyed = car.destroyed;
     },
-    kill(victim, cause) {
+    // `behind`: a vítima estava atrás do jogador (na pista) quando foi abatida.
+    kill(victim, cause, behind = false) {
       stats.kills++;
+      if (behind) stats.backKills++;
       if (victim?.name) add(stats.victims, victim.name);
       add(stats.causes, KILL_CAUSES.includes(cause) ? cause : 'other');
     },

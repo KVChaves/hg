@@ -6,7 +6,7 @@ import { insertCastle, insertWaves, resample } from './trackShapes.js';
 // Pista gerada por semente: uma curva fechada em volta do centro, reamostrada em passos iguais, apoiada
 // num relevo. `track` é sempre o mesmo objeto; gerar outra pista troca o conteúdo dele.
 
-export const track = { length: 1, count: 0, step: 1, px: null, py: null, pz: null, tx: null, tz: null, slope: null, curvature: null, turn: null, wall: null, shoulder: 0, roll: null, gap: null, epic: null, drop: null, bed: null, enclosed: null, lift: null, flight: null, bridge: null, ownFloor: null, castle: null, zones: {}, jumps: [], bridges: [], darkZones: [], stormZones: [], belts: [], gusts: [], boosts: [], hazards: [], valley: null, openWall: 0, chasmRange: null, heightAt: () => 0, meshHeightAt: () => 0 };
+export const track = { length: 1, count: 0, step: 1, px: null, py: null, pz: null, tx: null, tz: null, slope: null, curvature: null, turn: null, wall: null, shoulder: 0, roll: null, gap: null, epic: null, drop: null, bed: null, enclosed: null, lift: null, flight: null, bridge: null, ownFloor: null, ledge: null, cliff: null, cliffSide: null, cliffFloor: null, castle: null, zones: {}, jumps: [], bridges: [], ledges: [], darkZones: [], stormZones: [], belts: [], gusts: [], boosts: [], hazards: [], valley: null, openWall: 0, chasmRange: null, heightAt: () => 0, meshHeightAt: () => 0 };
 
 const CONTROL_COUNT = 18, HARMONICS = [[2, 0.8], [3, 0.55], [4, 0.3]];
 export const OPEN_WALL = TRACK_WIDTH / 2 + 3;         // até onde o centro do carro pode sair da pista, onde ficam os muros
@@ -24,6 +24,10 @@ const BANK_FROM = 16, BANK_TO = 50;                   // barrancos ao lado da es
 const GROUND_SINK = 1.4, SINK_TO = 18;                // e passa por baixo do asfalto, para nunca atravessá-lo
 const VALLEY_BLEND = 30;                              // além da borda do vale o terreno volta ao relevo livre
 const VALLEY_MESH_SINK = 4, VALLEY_MESH_MARGIN = 12;  // sob as encostas desenhadas a malha grossa do chão afunda, para não furá-las
+// Beira de penhasco (mapLayout.js, `ledges`): do lado aberto, passando de CLIFF_EDGE metros do centro, o chão
+// despenca até o fundo do cânion (`track.cliffFloor`), que segue plano por CLIFF_FLOOR metros e volta ao relevo.
+export const CLIFF_EDGE = TRACK_WIDTH / 2 + 2;
+const CLIFF_FLOOR = 80, CLIFF_RISE = 70;
 
 const smoothstep = (from, to, value) => {
   const t = Math.max(0, Math.min(1, (value - from) / (to - from)));
@@ -163,7 +167,7 @@ function measureRoad({ count, step, px, pz }, heightAt) {
 // (valleyRise). `track.lift` é o que a rampa ergueu a estrada: o chão fica na altura de antes.
 // Devolve a altura de verdade e a da malha grossa do chão, que no vale fica um pouco abaixo das encostas.
 // `shoulder` empurra o perfil todo para fora: o chão fica na altura da estrada (um pouco abaixo) por mais tantos metros.
-function conformToRoad(terrainAt, { count, px, pz }, py, { banks = 0, bankRange: [bankFrom, bankTo] = [BANK_FROM, BANK_TO], valley = null, shoulder = 0, chasmRange: [riverFrom, riverTo] = [RIVER_FROM, RIVER_TO] } = {}) {
+function conformToRoad(terrainAt, { count, px, pz, tx, tz }, py, { banks = 0, bankRange: [bankFrom, bankTo] = [BANK_FROM, BANK_TO], valley = null, shoulder = 0, chasmRange: [riverFrom, riverTo] = [RIVER_FROM, RIVER_TO] } = {}) {
   const height = (x, z, mesh) => {
     let nearest = Infinity, index = 0;
     for (let i = 0; i < count; i++) {
@@ -182,6 +186,13 @@ function conformToRoad(terrainAt, { count, px, pz }, py, { banks = 0, bankRange:
       const bank = banks * smoothstep(bankFrom, bankTo, away) - chasm;
       ground = away >= BLEND_TO ? terrain + bank
         : road + (terrain - road) * smoothstep(BLEND_FROM, BLEND_TO, away) - GROUND_SINK * (1 - smoothstep(BLEND_FROM, SINK_TO, away)) + bank;
+      // Penhasco: do lado aberto, além da beira, o chão cai até o fundo do cânion (com transição nas pontas do trecho).
+      const cliff = track.cliff?.[index] ?? 0;
+      if (cliff > 0 && distance > CLIFF_EDGE && Math.sign((x - px[index]) * -tz[index] + (z - pz[index]) * tx[index]) === track.cliffSide[index]) {
+        const floor = track.cliffFloor[index], out = distance - CLIFF_EDGE;
+        const target = floor + (ground - floor) * smoothstep(CLIFF_FLOOR, CLIFF_FLOOR + CLIFF_RISE, out);
+        ground += (Math.min(ground, target) - ground) * cliff;
+      }
     }
     // O rio corta barrancos e encostas: o leito fica `bed` metros abaixo da estrada, por mais alto que o chão seja.
     const river = track.bed[index] > 0 ? 1 - smoothstep(riverFrom, riverTo, distance) : 0;
@@ -289,7 +300,8 @@ export function generateTrack(seed, shape) {
     roll: new Float32Array(geometry.count), gap: new Uint8Array(geometry.count), epic: new Uint8Array(geometry.count),
     drop: new Float32Array(geometry.count), bed: new Float32Array(geometry.count), enclosed: new Uint8Array(geometry.count),
     lift: new Float32Array(geometry.count), flight: new Uint8Array(geometry.count), bridge: new Uint8Array(geometry.count), ownFloor: new Uint8Array(geometry.count),
-    castle: extras.castle, zones: extras.zones, jumps: [], bridges: [], darkZones: [], stormZones: [], belts: [], gusts: [], boosts: [], hazards: [],
+    ledge: new Int8Array(geometry.count), cliff: new Float32Array(geometry.count), cliffSide: new Int8Array(geometry.count), cliffFloor: new Float32Array(geometry.count),
+    castle: extras.castle, zones: extras.zones, jumps: [], bridges: [], ledges: [], darkZones: [], stormZones: [], belts: [], gusts: [], boosts: [], hazards: [],
     heightAt: groundAt, meshHeightAt: meshAt,
   });
 }
@@ -360,14 +372,16 @@ export const inGap = distance => track.gap[sampleIndex(distance)] === 1;
 export const inFlightZone = distance => track.flight[sampleIndex(distance)] === 1;
 
 export const onBridge = distance => track.bridge[sampleIndex(distance)] > 0;   // 1: ponte de gelo, 2: ponte seca
+export const ledgeAt = distance => track.ledge[sampleIndex(distance)];   // -1 ou 1: lado aberto do penhasco; 0: sem penhasco
 
 const offsetInto = (distance, from) => (((distance - from) % track.length) + track.length) % track.length;
 
-// Trecho perigoso (vão de um salto ou ponte sem borda) que contém `distance`, ou nulo. É dele a água em que o
+// Trecho perigoso (vão de um salto, ponte sem borda ou beira de penhasco) que contém `distance`, ou nulo. É dele a água em que o
 // carro cai e o ponto para onde volta.
 export function hazardAt(distance) {
   return track.jumps.find(jump => jump.gaps.some(([from, to]) => offsetInto(distance, from) < to - from))
-    ?? track.bridges.find(bridge => offsetInto(distance, bridge.start) < bridge.length) ?? null;
+    ?? track.bridges.find(bridge => offsetInto(distance, bridge.start) < bridge.length)
+    ?? track.ledges.find(ledge => offsetInto(distance, ledge.start) < ledge.length) ?? null;
 }
 
 // Quanto o trecho escuro (caverna, túnel sem luz) envolve o ponto: 0 fora, 1 dentro, com transição na boca.

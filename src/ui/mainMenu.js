@@ -552,6 +552,7 @@ export function createMainMenu({ stage, settings, net, getName = () => '', onSin
     drawStatLines(ctx, [
       { header: 'TIRO E ABATES' },
       ['ABATES', combat.kills],
+      ['ABATES PARA TRAS', combat.kills ? `${combat.backKills ?? 0}  (${percent(combat.backKills ?? 0, combat.kills)})` : '-'],
       ['MORTES', combat.deaths],
       ['ABATES POR MORTE', combat.deaths ? (combat.kills / combat.deaths).toFixed(2) : combat.kills ? 'INVICTO' : '-', COLOR.selected],
       ['MIRA', combat.shots ? `${percent(combat.hits, combat.shots)}  (${combat.hits}/${combat.shots})` : '-', COLOR.selected],

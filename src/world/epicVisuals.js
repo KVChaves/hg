@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { enableCulling } from './instancing.js';
 import { TRACK_WIDTH } from '../config.js';
 import { JUMP_WALL } from '../game/mapLayout.js';
-import { nearestIndex, track, trackAt, TWIST_RADIUS } from './track.js';
+import { CLIFF_EDGE, nearestIndex, track, trackAt, TWIST_RADIUS } from './track.js';
 import { pixelTexture } from './textures.js';
 import { wallTexture } from './tunnels.js';
 
@@ -415,4 +415,45 @@ export function buildEpicSections(group, layout, biome, onUpdate) {
       addEdges(group, section, biome.epic.edge);
     }
   }
+}
+
+// Beira de penhasco (layout.ledges): face de pedra do lado aberto, da beira da estrada até o fundo do cânion, faixa
+// clara na quina (para ver onde o chão acaba) e o rio correndo lá embaixo. Nas pontas do trecho a face diminui junto
+// com o abismo (track.cliff).
+const LEDGE_RAMP_DRAW = 40, CLIFF_FACE = 0.8, RIVER_FROM_FACE = 3, RIVER_WIDTH = 75;
+function ledgeStrip(from, to, inner, outer, topOf, bottomOf) {
+  const steps = Math.max(1, Math.round((to - from) / track.step)), pos = [], uv = [], index = [];
+  for (let s = 0; s <= steps; s++) {
+    const distance = from + (to - from) * s / steps, t = trackAt(distance);
+    const k = Math.floor((((distance % track.length) + track.length) % track.length) / track.step) % track.count;
+    const top = topOf(t, k), bottom = bottomOf(t, k);
+    for (const [lateral, y, v] of [[inner, top, 0], [outer, bottom, (top - bottom) / 8]]) {
+      pos.push(t.x - t.tz * lateral, y, t.z + t.tx * lateral);
+      uv.push(distance / 8, v);
+    }
+    if (s < steps) index.push(s * 2, s * 2 + 2, s * 2 + 1, s * 2 + 1, s * 2 + 2, s * 2 + 3);
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geometry.setIndex(index);
+  return geometry;
+}
+
+export function buildLedges(group, layout, biome, onUpdate) {
+  if (!layout.ledges?.length) return;
+  const rockMap = wallTexture(biome.tunnel);
+  rockMap.wrapS = rockMap.wrapT = THREE.RepeatWrapping;
+  const rock = new THREE.MeshBasicMaterial({ map: rockMap, side: THREE.DoubleSide });
+  const edge = new THREE.MeshBasicMaterial({ color: biome.epic.edge, side: THREE.DoubleSide });
+  const waterMap = riverTexture(biome.epic.abyss), water = new THREE.MeshBasicMaterial({ map: waterMap, side: THREE.DoubleSide });
+  for (const { start, length, side, water: level } of layout.ledges) {
+    const from = start - LEDGE_RAMP_DRAW, to = start + length + LEDGE_RAMP_DRAW, at = lateral => side * lateral;
+    const depthAt = (t, k) => t.y - (t.y - track.cliffFloor[k]) * track.cliff[k];   // fundo do abismo naquele ponto
+    // Face quase a prumo: desce da beira até o fundo, avançando um pouco para fora.
+    group.add(new THREE.Mesh(ledgeStrip(from, to, at(CLIFF_EDGE), at(CLIFF_EDGE + CLIFF_FACE), t => t.y + 0.02, (t, k) => depthAt(t, k) - 2), rock));
+    group.add(new THREE.Mesh(ledgeStrip(from, to, at(CLIFF_EDGE - 0.5), at(CLIFF_EDGE), t => t.y + 0.04, t => t.y + 0.04), edge));
+    group.add(new THREE.Mesh(ledgeStrip(start - 10, start + length + 10, at(CLIFF_EDGE + RIVER_FROM_FACE), at(CLIFF_EDGE + RIVER_WIDTH), () => level, () => level), water));
+  }
+  onUpdate?.(time => { waterMap.offset.x = time * RIVER_FLOW; });
 }

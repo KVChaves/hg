@@ -57,7 +57,7 @@ import { createWeaponWorkshop } from './ui/weaponWorkshop.js';
 import { createCarDamageEffects } from './world/carDamageEffects.js';
 import { createWindowView } from './world/windowView.js';
 import { createCarLights } from './world/car/carLights.js';
-import { darkZoneAt, gustAt, stormAt, track, trackAt } from './world/track.js';
+import { darkZoneAt, gustAt, stormAt, track, trackAt, wrapDistance } from './world/track.js';
 import { setRainGrip, setSurface, setWeatherGrip } from './game/surface.js';
 import { rollWeather, weatherLevel } from './game/dynamicWeather.js';
 import { setGravity } from './game/flight.js';
@@ -125,7 +125,7 @@ function creditKill(victim, cause) {
   weapon.kills++;
   matchKills++;
   addRaceKill(race.field[0], victim);
-  combatStats.kill(victim, cause);
+  combatStats.kill(victim, cause, Boolean(victim) && wrapDistance(victim.dist - race.field[0].dist) < 0);
   audio.playKill();
   const streak = feats.kill(victim, cause);
   rewardKillFor(race.field.find(racer => racer.isPlayer), victim, streak);

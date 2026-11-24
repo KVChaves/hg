@@ -1,5 +1,5 @@
 import { CAR_MAX_HP, LAPS, TRACK_WIDTH } from '../config.js';
-import { beltPush, boostAt, gustAt, hazardAt, raceClock, inFlightZone, inGap, isEpic, nearestIndex, onBridge, OPEN_WALL, surfaceAt, track, trackAt, valleyRise, valleySlope, wrapDistance } from '../world/track.js';
+import { beltPush, boostAt, CLIFF_EDGE, gustAt, hazardAt, raceClock, inFlightZone, inGap, isEpic, ledgeAt, nearestIndex, onBridge, OPEN_WALL, surfaceAt, track, trackAt, valleyRise, valleySlope, wrapDistance } from '../world/track.js';
 import { BOOST_SPEED, BOOST_TIME, crashDamage, damagePlayer, resetCar, trackCapsizes } from './car.js';
 import { resetRig, rigLean } from './carRoll.js';
 import { createFlip, flipLandingTime, lifeAfterDestruction, RESPAWN_PROTECTION } from './carFlip.js';
@@ -7,7 +7,7 @@ import { createCollisions } from './collisions.js';
 import { placeOpponent, resetOpponent, updateOpponent, updateRemoteRacer } from './opponents.js';
 import { slipstreamStrength } from './slipstream.js';
 import { FALL_TIME, fallIsCertain, GRAVITY, hitsGate, sinkStep, stepFlight } from './flight.js';
-import { BRIDGE_HALF } from './mapLayout.js';
+import { BRIDGE_HALF, LEDGE_REACH } from './mapLayout.js';
 
 const CRASH_MIN_IMPACT = 4, CRASH_FULL_IMPACT = 25, CRASH_MIN_STRENGTH = 0.25;
 const ROAD_HALF = TRACK_WIDTH / 2 + 1.4, SHOULDER_BLEND = 6;
@@ -103,7 +103,8 @@ export function createRace(car, opponents, { onCrash, onDestroyed, onBlast, onCo
     const s = i * step + dx * tx[i] + dz * tz[i];
     let offset = dx * -tz[i] + dz * tx[i];
 
-    const wall = track.wall[i];                      // nos túneis a parede fica bem perto da pista
+    // Nos túneis a parede fica bem perto da pista; na beira do penhasco o lado aberto não tem parede (o carro cai).
+    const wall = track.ledge[i] && Math.sign(offset) === track.ledge[i] ? LEDGE_REACH : track.wall[i];
     if (Math.abs(offset) > wall) {
       const sign = Math.sign(offset), nx = -tz[i], nz = tx[i], push = wall * sign - offset;
       car.x += nx * push;
@@ -174,6 +175,10 @@ export function createRace(car, opponents, { onCrash, onDestroyed, onBlast, onCo
       return t.y;
     }
     if (track.valley) return t.y + valleyRise(offset);
+    // Penhasco: do lado aberto, passou da beira (ou já caiu abaixo dela), não há chão.
+    const ledge = ledgeAt(race.playerDist);
+    if (ledge && Math.sign(offset) === ledge && Math.abs(offset) > CLIFF_EDGE) return null;
+    if (car.jump?.type === 'ledge' && car.airborne && car.y < t.y - 0.5) return null;
     const k = Math.min(1, Math.max(0, (Math.abs(offset) - ROAD_HALF - track.shoulder) / SHOULDER_BLEND));   // acostamento largo: plano até o fim dele
     return t.y + (track.heightAt(car.x, car.z) - t.y) * k * k * (3 - 2 * k);
   }

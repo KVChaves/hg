@@ -39,10 +39,11 @@ function wallGeometry(side, style, isCovered) {
 }
 
 // Dentro dos túneis fechados e do tubo a parede deles faz esse papel; nos saltos a mureta da rampa (epicVisuals).
+// Na beira do penhasco o lado aberto fica sem muro.
 export function buildWalls(group, layout, style) {
   if (!style) return;                                // bioma sem muro: o próprio barranco fecha a pista (o limite continua)
   const solid = layout.tunnels.filter(tunnel => !tunnel.open);
-  const isCovered = (k, side) => wallOpenAt(layout, k, side) || track.gap[k] === 1 || track.drop[k] > 0 || track.bed[k] > 0 || track.lift[k] > 0 || track.roll[k] !== 0 || solid.some(({ start, length }) => {
+  const isCovered = (k, side) => wallOpenAt(layout, k, side) || track.ledge[k] === side || track.gap[k] === 1 || track.drop[k] > 0 || track.bed[k] > 0 || track.lift[k] > 0 || track.roll[k] !== 0 || solid.some(({ start, length }) => {
     const offset = ((k * track.step - start) % track.length + track.length) % track.length;
     return offset < length;
   });
