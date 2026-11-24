@@ -72,6 +72,25 @@ const PLOTTERS = {
     r.line(ox + 1, oy + 8, ox + 4, oy + 8, dim(0x8a8a90), 1);
     r.line(ox + 14, oy + 8, ox + 17, oy + 8, dim(0x8a8a90), 1);
   },
+  // Barreira inflável: boia listrada de vermelho e branco, com a válvula em cima.
+  barrier(r, ox, oy, dim) {
+    r.rect(ox + 1, oy + 4, 16, 9, dim(0xd02820));
+    for (const x of [4, 10]) r.rect(ox + x, oy + 4, 3, 9, dim(0xf0ece4));
+    r.rect(ox + 1, oy + 4, 16, 2, dim(0xff6a50));
+    r.rect(ox + 1, oy + 12, 16, 2, dim(0x7a1810));
+    r.rect(ox + 13, oy + 1, 2, 3, dim(0x4a4a50));
+  },
+  // Camuflagem: silhueta de carro que some da frente (direita) para trás, em pontilhado.
+  cloak(r, ox, oy, dim) {
+    const solid = dim(0x5ab0a0), faint = dim(0x2e6a62);
+    r.rect(ox + 1, oy + 7, 8, 4, solid);
+    r.rect(ox + 3, oy + 4, 5, 3, solid);
+    r.rect(ox + 1, oy + 11, 8, 1, dim(0x1a3a36));
+    for (let x = 9; x < 17; x++) for (let y = 4; y < 12; y++) {
+      if ((x + y) % 2 === 0 && (y >= 7 || x < 13)) r.rect(ox + x, oy + y, 1, 1, faint);
+    }
+    r.disc(ox + 3, oy + 12, 1.5, dim(0x1a1a1e));
+  },
   smoke(r, ox, oy, dim) {
     r.disc(ox + 5, oy + 9, 4.5, dim(0x8a8682));
     r.disc(ox + 12, oy + 9, 5, dim(0x6e6a66));

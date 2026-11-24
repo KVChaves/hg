@@ -2,7 +2,7 @@ import { CLEAR } from '../../art/raster.js';
 import { dither, hash, mix } from '../../art/shade.js';
 import { ctxBox, ctxDisc, ctxLine, DARK_STEEL, layerOf } from './gunPaint.js';
 
-// Desenho das armas com desenho próprio: revólver pesado, sniper, escopeta automática, besta e lança-chamas.
+// Desenho das armas com desenho próprio: revólver pesado, sniper, escopeta automática, besta, lança-granadas e metralhadora.
 // Mesmas convenções de gunArt.js: o cano aponta para a esquerda, e os pontos são pixels da imagem.
 // Cada uma tem um mecanismo que só ela tem, para se mover diferente das armas da mesma família.
 
@@ -539,6 +539,140 @@ export function buildGrenadeLauncher(custom, m) {
           r.rect(62, 10, 14, 1, m.metal[4]);
         }),
         pose: p => ({ dx: pumpShift(p) * 0.9 }),
+      },
+    ],
+  };
+}
+
+// Metralhadora de canos giratórios: seis canos em volta do eixo, redesenhados a cada quadro conforme giram
+// (os de trás mais escuros), caixa de munição pendurada embaixo com a cinta subindo para a culatra,
+// capa de alimentação que abre na recarga e alavanca de armar puxada no fim dela. Os canos esquentam na rajada.
+export function buildGatling(custom, m) {
+  const W = 128, H = 66, accessory = custom.options.accessory;
+  const AXIS = 18, SPREAD = 4.5, BARRELS = 6, BARREL_END = 64, COVER_HINGE = [88, 8];
+  const BOX = { x: 64, y: 36, w: 24, h: 22 }, BOX_DROP = 34;
+  const OLIVE = [0x1e2216, 0x343a24, 0x4c5434, 0x667048, 0x828c5c];
+  const heatColor = (base, h) => (h < 0.2 ? base : h < 0.6 ? mix(base, 0xa82810, (h - 0.2) / 0.4) : mix(0xa82810, 0xffa040, (h - 0.6) / 0.4));
+  // Um elo da cinta: bala de latão deitada, com a ponta para a esquerda.
+  const round = (ctx, x, y) => {
+    ctxBox(ctx, 0xb87040, x, y, 2, 3);
+    ctxBox(ctx, BRASS, x + 2, y, 4, 3);
+    ctxBox(ctx, 0xf0d070, x + 2, y, 4, 1);
+    ctxBox(ctx, 0x3a3a3e, x + 6, y, 1, 3);
+  };
+  return {
+    size: [W, H], pivot: [94, 26], muzzle: [0, AXIS], hand: [104, 40], load: [76, 44], eject: [82, 32],
+    carry: 'ammobox', casing: 'round', flashSize: 1.25, smoke: 0.9,
+    recoil: { back: 3, up: 3, tilt: 0.05, stiffness: 420, damping: 28, shake: 1 },
+    reload: { x: 494, y: 202, angle: -0.22 },
+    layers: [
+      // cabo e chapa de trás
+      { image: layerOf(W, H, r => {
+        r.poly([[96, 28], [108, 26], [118, 50], [107, 56], [100, 40]], m.wood(0.7, 96));
+        for (let i = 0; i < 4; i++) r.line(102 + i * 2, 31 + i, 107 + i * 2, 48 + i, m.grip[0]);
+        r.rect(108, 8, 5, 24, m.steel(0.45));
+        r.rect(108, 8, 1, 24, m.metal[4]);
+        r.rect(113, 12, 3, 16, m.metal[1]);
+      }) },
+      // seis canos girando: os de trás primeiro e mais escuros, os da frente por cima, com brilho em cima
+      {
+        paint: (ctx, p) => {
+          const barrels = [];
+          for (let k = 0; k < BARRELS; k++) {
+            const a = (k + p.rotor) * Math.PI * 2 / BARRELS;
+            barrels.push({ y: AXIS + Math.sin(a) * SPREAD, depth: Math.cos(a) });
+          }
+          barrels.sort((a, b) => a.depth - b.depth);
+          const blur = clamp01((p.rotorSpeed - 8) / 10);       // girando muito rápido, os canos viram um borrão
+          for (const { y, depth } of barrels) {
+            const tone = Math.round(clamp01(depth * 0.5 + 0.5) * 3), top = Math.round(y - 1);
+            const body = m.metal[tone], light = m.metal[Math.min(4, tone + 1)];
+            ctxBox(ctx, body, 3, top, BARREL_END - 3, 3);
+            if (depth > 0.3) ctxBox(ctx, light, 3, top, BARREL_END - 3, 1);
+            ctxBox(ctx, heatColor(body, p.heat), 3, top, 10, 3);
+            ctxBox(ctx, 0x050506, 1, top + 1, 2, 1);
+          }
+          if (blur > 0) for (let x = 8; x < BARREL_END; x += 7) ctxBox(ctx, mix(m.metal[2], m.metal[3], blur), x, AXIS - 5, 2, 11);
+        },
+      },
+      // braçadeiras, eixo, culatra, motor e alça
+      { image: layerOf(W, H, r => {
+        for (const [x, w] of [[2, 4], [30, 4]]) {
+          r.rect(x, AXIS - 7, w, 15, m.steel(0.65));
+          r.rect(x, AXIS - 7, w, 1, m.metal[4]);
+          r.rect(x, AXIS + 7, w, 1, m.metal[0]);
+        }
+        r.rect(58, AXIS - 8, 8, 17, m.steel(0.55));
+        r.rect(58, AXIS - 8, 8, 1, m.metal[4]);
+        // culatra
+        r.poly([[64, 6], [108, 6], [108, 34], [64, 34]], m.steel(0.6));
+        r.rect(64, 6, 44, 2, m.metal[3]);
+        r.rect(64, 33, 44, 1, m.metal[0]);
+        for (let x = 70; x < 104; x += 6) r.rect(x, 22, 3, 8, m.metal[1]);
+        // motor que gira os canos
+        r.rect(88, 14, 14, 8, m.steel(0.8));
+        r.rect(88, 14, 14, 1, m.metal[4]);
+        for (let x = 90; x < 102; x += 3) r.rect(x, 15, 1, 6, m.metal[1]);
+        r.disc(84, 18, 3, m.metal[2]);
+        r.disc(84, 18, 1.4, m.metal[4]);
+        // alça de carregar
+        r.rect(72, 0, 26, 2, m.metal[2]);
+        r.rect(72, 0, 26, 1, m.metal[4]);
+        r.rect(72, 2, 3, 4, m.metal[1]);
+        r.rect(95, 2, 3, 4, m.metal[1]);
+        // guarda-mato e boca da cinta
+        r.ring(98, 36, 6, 4.6, m.metal[2]);
+        r.line(99, 33, 97, 38, m.metal[1], 2);
+        r.rect(70, 32, 12, 4, 0x08080a);
+        r.disc(104, 28, 1.3, m.metal[4]);
+        if (accessory === 'shield') {
+          r.poly([[44, 0], [56, 0], [58, 38], [44, 36]], m.steel(0.5));
+          r.rect(44, 0, 12, 1, m.metal[4]);
+          r.rect(56, 0, 2, 38, m.metal[0]);
+          r.rect(48, 12, 6, 10, 0x08080a);
+          for (const y of [3, 32]) r.disc(50, y, 1, m.metal[4]);
+        }
+        if (accessory === 'bipod') {
+          r.rect(36, AXIS + 6, 8, 3, m.metal[3]);
+          r.line(38, AXIS + 8, 28, 50, m.metal[2], 2);
+          r.line(42, AXIS + 8, 50, 50, m.metal[1], 2);
+        }
+      }) },
+      // capa de alimentação: abre para cima na dobradiça de trás durante a recarga
+      {
+        image: layerOf(W, H, r => {
+          r.rect(64, 6, 24, 4, m.steel(0.75));
+          r.rect(64, 6, 24, 1, m.metal[4]);
+          r.rect(64, 9, 24, 1, m.metal[0]);
+          r.rect(66, 4, 4, 2, m.metal[2]);
+        }),
+        pose: p => ({ angle: p.open * 0.9, px: COVER_HINGE[0], py: COVER_HINGE[1] }),
+      },
+      // alavanca de armar ao lado da culatra
+      {
+        image: layerOf(W, H, r => {
+          r.rect(96, 9, 8, 3, m.metal[3]);
+          r.rect(102, 8, 3, 5, m.metal[1]);
+          r.rect(102, 8, 3, 1, m.metal[4]);
+        }),
+        pose: p => ({ dx: p.bolt * 9 }),
+      },
+      // caixa de munição com a cinta subindo para a culatra; cai e volta inteira na recarga
+      {
+        pose: p => ({ dy: p.magDrop * BOX_DROP, hidden: p.magDrop >= 1 }),
+        paint: (ctx, p) => {
+          const { x, y, w, h } = BOX;
+          ctxBox(ctx, OLIVE[0], x, y, w, h);
+          ctxBox(ctx, OLIVE[2], x + 1, y + 1, w - 2, h - 2);
+          ctxBox(ctx, OLIVE[3], x + 1, y + 1, w - 2, 1);
+          ctxBox(ctx, OLIVE[1], x + 1, y + h - 3, w - 2, 2);
+          ctxBox(ctx, 0xd8b040, x + 3, y + 8, w - 6, 2);
+          ctxBox(ctx, OLIVE[4], x + w - 6, y + 3, 3, 3);
+          ctxBox(ctx, OLIVE[0], x + 6, y - 2, 8, 2);
+          // Cinta: um elo a cada 3 pixels, andando um elo por tiro; no fim da munição ela acaba antes da boca.
+          const shift = (p.belt % 1) * 3, links = Math.min(4, p.ammo);
+          for (let i = 0; i < links; i++) round(ctx, 72, y - 1 - i * 3 + shift);
+        },
       },
     ],
   };

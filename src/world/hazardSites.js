@@ -5,12 +5,14 @@ import { HAZARD_KINDS } from '../game/hazardKinds.js';
 import { TUNNEL_HEIGHT } from '../game/mapLayout.js';
 import { gustAt, raceClock, track, trackAt } from './track.js';
 import { pixelTexture } from './textures.js';
+import { pirateShip } from './pirateShip.js';
 
 // O motivo de cada ponto de perigo, no cenário: paredão de onde caem pedras, encosta de neve, placa de travessia
 // de animais, guindaste, obras sinalizadas, faixa de pedestres do kaiju... Assim o jogador vê de longe que ali
 // tem perigo e aprende a pista. Os obstáculos em si ficam em game/obstacles.js.
 
 const HALF = TRACK_WIDTH / 2, SIGN_AHEAD = 45;
+const SHIP_FROM_ROAD = 13, SHIP_BELOW_DECK = 2.6;   // navio dos canhões: a borda do casco fica logo depois do píer
 const solid = (color, extra = {}) => new THREE.MeshBasicMaterial({ color, ...extra });
 
 // Ponto ao lado da pista: `lateral` positivo é à direita de quem corre; `up` é a altura sobre o chão dali.
@@ -124,6 +126,36 @@ const BUILDERS = {
     trail.rotateX(-Math.PI / 2);
     put(group, trail, solid(0x5a4228, { polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }), spot(dist, 0, 0.03, true), { y: Math.PI / 2 });
     addSign(group, dist - SIGN_AHEAD, diamondSign(ctx => { ctx.fillRect(9, 13, 13, 6); ctx.fillRect(20, 10, 5, 5); for (const x of [10, 13, 18, 21]) ctx.fillRect(x, 19, 2, 5); }));
+  },
+
+  // Navio pirata atracado de lado para a pista, com os canos para fora das portinholas: é dele que vêm as balas.
+  cannonFire(group, { dist, side }, onUpdate) {
+    const t = trackAt(dist), lateral = side * (HALF + SHIP_FROM_ROAD);
+    const ship = pirateShip(0x1a1a1a, { cannons: side > 0 ? -1 : 1 });   // canos virados para a pista
+    const y = t.y - SHIP_BELOW_DECK;
+    ship.position.set(t.x - t.tz * lateral, y, t.z + t.tx * lateral);
+    ship.rotation.y = Math.atan2(-t.tx, -t.tz) + Math.PI / 2;           // proa no sentido da pista
+    group.add(ship);
+    onUpdate?.(time => {
+      ship.position.y = y + Math.sin(time * 0.9 + dist) * 0.2;
+      ship.rotation.z = Math.sin(time * 0.7 + dist) * 0.03;
+    });
+    addSign(group, dist - SIGN_AHEAD, textSign('FOGO', '#1a1a1a', '#f0d030'));
+  },
+
+  // Atracadouro de carga preso ao píer, com barris empilhados: de lá eles escapam e atravessam a pista rolando.
+  barrelRoll(group, { dist, side }) {
+    const wood = solid(0x6a4a2a), dock = spot(dist, side * (HALF + 9.5), 0, true);
+    put(group, new THREE.BoxGeometry(9, 0.5, 16), wood, { ...dock, y: dock.y - 0.25 });
+    for (const along of [-7, 7]) for (const out of [-4, 4]) {
+      const pile = spot(dist + along, side * (HALF + 9.5 + out), 0, true);
+      put(group, new THREE.CylinderGeometry(0.4, 0.45, 9, 6), solid(0x3a2a1a), { ...pile, y: pile.y - 4.5 });
+    }
+    const barrel = new THREE.CylinderGeometry(0.75, 0.75, 1.5, 9), colors = [0x7a4a24, 0x6a3e1e, 0x8a5a2c];
+    for (let row = 0; row < 3; row++) {
+      for (let i = 0; i < 4 - row; i++) put(group, barrel, solid(colors[(i + row) % 3]), spot(dist - 3 + i * 1.6 + row * 0.8, side * (HALF + 10), 0.75 + row * 1.4, true), { x: Math.PI / 2 });
+    }
+    addSign(group, dist - SIGN_AHEAD, diamondSign(ctx => { ctx.fillRect(10, 12, 12, 9); ctx.fillStyle = '#f0c020'; ctx.fillRect(10, 14, 12, 1); ctx.fillRect(10, 18, 12, 1); }));
   },
 
   // Travessia de cervos na mata: a mesma trilha de terra e a placa de animais.

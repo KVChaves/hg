@@ -38,5 +38,7 @@ export const HAZARD_KINDS = {
   crystalPatch: { obstacle: 'crystal', motion: 'static', lanes: [2.5, 4.2], idle: true },
   deerCrossing: { obstacle: 'deer', motion: 'cross', speed: 7, warning: 0.8, range: 70, opening: true, zone: 'forest' },
   carriage: { obstacle: 'carriage', motion: 'drive', speed: 3.5, lanes: [2.6, 5.2], travel: 160, idle: true },
+  cannonFire: { obstacle: 'cannonball', motion: 'drop', height: 24, lanes: [-5, 5], warning: 1.4, range: 70 },
+  barrelRoll: { obstacle: 'rollingBarrel', motion: 'cross', speed: 8, warning: 0.8, range: 68, opening: true },
   kaijuCrossing: { obstacle: 'kaiju', motion: 'cross', speed: 3.2, warning: 1.5, range: 95, opening: true },
 };

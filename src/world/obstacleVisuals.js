@@ -157,6 +157,30 @@ const BUILDERS = {
       mesh.rotation.z = t;
     }
   },
+  cannonball(body) {                                 // bala de ferro meio afundada nas tábuas, com o cais rachado em volta
+    add(body, ball(1.0, 1), 0x2a2a2e, 0, 0.75, 0);
+    add(body, ball(0.35, 0), 0x5a5a60, 0.45, 1.35, 0.3);     // brilho
+    for (let i = 0; i < 6; i++) add(body, box(1.2, 0.12, 0.3), 0x6a4a2a, Math.cos(i) * 1.3, 0.06, Math.sin(i) * 1.3).rotation.y = i;   // lascas
+  },
+  rollingBarrel(body) {                              // deitado, eixo ao longo da pista (z): o corpo fica no eixo e rola
+    body.position.y = 0.8;
+    add(body, cylinder(0.8, 0.8, 1.6, 10).rotateX(Math.PI / 2), 0x7a4a24);
+    for (const z of [-0.55, 0.55]) add(body, cylinder(0.83, 0.83, 0.12, 10).rotateX(Math.PI / 2), 0x3a3a3a, 0, 0, z);
+    for (const angle of [0, Math.PI / 2, Math.PI, Math.PI * 1.5]) {   // aduelas claras: dá para ver que está rolando
+      add(body, box(0.18, 0.06, 1.5), 0xa8743c, Math.cos(angle) * 0.8, Math.sin(angle) * 0.8, 0).rotation.z = angle;
+    }
+  },
+  barrier(body) {                                    // dois rolos infláveis empilhados, de través na pista (eixo x), com listras
+    const roll = (y, radius) => {
+      add(body, cylinder(radius, radius, 1.4, 10).rotateZ(Math.PI / 2), 0xd02820, 0, y, 0);
+      for (const x of [-0.7, 0.7]) add(body, ball(radius, 1), 0xd02820, x, y, 0);   // pontas arredondadas: 2,2 m, a largura de um carro
+      for (const x of [-0.35, 0.35]) add(body, cylinder(radius + 0.03, radius + 0.03, 0.26, 10).rotateZ(Math.PI / 2), 0xf0ece4, x, y, 0);
+    };
+    roll(0.42, 0.42);
+    roll(1.2, 0.38);
+    add(body, box(0.12, 0.2, 0.12), 0x3a3a40, 0.6, 1.62, 0);   // válvula
+    for (const x of [-0.65, 0.65]) add(body, box(0.5, 0.06, 1.0), 0x7a1810, x, 0.03, 0);   // abas no chão
+  },
   deer(body) {                                       // de frente para +x: corpo alto e fino, pescoço erguido, galhada
     const fur = 0x9a6a3a, dark = 0x5a3a1e, belly = 0xe8dcc8;
     add(body, box(1.6, 0.75, 0.62), fur, 0, 1.45, 0);

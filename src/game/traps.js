@@ -5,6 +5,7 @@ import { damagePlayer } from './car.js';
 import { shockedByLightning } from './effects.js';
 import { damageOpponent } from './opponents.js';
 import { raiseShield } from './shield.js';
+import { raiseCloak } from './cloak.js';
 import { EXTINGUISHER_LIFE, GROUND_FIRE, hazardType, TRAP_TYPES, TRAPS_UNLOCK_TIME } from './trapTypes.js';
 
 const NOTICE_TIME = 1.4;
@@ -16,7 +17,8 @@ const MIN_BLAST_SHARE = 0.4;                         // nas bordas da explosão 
 const BLAST_PUSH = 8, BOT_BLAST_KNOCK = 12, BLAST_FALLOFF = 0.6;   // m/s; o bot volta para a faixa sozinho, então o empurrão lateral nele é maior
 
 // O bagageiro: armadilhas e power-ups, usados com a tecla E.
-export function createTraps({ scene, car, race, harpoon, burning, mines, nets, emp, onSound, onExtinguisher, onPlaced, onCaught, onDetonated = () => {}, onDestroyed = () => {} }) {
+// `deployBarrier(dist, lane, racer)`: põe a barreira inflável na pista (game/obstacles.js).
+export function createTraps({ scene, car, race, harpoon, burning, mines, nets, emp, deployBarrier, onSound, onExtinguisher, onPlaced, onCaught, onDetonated = () => {}, onDestroyed = () => {} }) {
   const traps = { slots: [], selected: 0, active: [], notice: { text: '', time: 0, good: false } };
   const throws = [];
   traps.aiming = false;                               // mira de arremesso aberta (arpão, mina e rede)
@@ -57,6 +59,7 @@ export function createTraps({ scene, car, race, harpoon, burning, mines, nets, e
     if (type.id === 'harpoon' && harpoon.busy) return 'ARPAO EM USO';
     if (car.effects.emp > 0) return shockedByLightning(car.effects) ? 'SEM ITENS' : 'EMP: SEM ITENS';
     if (type.id === 'shield' && car.effects.shield > 0) return 'ESCUDO ATIVO';
+    if (type.id === 'cloak' && car.effects.cloak > 0) return 'JA CAMUFLADO';
     return null;
   }
 
@@ -92,6 +95,10 @@ export function createTraps({ scene, car, race, harpoon, burning, mines, nets, e
     if (id === 'shield') {
       traps.raiseShield(racer);
       if (racer.isPlayer) showNotice('ESCUDO ATIVO', true);
+    } else if (id === 'cloak') {
+      raiseCloak(racer);
+      onSound('cloak', racer.x, racer.z);
+      if (racer.isPlayer) showNotice('CAMUFLAGEM', true);
     } else if (id === 'emp') {
       const defused = emp.pulse(racer);
       if (racer.isPlayer) showNotice(defused ? 'EMP: MINA DESARMADA' : 'PULSO EMP', true);
@@ -112,6 +119,7 @@ export function createTraps({ scene, car, race, harpoon, burning, mines, nets, e
     },
     harpoon() { harpoon.fire(); },
     shield() { traps.usePower('shield', race.field[0]); },
+    cloak() { traps.usePower('cloak', race.field[0]); },
     emp() { traps.usePower('emp', race.field[0]); },
     mine() { traps.usePower('mine', race.field[0]); },
     net() { return traps.usePower('net', race.field[0]); },   // sem alvo à frente devolve false e a carga não se gasta
@@ -146,7 +154,10 @@ export function createTraps({ scene, car, race, harpoon, burning, mines, nets, e
     if (THROWN.has(slot.type.id)) { traps.aiming = !traps.aiming; return; }   // E abre/fecha a mira; o clique esquerdo lança
     slot.charges--;
     if (slot.type.powerup) { if (POWERUPS[slot.type.id]() === false) slot.charges++; }
-    else {
+    else if (slot.type.barrier) {
+      dropBarrier(race.playerDist - DROP_DISTANCE_BEHIND, car.lateral, race.field[0]);
+      showNotice('BARREIRA', true);
+    } else {
       const trap = place(slot.type, race.playerDist - DROP_DISTANCE_BEHIND, car.lateral, null, race.field[0]);
       onPlaced(slot.type, race.playerDist - DROP_DISTANCE_BEHIND, car.lateral, race.field[0], trap.id);
     }
@@ -174,7 +185,13 @@ export function createTraps({ scene, car, race, harpoon, burning, mines, nets, e
     return true;
   };
 
+  function dropBarrier(dist, lane, racer) {
+    while (inGap(dist)) dist -= GAP_BACKOFF;
+    deployBarrier(dist, lane, racer);
+  }
+
   traps.dropFrom = (opponent, type) => {
+    if (type.barrier) { dropBarrier(opponent.dist - DROP_DISTANCE_BEHIND, opponent.lane, opponent); return; }
     const trap = place(type, opponent.dist - DROP_DISTANCE_BEHIND, opponent.lane, opponent, opponent);
     onPlaced(type, opponent.dist - DROP_DISTANCE_BEHIND, opponent.lane, opponent, trap.id);
   };

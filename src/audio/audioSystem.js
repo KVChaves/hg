@@ -178,15 +178,15 @@ export function createAudioSystem(settings) {
     const original = soundsOf(weaponId)[moment];
     const sound = original && resolveSound(original);
     if (!sound) return;
-    const voice = play(sound.url, sound.volume, { rate: moment === 'fire' ? firePitch() : 1 });
+    const voice = play(sound.url, sound.volume, { rate: (original.rate ?? 1) * (moment === 'fire' ? firePitch() : 1) });
     if (moment === 'reloadStart') reloadSound = voice;
   }
 
   // Tiro de um adversário: mais baixo de longe e vindo do lado em que ele está (`pan` de -1 a 1).
   function playEnemyShot(weaponId, distance, pan) {
     if (distance > WORLD_SOUND_RANGE) return;
-    const { url, volume } = resolveSound(soundsOf(weaponId).fire);
-    play(url, volume * ENEMY_SHOT_VOLUME / (1 + distance / DISTANCE_FALLOFF), { rate: firePitch(), pan });
+    const fire = soundsOf(weaponId).fire, { url, volume } = resolveSound(fire);
+    play(url, volume * ENEMY_SHOT_VOLUME / (1 + distance / DISTANCE_FALLOFF), { rate: (fire.rate ?? 1) * firePitch(), pan });
   }
 
   // `strength` de 0 a 1 escala o volume (batida leve ou forte).

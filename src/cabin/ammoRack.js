@@ -51,6 +51,15 @@ function plotGrenade(r, x, y) {
   r.rect(x, y + 6, 1, 5, 0xe8c060);
 }
 
+// Caixa de munição da metralhadora, com a ponta da cinta saindo por cima.
+function plotAmmoBox(r, x, y) {
+  for (let i = 0; i < 3; i++) r.rect(x + 4 + i * 3, y, 2, 3, 0xd0a040);
+  r.rect(x, y + 3, 14, 13, 0x1e2216);
+  r.rect(x + 1, y + 4, 12, 11, 0x4c5434);
+  r.rect(x + 1, y + 4, 12, 1, 0x667048);
+  r.rect(x + 2, y + 9, 10, 2, 0xd8b040);
+}
+
 const MAX_RACK_WIDTH = 60;                           // munição extra aperta o suporte em vez de sair do painel
 
 const RACKS = {
@@ -60,6 +69,7 @@ const RACKS = {
   smg: { roundsPerItem: 30, perRow: 2, stepX: 14, gapY: 26, itemW: 9, itemH: 24, tray: false, plot: plotMagazine },
   crossbow: { roundsPerItem: 1, perRow: 8, stepX: 5, gapY: 13, itemW: 4, itemH: 11, tray: true, plot: plotBolt },
   grenade: { roundsPerItem: 1, perRow: 6, stepX: 8, gapY: 13, itemW: 6, itemH: 11, tray: true, plot: plotGrenade },
+  heavymg: { roundsPerItem: 50, perRow: 2, stepX: 17, gapY: 18, itemW: 14, itemH: 16, tray: false, plot: plotAmmoBox },
 };
 
 export function createAmmoRack(parent) {

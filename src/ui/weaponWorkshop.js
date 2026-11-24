@@ -1,7 +1,7 @@
 import { VIEW } from '../config.js';
 import { ctxText, textWidth } from '../art/font.js';
 import { accessoriesOf, saveWeaponCustoms, WEAPON_PATTERNS } from '../game/weaponCustomization.js';
-import { familyOf, WEAPON_TYPES } from '../game/weaponTypes.js';
+import { familyOf, fireInterval, stepSpin, WEAPON_TYPES } from '../game/weaponTypes.js';
 import { createGunAnimator } from './guns/gunAnimator.js';
 import { createGunEffects } from './guns/gunEffects.js';
 import { createGunRig } from './guns/gunRig.js';
@@ -15,8 +15,10 @@ const LEFT = { x: 6, y: 40, width: 106, height: 16 + Math.ceil(Object.keys(WEAPO
 const RIGHT = { x: 528, y: 40, width: 106, height: 156, columns: 2 };
 const BACK_BUTTON = { x: 240, y: 6, width: 160, height: 26 };
 const PREVIEW = { x: 320, y: 150, maxWidth: 400, maxScale: 3 };
-const DEMO = { pause: 0.9, shotsPerRound: 3, minInterval: 0.55, burstInterval: 0.09, burstShots: 8 };
-const WEAPON_SHORT = { revolver: 'REVOLV', shotgun: 'ESCOP', smg: 'SUBM', rifle: 'RIFLE', magnum: 'MAGNUM', sniper: 'SNIPER', autoshotgun: 'ESC AUT', crossbow: 'BESTA', grenade: 'GRANADA' };
+const DEMO = { pause: 0.9, shotsPerRound: 3, minInterval: 0.55, burstInterval: 0.09, burstShots: 8, spinShots: 36 };
+// Tiros de cada rodada da demonstração: a metralhadora precisa de uma rajada longa para os canos chegarem no máximo.
+const burstOf = type => (type.spinUp ? DEMO.spinShots : type.automatic ? DEMO.burstShots : DEMO.shotsPerRound);
+const WEAPON_SHORT = { revolver: 'REVOLV', shotgun: 'ESCOP', smg: 'SUBM', rifle: 'RIFLE', magnum: 'MAGNUM', sniper: 'SNIPER', autoshotgun: 'ESC AUT', crossbow: 'BESTA', grenade: 'GRANADA', heavymg: 'METRALH' };
 
 const SLOT_DEFS = [
   { key: 'metal', short: 'METAL', label: 'Cor do metal', hasColor: true },
@@ -66,7 +68,7 @@ export function createWeaponWorkshop({ stage, customs, onChange, onClose }) {
     const type = WEAPON_TYPES[weaponId];
     animator = createGunAnimator(weaponId);
     effects = createGunEffects(58);
-    demo = { type, ammo: type.magazine, timer: DEMO.pause, shotsLeft: type.automatic ? DEMO.burstShots : DEMO.shotsPerRound, reloading: false, progress: 0, carrying: false, toLoad: 0, recoil: 0, velocity: 0, flash: 0, seed: 0 };
+    demo = { type, ammo: type.magazine, timer: DEMO.pause, shotsLeft: burstOf(type), spin: 0, reloading: false, progress: 0, carrying: false, toLoad: 0, recoil: 0, velocity: 0, flash: 0, seed: 0 };
   }
 
   function rebuild() {
@@ -129,6 +131,8 @@ export function createWeaponWorkshop({ stage, customs, onChange, onClose }) {
   }
 
   function stepDemo(dt) {
+    // Metralhadora: os canos aceleram durante a rajada e param devagar depois dela.
+    demo.spin = stepSpin(demo.type, demo.spin, !demo.reloading && demo.shotsLeft > 0 && demo.ammo > 0 && demo.timer <= DEMO.pause * 0.5, dt);
     if (demo.reloading) {
       demo.progress += dt / demo.type.roundTime;
       if (demo.progress >= 0.5) demo.carrying = true;
@@ -141,7 +145,7 @@ export function createWeaponWorkshop({ stage, customs, onChange, onClose }) {
         if (demo.toLoad <= 0) {
           demo.reloading = false;
           demo.timer = DEMO.pause;
-          demo.shotsLeft = demo.type.automatic ? DEMO.burstShots : DEMO.shotsPerRound;
+          demo.shotsLeft = burstOf(demo.type);
         }
       }
       return;
@@ -150,7 +154,7 @@ export function createWeaponWorkshop({ stage, customs, onChange, onClose }) {
     if (demo.shotsLeft > 0 && demo.ammo > 0) {
       fireDemo();
       demo.shotsLeft--;
-      demo.timer = demo.type.automatic ? DEMO.burstInterval : Math.max(demo.type.interval, DEMO.minInterval);
+      demo.timer = demo.type.spinUp ? fireInterval(demo.type, demo.spin) : demo.type.automatic ? DEMO.burstInterval : Math.max(demo.type.interval, DEMO.minInterval);
     } else {
       demo.reloading = true;
       demo.progress = 0;
@@ -166,7 +170,7 @@ export function createWeaponWorkshop({ stage, customs, onChange, onClose }) {
     demo.velocity += (-stiffness * demo.recoil - damping * demo.velocity) * dt;
     demo.recoil += demo.velocity * dt;
 
-    const events = animator.update(dt, { reloading: demo.reloading, ammo: demo.ammo, capacity: demo.type.magazine, roundProgress: demo.progress, carrying: demo.carrying });
+    const events = animator.update(dt, { reloading: demo.reloading, ammo: demo.ammo, capacity: demo.type.magazine, roundProgress: demo.progress, carrying: demo.carrying, spin: demo.spin });
     const [ex, ey] = rig.art.eject, [px, py] = rig.art.pivot;
     for (const { eject } of events) for (let i = 0; i < eject; i++) effects.ejectCasing(ex - px, ey - py, rig.art.casing);
     effects.update(dt);

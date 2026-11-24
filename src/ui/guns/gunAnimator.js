@@ -3,7 +3,7 @@ import { familyOf, WEAPON_TYPES } from '../../game/weaponTypes.js';
 // Transforma o estado da arma em movimento das partes. `update` devolve os eventos do quadro
 // (cápsulas a ejetar e sons a tocar). O jeito de mover segue o `style` da arma (ou a família dela):
 // revolver, topbreak (revólver de quebrar), shotgun, smg, rifle (alavanca), bolt (ferrolho),
-// autoshotgun (tambor), crossbow e pump (bomba do lança-granadas).
+// autoshotgun (tambor), crossbow, pump (bomba do lança-granadas) e gatling (canos giratórios da metralhadora).
 
 const HAMMER_RECOCK_DELAY = 0.12, HAMMER_SPEED = 9, SPIN_SPEED = 7;
 const OPEN_SPEED = 9, BOLT_RETURN = 22, MAG_DROP_SPEED = 7;
@@ -18,6 +18,10 @@ const STRING_SNAP_SPEED = 40, STRING_COCK_SPEED = 6, FLEX_DECAY = 3.2, CRANK_SPE
 // Bomba do lança-granadas: a mão chega, puxa (cospe o estojo) e empurra; tempos em segundos depois do tiro.
 const PUMP_HAND_IN = [0.1, 0.24], PUMP_BACK = [0.24, 0.4], PUMP_FORWARD = [0.44, 0.58], PUMP_HAND_OUT = [0.58, 0.72];
 
+// Metralhadora: os canos giram com `state.spin` (um cano por tiro, no ritmo máximo), a cinta anda um elo por tiro
+// e os canos esquentam na rajada. O giro só faz som quando parte do repouso.
+const BELT_SPEED = 30, GATLING_HEAT_PER_SHOT = 0.03, GATLING_HEAT_DECAY = 0.22, SPIN_SOUND_REST = 0.05;
+
 // Momento do ciclo em que o pente sai da mão e encaixa na arma.
 export const MAGAZINE_SEAT_AT = 0.86;
 const MAGAZINE_CLICK_AT = 0.94;                    // o clique do som cai no fim do encaixe
@@ -25,8 +29,8 @@ const MAGAZINE_CLICK_AT = 0.94;                    // o clique do som cai no fim
 const approach = (value, target, step) => (value < target ? Math.min(target, value + step) : Math.max(target, value - step));
 const clamp01 = v => Math.max(0, Math.min(1, v));
 const smooth = t => t * t * (3 - 2 * t);
-const OPENS_ON_RELOAD = new Set(['revolver', 'shotgun', 'autoshotgun']);
-const SWAPS_MAGAZINE = new Set(['smg']);            // trocam o pente inteiro de uma vez
+const OPENS_ON_RELOAD = new Set(['revolver', 'shotgun', 'autoshotgun', 'gatling']);
+const SWAPS_MAGAZINE = new Set(['smg', 'gatling']);           // trocam o pente inteiro de uma vez
 
 export function createGunAnimator(weaponId) {
   const type = WEAPON_TYPES[weaponId], id = type.style ?? familyOf(weaponId);
@@ -34,7 +38,9 @@ export function createGunAnimator(weaponId) {
     hammer: 1, hammers: [1, 1], spin: 0, open: 0, bolt: 0, lever: 0, magDrop: 0, ammo: type.magazine,
     boltLift: 0, boltBack: 0, draw: 0, flex: 0, t: 0,
     latch: 0, extract: 0, drum: 0, drumIndex: 0, heat: 0, crank: 0, actionHand: 0, pump: 0, spent: false, nut: 0,
+    rotor: 0, rotorSpeed: 0, belt: 0, beltIndex: 0,
   };
+  let lastSpin = 0;
   let sincePump = Infinity, pumpEjected = true, pumpSounded = true, wasFired = false;   // wasFired: a bomba tem estojo para cuspir
   let sinceFire = Infinity, shots = 0, leverEjected = true, wasReloading = false, boltRack = 0, magazineClicked = false, leverStarted = true, lastAmmo = type.magazine;
   let boltOpened = true, boltEjected = true, boltClosed = true, boltClosing = Infinity, pendingCasings = 0;
@@ -51,6 +57,19 @@ export function createGunAnimator(weaponId) {
     if (id === 'bolt') { boltOpened = boltEjected = boltClosed = false; pose.spent = true; boltClosing = Infinity; }
     if (id === 'crossbow') { pose.flex = 1; pose.draw = 0; pose.nut = 1; }      // a corda solta de uma vez
     if (id === 'pump') { startPump(); wasFired = true; }
+    if (id === 'gatling') { pose.beltIndex++; pose.heat = Math.min(1, pose.heat + GATLING_HEAT_PER_SHOT); }
+  }
+
+  // Canos, cinta e calor da metralhadora; na recarga a cinta nova entra inteira (volta ao começo).
+  function updateGatling(dt, state, events) {
+    const spin = state.spin ?? 0;
+    if (spin > SPIN_SOUND_REST && lastSpin <= SPIN_SOUND_REST && !state.reloading) events.push({ sound: 'spinUp' });
+    lastSpin = spin;
+    pose.rotorSpeed = spin / type.interval;
+    pose.rotor += dt * pose.rotorSpeed;
+    if (state.reloading) pose.beltIndex = pose.belt = 0;
+    pose.belt = approach(pose.belt, pose.beltIndex, dt * BELT_SPEED);
+    pose.heat = Math.max(0, pose.heat - dt * GATLING_HEAT_DECAY);
   }
 
   function startPump() {
@@ -199,7 +218,9 @@ export function createGunAnimator(weaponId) {
   }
 
   // Ferrolho da submetralhadora e ferrolho/ação da escopeta automática: recua a cada tiro e trava aberto sem munição.
+  // Na metralhadora é só a alavanca de armar, puxada uma vez no fim da recarga.
   function updateBolt(dt, state) {
+    if (id === 'gatling') { boltRack = Math.max(0, boltRack - dt * 3); pose.bolt = boltRack; return; }
     if (id !== 'smg' && id !== 'autoshotgun') return;
     boltRack = Math.max(0, boltRack - dt * 5);
     const lockedBack = state.ammo === 0;
@@ -219,9 +240,10 @@ export function createGunAnimator(weaponId) {
     if (id === 'autoshotgun') updateDrum(dt, state);
     if (id === 'crossbow') updateCrossbow(dt, state);
     if (id === 'pump') updatePump(dt, state.reloading, events);
+    if (id === 'gatling') updateGatling(dt, state, events);
     updateReload(dt, state, events);
     updateBolt(dt, state);
-    if ((id === 'smg' || id === 'autoshotgun') && sinceFire === dt) events.push({ eject: 1 });
+    if ((id === 'smg' || id === 'autoshotgun' || id === 'gatling') && sinceFire === dt) events.push({ eject: 1 });
     lastAmmo = state.ammo;
     return events;
   }

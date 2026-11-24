@@ -3,7 +3,8 @@ import * as THREE from 'three';
 // Fumaça e chamas são quadrados virados para a câmera com as texturas do jogo original.
 
 // Fumaça e fogo que mostram a vida de cada carro. É só visual: lê o estado dos carros a cada quadro.
-// Cada `racer` é { x, z, yaw, vx, vz, health (0 a 1), burning (em chamas pela besta), elevation (metros, ao capotar), visible }.
+// Cada `racer` é { x, z, yaw, vx, vz, health (0 a 1), burning (em chamas pela besta), elevation (metros, ao capotar), visible,
+// cloaked (camuflado: some a fumaça e o fogo do dano, mas o fogo da besta continua) }.
 
 const SMOKE_POOL = 280, FIRE_POOL = 260;
 const QUAD_PER_SIZE = 2.2;                                        // lado do quadrado em relação ao tamanho da partícula
@@ -88,7 +89,7 @@ export function createCarDamageEffects(scene, racerCount, getCamera) {
   }
 
   function emit(racer, emitter, dt) {
-    const stage = STAGES.find(candidate => racer.health > candidate.above);
+    const stage = racer.cloaked ? STAGES[0] : STAGES.find(candidate => racer.health > candidate.above);
     emitter.smoke += stage.smokeRate * dt;
     for (; emitter.smoke >= 1; emitter.smoke--) {
       const index = spawn(smoke, racer, HOOD, SMOKE_SPREAD, SMOKE_LIFE, SMOKE_RISE, SMOKE_START_SIZE);

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { isHidden } from './cloak.js';
 import { CAR_MAX_HP, LOOK } from '../config.js';
 import { SHARP_RADIUS, track, wrapDistance } from '../world/track.js';
 import { createCombatVisuals } from '../world/combatVisuals.js';
@@ -7,7 +8,7 @@ import { bearingFrom, damagePlayer } from './car.js';
 import { createHarpoon } from './harpoon.js';
 import { damageOpponent } from './opponents.js';
 import { shakeCar } from './shake.js';
-import { damageAtDistance, shakeAtDistance, WEAPON_TYPES } from './weaponTypes.js';
+import { damageAtDistance, fireInterval, shakeAtDistance, stepSpin, WEAPON_TYPES } from './weaponTypes.js';
 import { rollPart } from './carParts.js';
 import { EMP_RADIUS } from './trapTypes.js';
 import { effectiveRange, healthOf, isAlive, isVulnerable, styleOf, weaponOf } from './botStyles.js';
@@ -30,7 +31,7 @@ const IDLE_RELOAD = 1.2;                             // segundos sem alvo para c
 const GRUDGE_FOCUS = 1.5, VULNERABLE_BONUS = 0.5, SHIELDED_PENALTY = 0.9, BURNING_PENALTY = 0.6, SPLASH_NEIGHBOUR = 0.5;
 const MISS_OFFSET = [1.5, 4], MUZZLE_FORWARD = 1.6, MUZZLE_HEIGHT = 1.15, TARGET_HEIGHT = 1.1;
 const TRAP_RETRY = 0.4, DROP_BEHIND = 8, TRAP_ALIGN_REACH = 9, TRAP_AIM_TIME = 0.6;
-const TRAP_GAP = { default: [8, 40], dynamite: [6, 22], smoke: [6, 50], paint: [8, 35] };
+const TRAP_GAP = { default: [8, 40], dynamite: [6, 22], smoke: [6, 50], paint: [8, 35], barrier: [10, 30] };
 const CURVE_TRAPS = new Set(['oil', 'spikes']), CURVE_SIGHT = 220, CURVE_WAIT_LIMIT = 14;   // óleo e espinhos rendem mais na curva
 const HIT_FLASH_TIME = 0.3;
 const POWERUP_RETRY = 0.3, URGENT = 2.5, EMP_BOT_REACH = 0.7;
@@ -65,7 +66,7 @@ export function createOpponentCombat({ scene, car, race, opponents, traps, mines
   }
 
   function canReach(op, target) {
-    if (target === op || target.dead > 0 || target.protectedFor > 0 || isBlinded(op) || op.overturned) return false;
+    if (target === op || target.dead > 0 || target.protectedFor > 0 || isHidden(target) || isBlinded(op) || op.overturned) return false;
     const range = rangeOf(op), dx = target.x - op.x, dz = target.z - op.z, distance = Math.hypot(dx, dz) || 1;
     return distance < range && Math.abs(wrapDistance(op.dist - target.dist)) < range && isInFront(op, dx, dz, distance);
   }
@@ -114,7 +115,7 @@ export function createOpponentCombat({ scene, car, race, opponents, traps, mines
   function chooseQuarry(op, style, rival) {
     let best = null, bestScore = -Infinity;
     for (const target of field) {
-      if (target === op || !isAlive(target)) continue;
+      if (target === op || !isAlive(target) || isHidden(target)) continue;
       const gap = wrapDistance(target.dist - op.dist);
       if (gap <= 0 || gap > CHASE_SIGHT) continue;
       const score = targetScore(op, target, style, 1 - gap / CHASE_SIGHT, rival);
@@ -225,17 +226,19 @@ export function createOpponentCombat({ scene, car, race, opponents, traps, mines
   }
 
   // Pausa média entre ataques para a munição da arma durar o tempo que o estilo quer.
+  const burstOf = type => type.botBurst ?? BURST_SIZE;
   function ammoPause({ type, maxReserve }, style) {
-    const shotsPerAttack = type.automatic ? (BURST_SIZE[0] + BURST_SIZE[1]) / 2 : 1;
+    const burst = burstOf(type), shotsPerAttack = type.automatic ? (burst[0] + burst[1]) / 2 : 1;
     return style.ammoTime / (type.magazine + maxReserve) * shotsPerAttack;
   }
 
   function scheduleNextShot(op, target, style) {
     const { arsenal } = op, { type } = arsenal;
-    if (type.automatic && arsenal.burstLeft <= 0) arsenal.burstLeft = Math.round(random(BURST_SIZE));
+    if (type.automatic && arsenal.burstLeft <= 0) arsenal.burstLeft = Math.round(random(burstOf(type)));
     arsenal.burstLeft--;
     const pace = (op.grudge > 0 ? GRUDGE_PACE : 1) * (healthOf(target) < FINISH_HEALTH ? FINISH_PACE : 1);
-    if (arsenal.burstLeft > 0) arsenal.cooldown = type.interval;
+    // Na metralhadora a rajada acelera junto com os canos (arsenal.spin, como o jogador).
+    if (arsenal.burstLeft > 0) arsenal.cooldown = fireInterval(type, arsenal.spin);
     else arsenal.cooldown = Math.max(type.interval, ammoPause(arsenal, style) * random(PAUSE_VARIATION) * pace);
   }
 
@@ -251,6 +254,7 @@ export function createOpponentCombat({ scene, car, race, opponents, traps, mines
   function updateGun(op, dt, target, style) {
     const { arsenal } = op, { type } = arsenal;
     arsenal.cooldown -= dt;
+    arsenal.spin = stepSpin(type, arsenal.spin ?? 0, arsenal.burstLeft > 0 && arsenal.reloadLeft <= 0 && op.effects.emp <= 0, dt);
     if (arsenal.reloadLeft > 0) {
       arsenal.reloadLeft -= dt;
       if (arsenal.reloadLeft <= 0) {
@@ -301,6 +305,7 @@ export function createOpponentCombat({ scene, car, race, opponents, traps, mines
     if (CURVE_TRAPS.has(type.id) && sharpCurveIn(op.dist - DROP_BEHIND - 10, 30)) score += style.curveTraps ? 1.5 : 0.6;
     if (type.id === 'paint' && weapon) score += 0.5 + (aimsAtMe ? 0.8 : 0);            // cega quem atira em mim
     if (type.id === 'smoke') score += (effectiveRange(weapon) >= 120 ? 1.2 : 0) + (aimsAtMe ? 0.8 : 0);   // esconde de quem mira de longe
+    if (type.id === 'barrier' && racer.v > op.v) score += 0.6;                       // vem rápido: não dá tempo de desviar
     if (gap < 12) score += 0.3;
     return score;
   }
@@ -339,7 +344,7 @@ export function createOpponentCombat({ scene, car, race, opponents, traps, mines
   function hasHarpoonShot(op) {
     const fx = -Math.sin(op.yaw), fz = -Math.cos(op.yaw);
     return !isBlinded(op) && field.some(target => {
-      if (target === op || target.dead > 0 || target.protectedFor > 0) return false;
+      if (target === op || target.dead > 0 || target.protectedFor > 0 || isHidden(target)) return false;
       const dx = target.x - op.x, dz = target.z - op.z, forward = fx * dx + fz * dz, right = -fz * dx + fx * dz;
       return forward >= HARPOON_NEAR && forward <= HARPOON_FAR && Math.abs(right) <= HARPOON_AIM;
     });
@@ -369,6 +374,12 @@ export function createOpponentCombat({ scene, car, race, opponents, traps, mines
       if (health < style.shieldAt && underFire) return 1.8;
       if (op.tactics.ramming > 0 && style.ram >= 1) return 1;   // o brutamontes ergue o escudo antes da pancada
       return 0;
+    }
+    if (type.id === 'cloak') {
+      if (op.effects.cloak > 0 || mineOnMe) return 0;  // a mina já grudada não cai com a camuflagem
+      const hunters = field.filter(racer => racer.arsenal?.target === op).length + (op.grudge > 0 ? 1 : 0);
+      if (health < style.shieldAt && hunters > 0) return 1.7;
+      return hunters >= 2 ? 1.2 : 0;                   // muita gente atirando nele: some
     }
     if (type.id === 'extinguisher') {
       if (burning && health < 0.75) return 2.6;     // apaga o fogo antes que ele termine o serviço

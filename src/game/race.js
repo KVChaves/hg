@@ -6,6 +6,7 @@ import { createFlip, flipLandingTime, lifeAfterDestruction, RESPAWN_PROTECTION }
 import { createCollisions } from './collisions.js';
 import { placeOpponent, resetOpponent, updateOpponent, updateRemoteRacer } from './opponents.js';
 import { slipstreamStrength } from './slipstream.js';
+import { cloakLevel } from './cloak.js';
 import { FALL_TIME, fallIsCertain, GRAVITY, hitsGate, sinkStep, stepFlight } from './flight.js';
 import { BRIDGE_HALF, LEDGE_REACH } from './mapLayout.js';
 
@@ -175,6 +176,7 @@ export function createRace(car, opponents, { onCrash, onDestroyed, onBlast, onCo
       return t.y;
     }
     if (track.valley) return t.y + valleyRise(offset);
+    if (track.pier) return t.y;                      // píer: o deque vai até a cerca, tudo na altura da estrada
     // Penhasco: do lado aberto, passou da beira (ou já caiu abaixo dela), não há chão.
     const ledge = ledgeAt(race.playerDist);
     if (ledge && Math.sign(offset) === ledge && Math.abs(offset) > CLIFF_EDGE) return null;
@@ -349,6 +351,7 @@ export function createRace(car, opponents, { onCrash, onDestroyed, onBlast, onCo
     }
     trackCapsizes(car, dt);
     playerProxy.dead = Math.max(0, car.wrecked);
+    if (car.wrecked > 0) car.effects.cloak = 0;      // destruído, a camuflagem acaba
     playerProxy.sunk = car.sunk;
     playerProxy.protectedFor = car.invulnerable;
     playerProxy.health = car.health;                 // a IA escolhe alvo pela vida (botStyles.healthOf)
@@ -454,6 +457,9 @@ export function createRace(car, opponents, { onCrash, onDestroyed, onBlast, onCo
     for (const op of opponents) {
       if (op.remote) updateRemoteRacer(op, dt);
       else updateOpponent(op, dt, field, race.started, activeTraps, race.time);
+      if (op.remote) op.effects.cloak = Math.max(0, op.effects.cloak - dt);   // entre um retrato e outro da rede
+      else if (op.dead > 0) op.effects.cloak = 0;    // destruído, a camuflagem acaba
+      op.model.setCloak(cloakLevel(op));
     }
     collisions.update(dt);
     playerProxy.x = car.x;

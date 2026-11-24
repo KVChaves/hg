@@ -27,6 +27,11 @@ function spoilerGeometry(kind, model) {
 
 const flashMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
 
+// Camuflagem (game/cloak.js): um plano de corte anda do nariz (z negativo) até a traseira e o que fica à frente
+// dele não é desenhado. Cada malha do carro troca o material por uma cópia com o plano enquanto durar.
+const CLOAK_FRONT = -2.7, CLOAK_REAR = 2.9;
+const BACKWARD = new THREE.Vector3(0, 0, 1);
+
 // Escapamento: canos na traseira e o fogo do nitro saindo deles (z positivo é para trás).
 // Cada tipo tem seus canos (`xs`, raio, comprimento) e chama (`layers`: raio, comprimento e cor).
 const REAR_Z = 2.2;
@@ -206,6 +211,29 @@ export function createCarModel(initialSpec, seed = 0) {
   const lights = createCarLights();
   lifted.add(lights.group);
 
+  const cloakPlane = new THREE.Plane(), cloakClones = new Map();
+  let cloaked = false;
+  const cloakedCopy = material => {
+    if (!cloakClones.has(material)) {
+      const copy = material.clone();
+      copy.clippingPlanes = [cloakPlane];
+      cloakClones.set(material, copy);
+    }
+    return cloakClones.get(material);
+  };
+  // As peças trocadas por `apply` ou pelo clarão do tiro entram na próxima chamada.
+  function swapToCloak(object) {
+    if (!object.material || object.userData.cloakCopy === object.material) return;
+    object.userData.cloakOriginal = object.material;
+    object.material = Array.isArray(object.material) ? object.material.map(cloakedCopy) : cloakedCopy(object.material);
+    object.userData.cloakCopy = object.material;
+  }
+  function restoreFromCloak(object) {
+    if (!object.userData.cloakOriginal) return;
+    if (object.material === object.userData.cloakCopy) object.material = object.userData.cloakOriginal;
+    object.userData.cloakOriginal = object.userData.cloakCopy = null;
+  }
+
   return {
     group,
     apply,
@@ -229,6 +257,22 @@ export function createCarModel(initialSpec, seed = 0) {
       if (active === flashing) return;
       flashing = active;
       body.material = spoiler.material = active ? flashMaterial : paint;
+    },
+    // `amount`: 0 inteiro, 1 todo escondido. Chamar depois de posicionar o carro no quadro.
+    setCloak(amount) {
+      if (amount <= 0) {
+        if (!cloaked) return;
+        cloaked = false;
+        group.traverse(restoreFromCloak);
+        for (const copy of cloakClones.values()) copy.dispose();
+        cloakClones.clear();
+        return;
+      }
+      cloaked = true;
+      group.traverse(swapToCloak);
+      group.updateWorldMatrix(true, false);
+      const cut = CLOAK_FRONT + (CLOAK_REAR - CLOAK_FRONT) * Math.min(1, amount);
+      cloakPlane.set(BACKWARD, -cut).applyMatrix4(group.matrixWorld);   // fica só o que está atrás do corte
     },
   };
 }

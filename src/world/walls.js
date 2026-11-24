@@ -26,7 +26,7 @@ function wallGeometry(side, style, isCovered) {
     const x = px[k] - tz[k] * lateral, z = pz[k] + tx[k] * lateral, ground = heightAt(x, z);
     const a = i * 2, u = -side * i * step / style.tile;   // de dentro da pista, a textura fica na mesma direção dos dois lados
     // A base entra na terra e o topo acompanha o que estiver mais alto, estrada ou barranco.
-    const base = track.drop[k] > 0 ? py[k] : Math.min(py[k], ground);     // nas plataformas o muro assenta nelas, não no fundo do abismo
+    const base = track.drop[k] > 0 || track.pier ? py[k] : Math.min(py[k], ground);     // nas plataformas e no píer o muro assenta neles, não no fundo
     pos.set([x, base - BURIED, z, x, Math.max(py[k], ground) + style.height, z], a * 3);
     uv.set([u, 0, u, 1], a * 2);
     if (i < count && !isCovered(k, side)) index.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);

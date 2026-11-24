@@ -5,6 +5,7 @@ import { FOREST } from './forest.js';
 import { JUNGLE } from './jungle.js';
 import { KINGS_ROAD } from './kingsRoad.js';
 import { NEON_TOKYO } from './neonTokyo.js';
+import { PIRATE_PORT } from './piratePort.js';
 import { SPACE } from './space.js';
 import { SALT_FLATS } from './saltFlats.js';
 import { STADIUM } from './stadium.js';
@@ -13,7 +14,7 @@ import { WIND_CANYON } from './windCanyon.js';
 import { WINTER_MOUNTAIN } from './winterMountain.js';
 
 // Para criar um bioma novo, basta um arquivo como estes e uma entrada aqui.
-export const BIOMES = [JUNGLE, FOREST, FIRE_FACTORY, NEON_TOKYO, STADIUM, WINTER_MOUNTAIN, DESERT, BEACH, SPACE, WIND_CANYON, SALT_FLATS, STORM_SWAMP, KINGS_ROAD];
+export const BIOMES = [JUNGLE, FOREST, FIRE_FACTORY, NEON_TOKYO, STADIUM, WINTER_MOUNTAIN, DESERT, BEACH, SPACE, WIND_CANYON, SALT_FLATS, STORM_SWAMP, KINGS_ROAD, PIRATE_PORT];
 
 // Opções da votação do próximo mapa (multiplayer): até `count` biomas ainda não jogados nesta rodada, sorteados.
 // Mesma regra de pickMatchBiome, mas nada é marcado como jogado: isso só acontece quando a votação termina.

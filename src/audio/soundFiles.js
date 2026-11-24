@@ -61,6 +61,9 @@ export const SOUND_FILES = {
   extinguisher: `${TRAPS}/extinguisher.mp3`,
   // Escudo, EMP e mina teleguiada.
   shield: `${TRAPS}/shield.mp3`,
+  // Camuflagem e barreira inflável ainda sem som próprio: usam o do escudo e o da fumaça (o chiado de encher).
+  cloak: `${TRAPS}/shield.mp3`,
+  barrier: `${TRAPS}/smoke.mp3`,
   emp: `${TRAPS}/emp.mp3`,
   mineLaunch: `${TRAPS}/mine-launch.mp3`,
   mineStick: `${TRAPS}/mine-stick.mp3`,
@@ -89,6 +92,7 @@ export const PHASE_MUSIC = {
   saltFlats: 'assets/audio/music/salt-flats.mp3',
   stormSwamp: 'assets/audio/music/storm-swamp.mp3',
   kingsRoad: 'assets/audio/music/kings-road.mp3',
+  piratePort: 'assets/audio/music/beach.mp3',   // ainda sem música própria: usa a da praia (troque por pirate-port.mp3)
 };
 
 
@@ -97,6 +101,7 @@ export const PHASE_MUSIC = {
 // cobre os três biomas em que cai chuva (os de `weather.streak`).
 export const PHASE_AMBIENCE = {
   beach: [['ambBeach', 0.8]],
+  piratePort: [['ambBeach', 0.7]],
   desert: [['ambDesert', 0.8]],
   windCanyon: [['ambDesert', 1]],
   jungle: [['ambRain', 0.7]],

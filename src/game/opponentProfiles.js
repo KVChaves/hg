@@ -5,14 +5,15 @@
 export const OPPONENT_PROFILES = [
   // Caçadora: vai atrás de quem lidera, fecha com nitro e arpoa e prende na rede; o escudo segura a troca de tiros.
   { name: 'Ema', style: 'hunter', weapon: 'revolver', traps: ['net', 'shield', 'harpoon'], upgrades: { life: 2, nitro: 1, ammo: 1 } },
-  // Carrapato: cola na traseira de quem está logo à frente e metralha; tinta cega quem vem atrás, EMP corta o revide.
-  { name: 'Waka', style: 'tick', weapon: 'smg', traps: ['paint', 'emp', 'extinguisher'], upgrades: { life: 1, nitro: 1, ammo: 1 } },
+  // Carrapato: cola na traseira de quem está logo à frente e não solta o gatilho da metralhadora; tinta cega quem vem
+  // atrás, EMP corta o revide.
+  { name: 'Waka', style: 'tick', weapon: 'heavymg', traps: ['paint', 'emp', 'extinguisher'], upgrades: { life: 1, nitro: 1, ammo: 1 } },
   // Brutamontes: encosta, joga o carro em cima e descarrega a escopeta de perto; arpão puxa quem tenta fugir.
   { name: 'UnclePecos', style: 'brawler', weapon: 'shotgun', traps: ['dynamite', 'extinguisher', 'harpoon'], upgrades: { life: 1, nitro: 2, ammo: 0 } },
-  // Atiradora: segura distância e mira com calma; óleo nas curvas, mina em quem foge, escudo se a encurtarem.
-  { name: 'Ruiva', style: 'marksman', weapon: 'sniper', traps: ['oil', 'mine', 'shield'], upgrades: { life: 2, nitro: 1, ammo: 0 } },
-  // Muralha: fecha a faixa de quem vem atrás, dinamite e fumaça na cara dele, escopeta automática em quem emparelha.
-  { name: 'Dino', style: 'blocker', weapon: 'autoshotgun', traps: ['dynamite', 'smoke', 'extinguisher'], upgrades: { life: 2, nitro: 0, ammo: 1 } },
+  // Atiradora: segura distância e mira com calma; óleo nas curvas, mina em quem foge, camuflagem se a caçarem.
+  { name: 'Ruiva', style: 'marksman', weapon: 'sniper', traps: ['oil', 'mine', 'cloak'], upgrades: { life: 2, nitro: 1, ammo: 0 } },
+  // Muralha: fecha a faixa de quem vem atrás, dinamite e barreira inflável na cara dele, escopeta automática em quem emparelha.
+  { name: 'Dino', style: 'blocker', weapon: 'autoshotgun', traps: ['dynamite', 'barrier', 'extinguisher'], upgrades: { life: 2, nitro: 0, ammo: 1 } },
   // Abutre: escolhe quem está ferido, pegando fogo ou sem itens; mina e arpão para terminar o serviço.
   { name: 'Kiko', style: 'vulture', weapon: 'smg', traps: ['mine', 'net', 'harpoon'], upgrades: { life: 1, nitro: 1, ammo: 0 } },
   // Trapaceiro: arma a pista na entrada das curvas fechadas e na faixa de quem o segue; o revólver pesado faz o resto.

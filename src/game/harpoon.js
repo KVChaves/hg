@@ -1,4 +1,5 @@
 import { CAR_MAX_HP } from '../config.js';
+import { isHidden } from './cloak.js';
 import { damagePlayer } from './car.js';
 import { damageOpponent } from './opponents.js';
 import { aimOffset, AIM_RADIUS } from './aim.js';
@@ -98,7 +99,7 @@ export function createHarpoon({ owner, car, race, visual, onSound, onRemotePull 
   function findLock(ax, az) {
     let best = Infinity, found = null;
     for (const racer of race.field) {
-      if (racer === owner || racer.dead > 0 || racer.sunk > 0) continue;
+      if (racer === owner || racer.dead > 0 || racer.sunk > 0 || isHidden(racer)) continue;
       const dx = racer.x - noseX(), dz = racer.z - noseZ(), d = Math.hypot(dx, dz) || 1;
       if (d > RANGE || d >= best) continue;
       if (playerAim) {                               // mira do jogador: na linha de visada (aim.js)

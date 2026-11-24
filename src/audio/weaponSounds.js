@@ -3,8 +3,9 @@
 // magazineIn (o pente encaixa), reloadEnd (fecha a arma), leverOpen/leverClose (ciclo da alavanca)
 // e casing (cápsula batendo no painel).
 // Os volumes igualam a força dos arquivos, que varia muito; a escopeta passa de 1 porque o arquivo é baixo.
+// `rate` (opcional) muda a velocidade e o tom do arquivo: abaixo de 1 fica mais grave, para reaproveitar um som.
 
-const sound = (path, volume) => ({ url: `assets/audio/weapons/${path}.mp3`, volume });
+const sound = (path, volume, rate) => ({ url: `assets/audio/weapons/${path}.mp3`, volume, ...(rate && { rate }) });
 
 const DRY_FIRE = sound('dry-fire', 0.4);              // o mesmo gatilho vazio em todas as armas
 const ROUND_IN = sound('round-in', 1);
@@ -94,5 +95,16 @@ WEAPON_SOUNDS.grenade = {
   roundIn: own('grenade/round-in', 0.8, ROUND_IN),
   reloadEnd: own('grenade/pump', 0.6, BASE.shotgun.reloadEnd),
   pump: own('grenade/pump', 0.6, BASE.shotgun.reloadEnd),
+  casing: CASING,
+};
+// Metralhadora: só sons que já existem, mais graves. O tiro é o da submetralhadora puxado para baixo, o giro dos canos
+// é o tambor do revólver bem devagar e a caixa de munição usa o pente da submetralhadora e o ferrolho da sniper.
+WEAPON_SOUNDS.heavymg = {
+  fire: sound('smg/fire', 0.6, 0.72),
+  dry: DRY_FIRE,
+  spinUp: sound('revolver/spin', 0.6, 0.55),
+  reloadStart: sound('smg/mag-out', 0.6, 0.7),
+  magazineIn: sound('smg/mag-in', 0.7, 0.65),
+  reloadEnd: sound('sniper/bolt-close', 0.5, 0.8),
   casing: CASING,
 };

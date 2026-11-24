@@ -20,6 +20,7 @@ export const WEAPON_ACCESSORIES = {
   autoshotgun: { none: { name: 'Nenhum' }, shells: { name: 'Porta-cartuchos' }, strap: { name: 'Fita no cabo' } },
   crossbow: { none: { name: 'Nenhum' }, scope: { name: 'Luneta' }, quiver: { name: 'Aljava' } },
   grenade: { none: { name: 'Nenhum' }, bandolier: { name: 'Cartucheira' }, foregrip: { name: 'Empunhadura' } },
+  heavymg: { none: { name: 'Nenhum' }, shield: { name: 'Escudo' }, bipod: { name: 'Bipe' } },
 };
 export const accessoriesOf = id => WEAPON_ACCESSORIES[id] ?? WEAPON_ACCESSORIES[familyOf(id)];
 

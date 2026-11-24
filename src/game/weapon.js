@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { damageOpponent } from './opponents.js';
-import { damageAtDistance, shakeAtDistance, WEAPON_TYPES } from './weaponTypes.js';
+import { damageAtDistance, fireInterval, shakeAtDistance, stepSpin, WEAPON_TYPES } from './weaponTypes.js';
 import { partHit } from './carParts.js';
 import { groundHit } from '../world/track.js';
 
@@ -23,14 +23,14 @@ export function createWeapon({ scene, camera, targets, extraTargets = () => [], 
   const weapon = {
     type: WEAPON_TYPES.revolver, ammo: 0, capacity: 0, reserve: 0, outOfAmmo: 0, cooldown: 0,
     isReloading: false, roundsToLoad: 0, roundProgress: 0, carryingRound: false,
-    flash: 0, hitMarker: 0, hitPart: null, hitPartTime: 0, kills: 0, sinceShot: Infinity, shots: 0, landed: 0, dryFires: 0,   // `landed`: disparos que machucaram algum carro (mira)
+    flash: 0, hitMarker: 0, hitPart: null, hitPartTime: 0, kills: 0, sinceShot: Infinity, spin: 0, shots: 0, landed: 0, dryFires: 0,   // `landed`: disparos que machucaram algum carro (mira)
   };
 
   // `reserveFactor` é a melhoria de munição comprada.
   weapon.equip = (id, reserveFactor = 1) => {
     const type = WEAPON_TYPES[id];
     // A arma começa descarregada: a primeira recarga é por conta do piloto.
-    Object.assign(weapon, { type, ammo: 0, capacity: type.magazine, maxReserve: Math.ceil(type.reserve * reserveFactor), reserve: Math.ceil(type.reserve * reserveFactor), isReloading: false, carryingRound: false, roundProgress: 0, roundsToLoad: 0, cooldown: 0, flash: 0, hitMarker: 0, outOfAmmo: 0, kills: 0, sinceShot: Infinity });
+    Object.assign(weapon, { type, ammo: 0, capacity: type.magazine, maxReserve: Math.ceil(type.reserve * reserveFactor), reserve: Math.ceil(type.reserve * reserveFactor), isReloading: false, carryingRound: false, roundProgress: 0, roundsToLoad: 0, cooldown: 0, flash: 0, hitMarker: 0, outOfAmmo: 0, kills: 0, sinceShot: Infinity, spin: 0 });
     raycaster.far = type.range;
     tracer.material.color.setHex(type.tracer ?? DEFAULT_TRACER);
     bloom = 0;
@@ -89,7 +89,7 @@ export function createWeapon({ scene, camera, targets, extraTargets = () => [], 
     }
     const { type } = weapon;
     weapon.ammo--;
-    weapon.cooldown = type.interval;
+    weapon.cooldown = fireInterval(type, weapon.spin);
     weapon.flash = 0.07;
     weapon.shots++;
     weapon.sinceShot = 0;
@@ -162,6 +162,8 @@ export function createWeapon({ scene, camera, targets, extraTargets = () => [], 
     weapon.outOfAmmo -= dt;
     if (weapon.type.bloom) bloom = Math.max(0, bloom - weapon.type.bloom.decay * dt);
     if (weapon.isReloading) loadRounds(dt);
+    // Metralhadora: os canos só giram com o gatilho apertado e a arma pronta para atirar.
+    weapon.spin = stepSpin(weapon.type, weapon.spin, triggerHeld && !weapon.isReloading && weapon.ammo > 0 && shooter.effects.emp <= 0, dt);
     if (weapon.type.automatic && triggerHeld && dt > 0) weapon.fire();
     if (tracerTime > 0 && (tracerTime -= dt) <= 0) tracer.visible = false;
   };

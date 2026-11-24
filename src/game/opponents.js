@@ -41,7 +41,7 @@ function createArsenal(profile) {
   const maxReserve = Math.ceil(type.reserve * upgradeFactor('ammo', profile.upgrades.ammo));
   return {
     type, ammo: 0, reserve: maxReserve, maxReserve, cooldown: 0, reloadLeft: 0, loading: 0,
-    aimTime: 0, burstLeft: 0, target: null, aimingAt: null, retargetIn: 0,
+    aimTime: 0, burstLeft: 0, spin: 0, target: null, aimingAt: null, retargetIn: 0,
     traps: profile.traps.map(id => ({ type: TRAP_TYPES[id], charges: TRAP_TYPES[id].charges, capacity: TRAP_TYPES[id].charges })),
     powerupTimer: 0, powerupCheck: 0, idle: 0, curveWait: 0, trapTimer: FIRST_TRAP_DELAY[0] + Math.random() * (FIRST_TRAP_DELAY[1] - FIRST_TRAP_DELAY[0]),
   };

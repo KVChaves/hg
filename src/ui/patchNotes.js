@@ -18,6 +18,24 @@ export const PATCH_NOTES = [
     ],
   },
   {
+    title: 'ITENS NOVOS: CAMUFLAGEM E BARREIRA INFLÁVEL',
+    items: [
+      'CAMUFLAGEM (defesa): o carro some da frente para trás em 0,8 s e fica invisível por 6 s. Só a lataria some: fogo, tinta, rede, escudo e mina grudada continuam à vista, e o motor continua roncando. A fumaça do dano some junto.',
+      'Camuflado, ninguém trava a mira em você: os bots não atiram e mina, rede e arpão não o escolhem como alvo (a mina já em voo perde o rastro). Bala perdida e batida ainda pegam. Destruído, a camuflagem acaba.',
+      'BARREIRA INFLÁVEL (controle): cai atrás do carro, com a largura de um carro, e enche na hora. Quem bate estoura a barreira e perde muita velocidade. Aguenta uns 3 tiros de revólver e murcha sozinha depois de 25 s.',
+      'Dino agora leva a barreira no lugar da fumaça, e Ruiva a camuflagem no lugar do escudo.',
+    ],
+  },
+  {
+    title: 'MAPA NOVO: PORTO DOS PIRATAS',
+    items: [
+      'A pista inteira é um píer de tábuas sobre palafitas, com mar dos dois lados, ao entardecer. Navios piratas ficam atracados colados no píer e ancorados pelo mar, com botes, gaivotas e faróis em ilhotas de pedra.',
+      'Os navios atracados de lado para a pista atiram com os canhões: a sombra da bala cresce no chão onde ela vai cair. Saia de cima.',
+      'Barris escapam dos atracadouros de carga e atravessam a pista rolando.',
+      'Duas pontes de corda sem mureta: quem sai pela beirada cai no mar. Num trecho a maré alta alaga o píer e as tábuas molhadas escorregam.',
+    ],
+  },
+  {
     title: 'DESFILADEIRO: BEIRA DO PENHASCO',
     items: [
       'Em dois ou três trechos a estrada corre na beira do penhasco: um dos lados não tem muro, e depois da zebra é o abismo até o rio lá embaixo. O lado aberto muda de um trecho para o outro.',

@@ -161,3 +161,18 @@ export function kingsGate(g, { postX, span }) {
   for (let x = -span * 0.4, k = 0; x <= span * 0.4 + 0.01; x += span * 0.8 / 9, k++) part(g, box(span * 0.8 / 9, 1.4, 0.2), k % 2 ? 0x1a1a1a : 0xf0ece0, x, 7.4);
   for (let x = -span / 2 + 1.2, k = 0; x < span / 2; x += 2.1, k++) part(g, cone(0.6, 1.2, 3), k % 2 ? 0xe0b030 : 0xa01a1a, x, 9.2, 0, { rotX: Math.PI });
 }
+
+// Porto dos Piratas: mastros de navio com corda enrolada, verga com faixa xadrez, lanternas e a bandeira negra.
+export function pirateGate(g, { postX, span }) {
+  sides(s => {
+    part(g, cylinder(0.45, 0.6, 11, 8), 0x5a3a20, s * postX, 5.5);
+    for (let y = 1.2; y < 9; y += 0.9) part(g, cylinder(0.62, 0.62, 0.25, 8), 0xc8a870, s * postX, y);   // corda enrolada
+    part(g, box(0.5, 0.7, 0.5), 0xffc860, s * postX, 7.6, 0.75, { fog: false });                          // lanterna
+    part(g, box(0.7, 0.15, 0.7), 0x2a2a2e, s * postX, 8.05, 0.75);
+  });
+  part(g, cylinder(0.35, 0.35, span + 1.5, 8), 0x4a3018, 0, 9.4, 0, { rotZ: Math.PI / 2 });
+  for (let x = -span * 0.4, k = 0; x <= span * 0.4 + 0.01; x += span * 0.8 / 9, k++) part(g, box(span * 0.8 / 9, 1.4, 0.2), k % 2 ? 0x141414 : 0xf0ece0, x, 8.3);
+  part(g, cylinder(0.08, 0.08, 3, 5), 0x3a2a1a, 0, 11.2);
+  part(g, box(2.4, 1.5, 0.08), 0x141414, 1.2, 12);
+  part(g, box(0.8, 0.6, 0.1), 0xf0ece0, 1.2, 12.15);                                                       // caveira
+}

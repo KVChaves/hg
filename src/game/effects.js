@@ -1,6 +1,6 @@
-// Efeitos de armadilha em um carro: segundos restantes de cada um. `shock`: o mesmo bloqueio de `emp`, mas vindo do raio (só muda o texto do aviso). `net`: direção travada pela rede (game/nets.js). `burning` é o carro em chamas (game/burning.js).
+// Efeitos de armadilha em um carro: segundos restantes de cada um. `shock`: o mesmo bloqueio de `emp`, mas vindo do raio (só muda o texto do aviso). `net`: direção travada pela rede (game/nets.js). `burning` é o carro em chamas (game/burning.js). `cloak`: camuflagem (game/cloak.js).
 
-export const createEffects = () => ({ puncture: 0, oil: 0, paint: 0, smoke: 0, burning: 0, shield: 0, emp: 0, net: 0, shock: 0 });
+export const createEffects = () => ({ puncture: 0, oil: 0, paint: 0, smoke: 0, burning: 0, shield: 0, emp: 0, net: 0, shock: 0, cloak: 0 });
 
 
 export function tickEffects(effects, dt) {

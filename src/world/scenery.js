@@ -9,6 +9,7 @@ import { buildCastle, castleFootprint } from './castle.js';
 import { buildBeltSites, buildBoostSites, buildGustSites, buildHazardSites, buildStormSites } from './hazardSites.js';
 import { createRandom, generateTrack, isOverChasm, surfaceAt, track, trackAt, valleyReach } from './track.js';
 import { noiseTexture, pixelTexture, surfaceTexture } from './textures.js';
+import { enableCulling } from './instancing.js';
 import { pngNow } from '../cabin/pngPixels.js';
 
 const pngReady = path => Boolean(pngNow(path));
@@ -146,6 +147,7 @@ function addRoad(group, biome, groundMaterial) {
   }
   group.add(new THREE.Mesh(stripGeometry(-outer, -half, 4, kerbY, kerbY, isGap), kerbMaterial));
   group.add(new THREE.Mesh(stripGeometry(half, outer, 4, kerbY, kerbY, isGap), kerbMaterial));
+  if (track.pier) { addPier(group, roadMaterial, outer, isGap); return; }
   // Faixa de terra que desce da beira da estrada até o terreno, para não sobrar degrau.
   // Acostamento largo (`track.shoulder`): faixa plana na altura da estrada antes da descida.
   const flat = track.shoulder, slopeFrom = outer + flat;
@@ -157,6 +159,38 @@ function addRoad(group, biome, groundMaterial) {
   const cliffOn = side => k => overChasm(k) || (track.cliff[k] > 0 && track.cliffSide[k] === side);
   group.add(new THREE.Mesh(stripGeometry(-slopeFrom - SHOULDER_WIDTH, -slopeFrom, 3, groundY, roadY, cliffOn(-1)), groundMaterial));
   group.add(new THREE.Mesh(stripGeometry(slopeFrom, slopeFrom + SHOULDER_WIDTH, 3, roadY, groundY, cliffOn(1)), groundMaterial));
+}
+
+// Píer (`track.pier`): o deque de tábuas continua da zebra até além da cerca, com viga de borda, e estacas descem
+// dos dois lados até o fundo do mar, com travessas entre elas. Não há terra: dos dois lados é mar.
+const PIER_PILE_EVERY = 6, PIER_BEAM = 1.1;
+function addPier(group, deckMaterial, outer, isGap) {
+  const { deck } = track.pier, roadY = k => track.py[k];
+  const skip = k => isGap(k) || track.lift[k] > 0;   // na rampa do salto e nas pontes o desenho é outro
+  for (const side of [-1, 1]) {
+    const [a, b] = side < 0 ? [-deck, -outer] : [outer, deck];
+    group.add(new THREE.Mesh(stripGeometry(a, b, 4, roadY, roadY, skip), deckMaterial));
+    const edge = side * deck;
+    group.add(new THREE.Mesh(stripGeometry(edge, edge, 4, k => track.py[k] - PIER_BEAM, roadY, skip), new THREE.MeshBasicMaterial({ color: 0x3a2414, side: THREE.DoubleSide })));
+  }
+  // Estacas: troncos escuros do deque até o fundo, dos dois lados e no meio.
+  const pile = new THREE.CylinderGeometry(0.42, 0.5, 1, 6);
+  pile.translate(0, -0.5, 0);
+  const spots = [];
+  for (let d = 0; d < track.length; d += PIER_PILE_EVERY) {
+    const k = Math.floor(d / track.step) % track.count;
+    if (skip(k)) continue;
+    for (const lateral of [-deck + 0.5, -4, 4, deck - 0.5]) spots.push({ d, lateral, depth: track.pier.depth + 1 });
+  }
+  const mesh = new THREE.InstancedMesh(pile, new THREE.MeshBasicMaterial({ color: 0x3a2a1a }), spots.length);
+  const matrix = new THREE.Matrix4(), position = new THREE.Vector3(), scale = new THREE.Vector3(), rotation = new THREE.Quaternion();
+  spots.forEach(({ d, lateral, depth }, i) => {
+    const t = trackAt(d);
+    matrix.compose(position.set(t.x - t.tz * lateral, t.y - 0.15, t.z + t.tx * lateral), rotation, scale.set(1, depth, 1));
+    mesh.setMatrixAt(i, matrix);
+  });
+  enableCulling(mesh);
+  group.add(mesh);
 }
 
 function addStartLine(group, biome) {

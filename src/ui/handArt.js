@@ -236,9 +236,10 @@ function paintLeftFist(s) {
   return left;
 }
 
-// Punho segurando munição acima dos dedos, para a recarga: 'round', 'shell', 'magazine', 'bolt' (flecha) ou 'grenade'.
+// Punho segurando munição acima dos dedos, para a recarga: 'round', 'shell', 'magazine', 'bolt' (flecha), 'grenade'
+// ou 'ammobox' (caixa da metralhadora, com a ponta da cinta para fora).
 function paintFistHolding(kind, s) {
-  const top = kind === 'magazine' ? 18 : kind === 'bolt' ? 14 : kind === 'grenade' ? 13 : 10;
+  const top = kind === 'magazine' ? 18 : kind === 'ammobox' ? 20 : kind === 'bolt' ? 14 : kind === 'grenade' ? 13 : 10;
   return paint(31, 36 + top, (r, g) => {
     if (kind === 'round') {
       r.rect(13, 0, 5, 7, 0xc08438);
@@ -259,6 +260,12 @@ function paintFistHolding(kind, s) {
       r.rect(11, 6, 10, 2, 0xd8b040);
       r.rect(11, 8, 10, 5, 0xc8a040);
       r.rect(11, 8, 1, 5, 0xe8c060);
+    } else if (kind === 'ammobox') {
+      for (let i = 0; i < 3; i++) { r.rect(12, i * 2, 5, 2, 0xd0a040); r.rect(17, i * 2, 2, 2, 0x3a3a3e); }
+      r.rect(5, 5, 21, 17, 0x1e2216);
+      r.rect(6, 6, 19, 15, 0x4c5434);
+      r.rect(6, 6, 19, 1, 0x667048);
+      r.rect(8, 12, 15, 2, 0xd8b040);
     } else if (kind === 'shell') {
       r.rect(12, 0, 7, 9, 0xa02418);
       r.rect(12, 0, 1, 9, 0xd04830);
@@ -317,7 +324,7 @@ export function paintHandSet(styleId) {
   return {
     leftFist: paintLeftFist(s),
     rightFist: paintRightFist(s),
-    fists: Object.fromEntries(['round', 'shell', 'magazine', 'bolt', 'grenade'].map(kind => [kind, paintFistHolding(kind, s)])),
+    fists: Object.fromEntries(['round', 'shell', 'magazine', 'bolt', 'grenade', 'ammobox'].map(kind => [kind, paintFistHolding(kind, s)])),
     gunHand: paintGunHand(false, s),
     gunHandFiring: paintGunHand(true, s),
     alpha: s.alpha ?? (() => 1),

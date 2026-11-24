@@ -7,6 +7,7 @@ export function createRenderer(canvas) {
   renderer.setPixelRatio(1);
   renderer.setSize(VIEW.width, VIEW.height, false);
   renderer.autoClear = false;
+  renderer.localClippingEnabled = true;              // camuflagem: o carro some atrás de um plano (world/car/carModel.js)
   renderer.setClearColor(SKY_COLOR);
   return renderer;
 }

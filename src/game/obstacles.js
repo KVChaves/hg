@@ -16,15 +16,16 @@ const COOLDOWN = [20, 35], FIRST_COOLDOWN = [6, 14], MAX_ACTIVE = 2;   // segund
 const LEAD_FOR_DOUBLE = 60, MAX_PRESSURE = 2;        // metros de vantagem do líder que dobram o ritmo da recarga
 const RESPAWN_CLEAR = 150;                           // o que fica esperando (árvore, obras) só volta sem ninguém a essa distância
 const FALL_TIME = 0.55, TOPPLE_TIME = 0.9, TOPPLE_SOLID_AT = 0.65, TOPPLE_LEAN = 0.12, WOBBLE = 0.06, WOBBLE_RATE = 18;
-const SHAKE = 0.25, SHAKE_RATE = 30, DUST_COLORS = { rock: [0x8a867e, 0x6a665e], stalactite: [0xd8f4ff, 0x9ad8f0], barrels: [0xe8c020, 0x5a5a5a], crates: [0x9a7038, 0x5a5a5a], pillar: [0xe0b078, 0xc88a50], meteor: [0x8a8480, 0x5a5450], coconut: [0xd8c090, 0xa89a70], cactus: [0xd8c090, 0x9a8a60] };
+const SHAKE = 0.25, SHAKE_RATE = 30, DUST_COLORS = { rock: [0x8a867e, 0x6a665e], stalactite: [0xd8f4ff, 0x9ad8f0], barrels: [0xe8c020, 0x5a5a5a], crates: [0x9a7038, 0x5a5a5a], pillar: [0xe0b078, 0xc88a50], meteor: [0x8a8480, 0x5a5450], coconut: [0xd8c090, 0xa89a70], cactus: [0xd8c090, 0x9a8a60], cannonball: [0x5a5a5e, 0x8a8a8e] };
 const LEAF_COLORS = [0x2f7a2a, 0x3a8c30, 0x5a3a20];
 // Som de quebrar por material (nomes em audio/soundFiles.js); o que não está aqui usa `crash`.
 const OBSTACLE_SOUND = {
+  barrier: 'crash',
   tree: 'obstacleWood', crates: 'obstacleWood', umbrella: 'obstacleWood', cactus: 'obstacleWood', coconut: 'obstacleWood', tumbleweed: 'obstacleWood',
-  carriage: 'obstacleWood',
+  carriage: 'obstacleWood', rollingBarrel: 'obstacleWood',
   animal: 'obstacleFlesh', deer: 'obstacleFlesh', camel: 'obstacleFlesh', crab: 'obstacleFlesh', kaiju: 'obstacleFlesh',
   stalactite: 'obstacleIce', snowball: 'obstacleIce', crystal: 'obstacleCrystal',
-  rock: 'obstacleRock', pillar: 'obstacleRock', meteor: 'obstacleRock',
+  rock: 'obstacleRock', pillar: 'obstacleRock', meteor: 'obstacleRock', cannonball: 'obstacleRock',
   barrels: 'obstacleMetal', antenna: 'obstacleMetal', rover: 'obstacleMetal',
 };
 const CAR_HALF_WIDTH = 0.95, CAR_HALF_LENGTH = 1.8, HIT_SLOWDOWN = 0.55, LEADER_HIT_SLOWDOWN = 0.2, LEADER_SPIN = 2.5;   // fração da velocidade que sobra
@@ -39,7 +40,8 @@ const kindOf = site => HAZARD_KINDS[site.kind];
 const typeFor = kind => (Array.isArray(kind.obstacle) ? kind.obstacle[Math.floor(Math.random() * kind.obstacle.length)] : kind.obstacle);
 
 // `isAuthority`: só um navegador decide quando os pontos disparam (o admin no online); os outros recebem pela rede.
-export function createObstacles({ scene, race, car, isAuthority, onSound, onPlayerHit, onSpawned, onBroken }) {
+// `onCaught(racer, ob)`: alguém simulado aqui bateu numa barreira inflável (ob.owner é quem a soltou).
+export function createObstacles({ scene, race, car, isAuthority, onSound, onPlayerHit, onSpawned, onBroken, onCaught = () => {} }) {
   const obstacles = { active: [] };
   const debris = [];
   let nextId = 1, sites = [];
@@ -81,6 +83,7 @@ export function createObstacles({ scene, race, car, isAuthority, onSound, onPlay
     if (ob.motion === 'topple') ob.body.rotation.z = side * TOPPLE_LEAN;
     if (ob.motion === 'cross') ob.walk = -side;
     if (ob.motion === 'drive') { ob.travelled = 0; ob.body.rotation.y = Math.PI / 2; }   // de frente para +x: vira para o sentido da pista
+    if (type.inflate) ob.body.scale.setScalar(0.05);   // a barreira cai murcha e enche
     if (site) { site.ob = ob; site.state = 'active'; }
     scene.add(ob.group);
     place(ob);
@@ -100,8 +103,26 @@ export function createObstacles({ scene, race, car, isAuthority, onSound, onPlay
     onSpawned(add(nextId++, typeId, site.dist, lane, site.side, site.index));
   }
 
-  obstacles.spawnFromNetwork = ({ n, i, d, l, s, w = -1, p }) => {
-    if (OBSTACLE_TYPES[i] && !obstacles.active.some(ob => ob.id === n)) add(n, i, d, l, s, w, p);
+  obstacles.spawnFromNetwork = ({ n, i, d, l, s, w = -1, p, by }) => {
+    if (!OBSTACLE_TYPES[i] || obstacles.active.some(ob => ob.id === n)) return;
+    const ob = add(n, i, d, l, s, w, p);
+    if (by !== undefined) spare(ob, race.field.find(racer => racer.netId === by) ?? null);
+  };
+
+  // Quem já está em cima quando ela cai não bate (só vale para quem a vê no chão).
+  function spare(ob, owner) {
+    ob.owner = owner;
+    ob.spared = new Set(race.field.filter(racer => touches(racer, ob)));
+  }
+
+  // Barreira inflável solta por `owner` (de race.field). Qualquer navegador cria a sua e avisa os outros;
+  // o id é sorteado para não bater com os dos pontos de perigo, que só o admin numera.
+  obstacles.deployBarrier = (dist, lane, owner) => {
+    const ob = add(`b${Math.random().toString(36).slice(2, 8)}`, 'barrier', dist, lane, 0, -1, 'solid');
+    spare(ob, owner);
+    onSound('barrier', owner.x, owner.z, 0.8);
+    onSpawned(ob);
+    return ob;
   };
   obstacles.removeFromNetwork = id => {
     const ob = obstacles.active.find(candidate => candidate.id === id);
@@ -166,6 +187,7 @@ export function createObstacles({ scene, race, car, isAuthority, onSound, onPlay
       racer.v *= keep;
       racer.spin += side * kick;
     }
+    if (ob.owner) onCaught(racer, ob);
     destroy(ob);
   }
 
@@ -213,6 +235,10 @@ export function createObstacles({ scene, race, car, isAuthority, onSound, onPlay
   function animate(ob, dt) {
     ob.t += dt;
     const { kind } = ob;
+    if (ob.type.inflate) {                           // enche em `inflate` s, com um pequeno exagero no fim
+      const k = Math.min(1, ob.t / ob.type.inflate);
+      ob.body.scale.set(0.05 + 0.95 * k, (0.05 + 0.95 * k) * (1 + Math.sin(k * Math.PI) * 0.15), 0.05 + 0.95 * k);
+    }
     if (ob.motion === 'drop') {
       if (ob.phase === 'warning') {
         // Sacode lá em cima, solta poeira e a sombra cresce no chão onde vai cair.
@@ -319,6 +345,7 @@ export function createObstacles({ scene, race, car, isAuthority, onSound, onPlay
       // As obras (static) ficam até alguém bater.
       const settled = ob.phase === 'solid' && ob.motion !== 'static' && ob.motion !== 'drive';
       if (settled) ob.solidFor = (ob.solidFor ?? 0) + dt;
+      if (ob.type.life && ob.t > ob.type.life) { destroy(ob, false); continue; }   // murcha sozinha em todos os navegadores
       if (crossedOver(ob) || (settled && (passedByAll(ob) || (ob.solidFor > LINGER && !anyoneNear(ob.dist, CLEAR_VIEW)))) || (ob.motion === 'drive' && passedByAll(ob))) remove(ob);
     }
   };

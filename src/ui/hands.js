@@ -130,7 +130,7 @@ export function createHands({ weapon, traps, look, cabin, customs, isAiming, wan
     }
     onGunEvents(animator.update(dt, {
       reloading: weapon.isReloading, ammo: weapon.ammo, capacity: weapon.capacity,
-      roundProgress: weapon.roundProgress, carrying: weapon.carryingRound,
+      roundProgress: weapon.roundProgress, carrying: weapon.carryingRound, spin: weapon.spin,
     }));
 
     const { stiffness, damping } = art().recoil;
@@ -243,7 +243,7 @@ export function createHands({ weapon, traps, look, cabin, customs, isAiming, wan
       return weapon.flash > 0 ? gunHandFiring : gunHand;
     }
     if (state === 'reload') {
-      const delivered = art().carry === 'magazine' && weapon.roundProgress >= MAGAZINE_SEAT_AT;
+      const delivered = (art().carry === 'magazine' || art().carry === 'ammobox') && weapon.roundProgress >= MAGAZINE_SEAT_AT;
       return weapon.carryingRound && !delivered ? fists[art().carry] : rightFist;
     }
     return rightFist;

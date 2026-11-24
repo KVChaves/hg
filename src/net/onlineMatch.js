@@ -187,6 +187,7 @@ export function createOnlineMatch({ onRopeTripped = () => {}, onPlayerKilledBy =
     } else if (phase === 'results' && (phaseTimer -= dt) <= 0) {
       phase = 'waiting';
       const match = getMatch();
+      match.setRaceKills(match.racesDone - 1, killTable);   // os abates finais da corrida vão junto, para quem entra agora
       broadcast({ k: match.isOver ? 'podium' : 'inter', m: match.snapshot() });
     } else if (phase === 'podium' && humanIds().every(id => ready.has(id))) {
       phase = 'waiting';
@@ -240,6 +241,7 @@ export function createOnlineMatch({ onRopeTripped = () => {}, onPlayerKilledBy =
       state.rig.active ? 1 : 0, round(state.rig.angle), round(state.rig.y), tip ? tip.map(round) : 0,
       (isMe ? car.effects : racer.effects).burning > 0 ? 1 : 0,
       (isMe ? car.effects : racer.effects).shield > 0 ? 1 : 0,
+      round((isMe ? car.effects : racer.effects).cloak),
     ];
   }
 
@@ -253,13 +255,15 @@ export function createOnlineMatch({ onRopeTripped = () => {}, onPlayerKilledBy =
   function receiveSnapshot(values) {
     const racer = byId.get(values[0]);
     if (!racer || !racer.remote) return;
-    const [, dist, lane, x, y, z, yaw, pitch, v, vx, vz, health, dead, protectedFor, overturned, nitro, rigActive, rigAngle, rigY, tip, burningNow, shieldNow] = values;
+    const [, dist, lane, x, y, z, yaw, pitch, v, vx, vz, health, dead, protectedFor, overturned, nitro, rigActive, rigAngle, rigY, tip, burningNow, shieldNow, cloakNow = 0] = values;
     racer.snapshot = {
       dist, lane, x, y, z, yaw, pitch, v, vx, vz, health, dead, protectedFor, age: 0,
       overturned: Boolean(overturned), nitro: Boolean(nitro), rigActive: Boolean(rigActive), rigAngle, rigY, tip: tip || null,
     };
     racer.effects.shield = shieldNow ? 1 : 0;        // idem: só desenha a bolha
     racer.effects.burning = burningNow ? 1 : 0;      // só para mostrar as chamas; quem queima é o navegador dele
+    if (cloakNow > 0 && racer.effects.cloak <= 0) playAt('cloak', racer.x, racer.z);
+    racer.effects.cloak = cloakNow;                  // segundos que faltam: aqui só some o carro e ninguém trava nele (game/race.js desconta entre retratos)
   }
 
   function drawRemoteHarpoons() {
@@ -599,7 +603,7 @@ export function createOnlineMatch({ onRopeTripped = () => {}, onPlayerKilledBy =
     if (online.active) net.relay({ k: 'boom', n: id });
   }
   function sendObstacle(ob) {
-    if (online.active) net.relay({ k: 'ob', n: ob.id, i: ob.type.id, d: round(ob.dist), l: round(ob.lane), s: ob.side, w: ob.site ? ob.site.index : -1, p: ob.phase });
+    if (online.active) net.relay({ k: 'ob', n: ob.id, i: ob.type.id, d: round(ob.dist), l: round(ob.lane), s: ob.side, w: ob.site ? ob.site.index : -1, p: ob.phase, by: ob.owner?.netId });
   }
   function sendObstacleBreak(ob) {
     if (online.active) net.relay({ k: 'obx', n: ob.id });

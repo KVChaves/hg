@@ -9,6 +9,7 @@ import { ctxBox as box, ctxDisc as disc } from './gunPaint.js';
 export const REST_POSE = {
   hammer: 1, hammers: [1, 1], spin: 0, open: 0, bolt: 0, lever: 0, magDrop: 0, ammo: 6, boltLift: 0, boltBack: 0,
   draw: 1, flex: 0, t: 0, latch: 0, extract: 0, drum: 0, heat: 0, crank: 0, actionHand: 0, pump: 0, spent: false, nut: 0,
+  rotor: 0, rotorSpeed: 0, belt: 0, beltIndex: 0,
 };
 
 // Recuo padrão (mola): quanto a arma vai para trás, sobe e gira a cada tiro, e como ela volta.

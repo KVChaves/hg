@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { VIEW } from '../config.js';
 import { ctxText, textWidth } from '../art/font.js';
+import { cloakLevel } from '../game/cloak.js';
 
 // Nome discreto sobre os carros próximos: aparece aos poucos conforme a distância diminui.
 
@@ -13,7 +14,7 @@ export function drawRacerNames(ctx, camera, racers, isHidden) {
   for (const racer of racers) {
     point.set(racer.wx, racer.wy + HEIGHT_ABOVE_CAR, racer.wz);
     inCamera.copy(point).applyMatrix4(camera.matrixWorldInverse);
-    if (inCamera.z >= 0) continue;
+    if (inCamera.z >= 0 || cloakLevel(racer) > 0) continue;   // camuflado: o nome some junto
     const distance = inCamera.length();
     if (distance >= FADE_START) continue;
 

@@ -1,4 +1,5 @@
 import { createDrapedNet, createFlyingNet } from '../world/netVisual.js';
+import { isHidden } from './cloak.js';
 import { inAim } from './aim.js';
 import { NET_CONE, NET_FLIGHT_MAX, NET_RANGE, NET_SPEED, NET_TIME } from './trapTypes.js';
 
@@ -21,7 +22,7 @@ export function createNets({ scene, race, onSound, onCatch = () => {} }) {
     const forward = -Math.sin(yaw) * dx - Math.cos(yaw) * dz;
     return forward > 3 && distance <= NET_RANGE && forward / distance >= cone ? distance : null;
   };
-  const catchable = racer => racer.dead <= 0 && racer.sunk <= 0 && racer.protectedFor <= 0 && racer.effects.net <= 0;
+  const catchable = racer => racer.dead <= 0 && racer.sunk <= 0 && racer.protectedFor <= 0 && racer.effects.net <= 0 && !isHidden(racer);
 
   // O carro mais perto dentro do cone da mira de quem lança.
   function findTarget(owner, yaw, cone) {

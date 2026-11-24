@@ -9,7 +9,7 @@ export const WEAPON_TYPES = {
   },
   shotgun: {
     id: 'shotgun', family: 'shotgun', label: 'ESCOPETA', price: 240, summary: 'DEVASTADORA DE PERTO',
-    damage: 92, falloff: { full: 15, zero: 50, min: 5 }, shake: 1.4, interval: 0.45, range: 60,
+    damage: 92, falloff: { full: 30, zero: 50, min: 5 }, shake: 1.4, interval: 0.45, range: 60,
     magazine: 2, reserve: 10, roundTime: 0.6, recoil: 1.5,
   },
   smg: {
@@ -31,7 +31,7 @@ export const WEAPON_TYPES = {
   },
   autoshotgun: {
     id: 'autoshotgun', family: 'shotgun', style: 'autoshotgun', label: 'ESCOPETA AUTO', price: 320, summary: 'ESCOPETA QUE ATIRA SEGURANDO',
-    damage: 48, falloff: { full: 14, zero: 42, min: 4 }, shake: 0.8, interval: 0.28, range: 50, magazine: 6, reserve: 18, roundTime: 0.45, recoil: 1.2,
+    damage: 48, falloff: { full: 30, zero: 42, min: 4 }, shake: 0.8, interval: 0.28, range: 50, magazine: 6, reserve: 18, roundTime: 0.45, recoil: 1.2,
     automatic: true, bloom: { perShot: 0.02, max: 0.08, decay: 0.15 },
   },
   // `burn`: segundos em chamas para o carro atingido; errando, a flecha deixa o chão queimando (game/burning.js).
@@ -43,6 +43,15 @@ export const WEAPON_TYPES = {
   grenade: {
     id: 'grenade', family: 'shotgun', style: 'pump', label: 'LANCA-GRANADAS', price: 380, summary: 'GRANADA QUE EXPLODE EM AREA',
     damage: 85, splash: { radius: 7, min: 0.35 }, tracer: 0xb0b070, interval: 1.1, range: 120, magazine: 3, reserve: 8, roundTime: 0.75, recoil: 1.7,
+  },
+  // `spinUp`: os canos aceleram enquanto o gatilho está apertado. O intervalo vai de `startInterval` (parado) até
+  // `interval` (girando no máximo) em `time` segundos, e solto os canos param em `spinDown` segundos.
+  // `botBurst`: quantos tiros os bots dão por rajada (o padrão é curto demais para os canos chegarem a girar).
+  heavymg: {
+    id: 'heavymg', family: 'smg', style: 'gatling', label: 'METRALHADORA', price: 260, summary: 'QUANTO MAIS SEGURA, MAIS RAPIDO',
+    damage: 10, interval: 0.06, spinUp: { startInterval: 0.16, time: 0.9, spinDown: 0.9 }, range: 100,
+    magazine: 50, reserve: 50, roundTime: 2.4, recoil: 0.45, automatic: true, reloadsWholeMagazine: true, botBurst: [12, 24],
+    bloom: { perShot: 0.005, max: 0.1, decay: 0.08 },
   },
 };
 
@@ -61,4 +70,16 @@ const SHAKE_MIN_SHARE = 0.25;
 export function shakeAtDistance(type, distance) {
   if (!type.shake) return 0;
   return type.shake * Math.max(SHAKE_MIN_SHARE, damageAtDistance(type, distance) / type.damage);
+}
+
+// Intervalo entre tiros com os canos girando a `spin` (0 parado, 1 no máximo). Armas sem giro atiram sempre no mesmo ritmo.
+export function fireInterval(type, spin = 1) {
+  if (!type.spinUp) return type.interval;
+  return type.spinUp.startInterval + (type.interval - type.spinUp.startInterval) * Math.max(0, Math.min(1, spin));
+}
+
+// Giro dos canos depois de `dt` segundos com o gatilho apertado (`held`) ou solto.
+export function stepSpin(type, spin, held, dt) {
+  if (!type.spinUp) return 0;
+  return held ? Math.min(1, spin + dt / type.spinUp.time) : Math.max(0, spin - dt / type.spinUp.spinDown);
 }

@@ -1,26 +1,29 @@
 import { VIEW } from '../config.js';
 import { ctxText, textWidth } from '../art/font.js';
-import { COLOR, drawButton, drawHeading, inside, MEDALS, panelBox, pointerOnStage } from './panelKit.js';
+import { COLOR, drawButton, drawHeading, drawRule, inside, panelBox, pointerOnStage } from './panelKit.js';
+import { drawCount, drawMedal, drawMove, drawPlaceBadge, drawSkull, drawStandingRow, formatPoints, nameColor } from './standingsKit.js';
 
-// Depois de cada corrida: a ordem de chegada e a classificação da competição.
+// Depois de cada corrida: a ordem de chegada (com a diferença para o vencedor e os abates da corrida) e a classificação
+// da partida (medalhas, abates na partida, pontos e quantas posições cada um ganhou ou perdeu nesta corrida).
 
-const FINISH = { x: 20, y: 62, width: 200, height: 214 };
-const TABLE = { x: 230, y: 62, width: 390, height: 214 };
-const BUTTON = { x: 220, y: 318, width: 200, height: 28 };
-const FIRST_ROW = 96, ROW_HEIGHT = 21;
-const COLUMNS = { position: 12, name: 40, wins: 112, silvers: 156, bronzes: 206, totalPositions: 264, points: 360 };
-const TOTAL_HEADER = 'POSICOES TOTAIS';
-const OFF_PODIUM = '#8a8780';
-const PLAYER_COLOR = '#f01818';
+const FINISH = { x: 16, y: 50, width: 214, height: 228 };
+const TABLE = { x: 238, y: 50, width: 386, height: 228 };
+const BUTTON = { x: 220, y: 322, width: 200, height: 28 };
+const HEAD = 12, RULE = 24, FIRST_ROW = 30, ROW_HEIGHT = 24;
+// Centro de cada coluna da classificação (o nome começa em `name`).
+const COLUMNS = { place: 14, move: 26, name: 46, gold: 182, silver: 212, bronze: 242, kills: 288, points: 346 };
 
 const formatTime = seconds => {
   const whole = Math.floor(seconds), hundredths = Math.floor((seconds - whole) * 100);
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}.${String(hundredths).padStart(2, '0')}`;
 };
+// Diferença para o vencedor: segundos com centésimos e, passando de um minuto, minutos também.
+const formatGap = seconds => `+${seconds >= 60 ? formatTime(seconds) : seconds.toFixed(2)}`;
 
 const centered = (ctx, text, y, color, scale = 1) => ctxText(ctx, text, Math.round(VIEW.width / 2 - textWidth(text, scale) / 2), y, color, scale);
+const rowTop = (panel, i) => panel.y + FIRST_ROW + i * ROW_HEIGHT;
 
-export function createResultsScreen({ stage, onNext, onFinished, localName, getUpcomingBiome = () => null, getRaceKills = () => new Map() }) {
+export function createResultsScreen({ stage, onNext, onFinished, localName, getUpcomingBiome = () => null, getRaceKills = () => new Map(), getMatchKills = () => 0 }) {
   const screen = { isOpen: false };
   let pointer = { x: -1, y: -1 }, match = null, finish = [], queued = null, waitsForHost = false;
 
@@ -49,41 +52,55 @@ export function createResultsScreen({ stage, onNext, onFinished, localName, getU
   };
   screen.close = () => { screen.isOpen = false; };
 
-  // Os três primeiros têm a cor da medalha; fora do pódio o jogador continua em destaque.
-  const colorOf = (name, position) => MEDALS[position] ?? (name === localName() ? PLAYER_COLOR : OFF_PODIUM);
+  const isMine = name => name === localName();
 
+  function drawPanelHeader(ctx, panel, title) {
+    panelBox(ctx, panel);
+    ctxText(ctx, title, panel.x + 10, panel.y + HEAD, COLOR.selected);
+    drawRule(ctx, panel.x + 8, panel.y + RULE, panel.width - 16);
+  }
+
+  // Chegada: posição, piloto, abates nesta corrida e tempo (o vencedor com o tempo, os outros com a diferença para ele).
   function drawFinish(ctx) {
-    panelBox(ctx, FINISH);
-    ctxText(ctx, 'CHEGADA', FINISH.x + 12, FINISH.y + 12, COLOR.selected);
-    ctxText(ctx, 'TEMPO', FINISH.x + FINISH.width - 12 - textWidth('TEMPO'), FINISH.y + 12, COLOR.muted);
+    drawPanelHeader(ctx, FINISH, 'CHEGADA');
+    const right = FINISH.x + FINISH.width - 10, killsX = FINISH.x + 122;
+    drawSkull(ctx, killsX, FINISH.y + HEAD, COLOR.muted);
+    ctxText(ctx, 'TEMPO', right - textWidth('TEMPO'), FINISH.y + HEAD, COLOR.muted);
+    const kills = getRaceKills(), winnerTime = finish[0]?.time ?? 0;
     finish.forEach(({ name, time, estimated }, i) => {
-      const y = FIRST_ROW + i * ROW_HEIGHT - (finish.length > 7 ? 2 : 0);
-      const label = `${formatTime(time)}${estimated ? '*' : ''}`;
-      ctxText(ctx, `${i + 1}.`, FINISH.x + 12, y, COLOR.muted);
-      ctxText(ctx, name, FINISH.x + 40, y, colorOf(name, i));
-      ctxText(ctx, label, FINISH.x + FINISH.width - 12 - textWidth(label), y, COLOR.text);
+      const top = rowTop(FINISH, i), y = top + 8, mine = isMine(name);
+      drawStandingRow(ctx, { x: FINISH.x + 4, y: top, width: FINISH.width - 8, height: ROW_HEIGHT - 2 }, i, mine);
+      drawPlaceBadge(ctx, FINISH.x + 14, top + 11, i);
+      ctxText(ctx, name, FINISH.x + 28, y, nameColor(i, mine));
+      if (kills.get(name)) drawCount(ctx, kills.get(name), killsX + 3, y, COLOR.text);
+      const label = `${i === 0 ? formatTime(time) : formatGap(time - winnerTime)}${estimated ? '*' : ''}`;
+      ctxText(ctx, label, right - textWidth(label), y, i === 0 ? COLOR.gold : estimated ? COLOR.muted : COLOR.text);
     });
     if (finish.some(result => result.estimated)) ctxText(ctx, '* AINDA CORRENDO, ESTIMADO', FINISH.x, FINISH.y + FINISH.height + 6, COLOR.muted);
   }
 
+  // Classificação da partida: posição, quanto subiu ou caiu, piloto, medalhas, abates na partida e pontos.
   function drawTable(ctx) {
-    panelBox(ctx, TABLE);
-    ctxText(ctx, 'CLASSIFICACAO', TABLE.x + 12, TABLE.y + 12, COLOR.selected);
-    ctxText(ctx, 'OURO', TABLE.x + COLUMNS.wins, TABLE.y + 12, MEDALS[0]);
-    ctxText(ctx, 'PRATA', TABLE.x + COLUMNS.silvers, TABLE.y + 12, MEDALS[1]);
-    ctxText(ctx, 'BRONZE', TABLE.x + COLUMNS.bronzes, TABLE.y + 12, MEDALS[2]);
-    ctxText(ctx, TOTAL_HEADER, TABLE.x + COLUMNS.totalPositions, TABLE.y + 12, COLOR.muted);
-    ctxText(ctx, 'PTS', TABLE.x + COLUMNS.points, TABLE.y + 12, COLOR.selected);
+    drawPanelHeader(ctx, TABLE, 'CLASSIFICACAO');
+    const at = column => TABLE.x + COLUMNS[column], headY = TABLE.y + HEAD;
+    [at('gold'), at('silver'), at('bronze')].forEach((x, place) => drawMedal(ctx, x, headY + 3, place));
+    drawSkull(ctx, at('kills') - 15, headY, COLOR.text);
+    ctxText(ctx, 'ABATES', at('kills') - 6, headY, COLOR.text);
+    ctxText(ctx, 'PTS', at('points') - Math.floor(textWidth('PTS') / 2) + 1, headY, COLOR.selected);
+    const before = match.standingsBefore?.(), placeBefore = before && new Map(before.map((entry, i) => [entry.name, i]));
     match.standings().forEach((entry, i) => {
-      const y = FIRST_ROW + i * ROW_HEIGHT - (finish.length > 7 ? 2 : 0);
-      ctxText(ctx, `${i + 1}.`, TABLE.x + COLUMNS.position, y, COLOR.muted);
-      ctxText(ctx, entry.name, TABLE.x + COLUMNS.name, y, colorOf(entry.name, i));
-      ctxText(ctx, String(entry.wins), TABLE.x + COLUMNS.wins + 10, y, COLOR.text);
-      ctxText(ctx, String(entry.silvers), TABLE.x + COLUMNS.silvers + 12, y, COLOR.text);
-      ctxText(ctx, String(entry.bronzes), TABLE.x + COLUMNS.bronzes + 15, y, COLOR.text);
-      ctxText(ctx, String(entry.points), TABLE.x + COLUMNS.points, y, COLOR.selected);
-      const total = String(entry.totalPositions);
-      ctxText(ctx, total, TABLE.x + COLUMNS.totalPositions + Math.floor((textWidth(TOTAL_HEADER) - textWidth(total)) / 2), y, COLOR.text);
+      const top = rowTop(TABLE, i), y = top + 8, mine = isMine(entry.name);
+      drawStandingRow(ctx, { x: TABLE.x + 4, y: top, width: TABLE.width - 8, height: ROW_HEIGHT - 2 }, i, mine);
+      drawPlaceBadge(ctx, at('place'), top + 11, i);
+      if (placeBefore?.has(entry.name)) drawMove(ctx, at('move'), top + 11, placeBefore.get(entry.name) - i);
+      ctxText(ctx, entry.name, at('name'), y, nameColor(i, mine));
+      drawCount(ctx, entry.wins, at('gold'), y);
+      drawCount(ctx, entry.silvers, at('silver'), y);
+      drawCount(ctx, entry.bronzes, at('bronze'), y);
+      drawCount(ctx, getMatchKills(entry.name), at('kills'), y);
+      // Pontos grandes; zero fica pequeno e apagado, para não pesar.
+      if (entry.points) drawCount(ctx, formatPoints(entry.points), at('points'), top + 4, COLOR.selected, 2);
+      else drawCount(ctx, 0, at('points'), y);
     });
   }
 
@@ -95,6 +112,15 @@ export function createResultsScreen({ stage, onNext, onFinished, localName, getU
     return { names: entries.filter(([, kills]) => kills === most).map(([name]) => name), kills: most };
   }
 
+  // Rei dos abates da corrida, embaixo da classificação, entre duas caveiras.
+  function drawKillKing(ctx, king) {
+    const text = `REI DOS ABATES: ${king.names.join(' E ')} - ${king.kills} ${king.kills === 1 ? 'ABATE' : 'ABATES'}`;
+    const x = Math.round(TABLE.x + TABLE.width / 2 - textWidth(text) / 2), y = TABLE.y + TABLE.height + 6;
+    drawSkull(ctx, x - 12, y, COLOR.gold);
+    ctxText(ctx, text, x, y, COLOR.gold);
+    drawSkull(ctx, x + textWidth(text) + 4, y, COLOR.gold);
+  }
+
   screen.draw = ctx => {
     ctx.fillStyle = COLOR.backdrop;
     ctx.fillRect(0, 0, VIEW.width, VIEW.height);
@@ -102,13 +128,13 @@ export function createResultsScreen({ stage, onNext, onFinished, localName, getU
     drawFinish(ctx);
     drawTable(ctx);
     const king = killKing();
-    if (king) centered(ctx, `REI DOS ABATES: ${king.names.join(' E ')} - ${king.kills} ${king.kills === 1 ? 'ABATE' : 'ABATES'}`, FINISH.y + FINISH.height + 6, COLOR.gold);
+    if (king) drawKillKing(ctx, king);
     if (match.isOver) {
       const champion = match.standings()[0].name;
-      centered(ctx, champion === localName() ? 'VOCE VENCEU A PARTIDA!' : `CAMPEAO: ${champion}`, 290, '#f0d060', 2);
+      centered(ctx, champion === localName() ? 'VOCE VENCEU A PARTIDA!' : `CAMPEAO: ${champion}`, 300, '#f0d060', 2);
     }
     const upcoming = !match.isOver && getUpcomingBiome();
-    if (upcoming) centered(ctx, `PROXIMO MAPA: ${upcoming}`, 290, '#f0d060', 2);
+    if (upcoming) centered(ctx, `PROXIMO MAPA: ${upcoming}`, 300, '#f0d060', 2);
     if (waitsForHost) centered(ctx, match.isOver ? 'O PODIO ABRE EM INSTANTES' : 'A GARAGEM ABRE EM INSTANTES', BUTTON.y + 10, COLOR.muted);
     else drawButton(ctx, BUTTON, match.isOver ? 'VER PODIO >' : 'PROXIMA CORRIDA >', inside(BUTTON, pointer.x, pointer.y), 'primary');
   };

@@ -17,6 +17,8 @@ import { createMines } from './game/mines.js';
 import { createNets } from './game/nets.js';
 import { createEmp } from './game/emp.js';
 import { shieldLevel } from './game/shield.js';
+import { CLOAK_TOTAL, cloakLevel, cloakSecondsLeft } from './game/cloak.js';
+import { TRAP_TYPES } from './game/trapTypes.js';
 import { createPowerVisuals } from './world/powerVisuals.js';
 import { createBurning } from './game/burning.js';
 import { flipElevation } from './game/carFlip.js';
@@ -106,6 +108,18 @@ let matchKills = 0;
 const raceKills = new Map();                         // nome → abates nesta corrida, de todos os pilotos (a tela de resultados mostra o rei dos abates)
 function addRaceKill(killer, victim) {
   if (killer?.name && killer !== victim) raceKills.set(killer.name, (raceKills.get(killer.name) ?? 0) + 1);
+}
+// De que corrida da partida são os abates em `raceKills`. Eles vão para a partida (match.setRaceKills) no fim da corrida e de
+// novo na largada seguinte, já com os números finais do online; até lá a tabela soma a contagem ao vivo.
+let raceKillsOf = null;                              // { match, index } ou nulo antes da primeira largada
+function saveRaceKills() {
+  if (raceKillsOf && raceKillsOf.match === match) match.setRaceKills(raceKillsOf.index, raceKills);
+}
+// Abates de um piloto na partida inteira, incluindo a corrida atual.
+function matchKillsOf(name) {
+  if (!match) return 0;
+  const live = raceKillsOf?.match === match ? raceKillsOf.index : null;
+  return match.killsOf(name, live) + (live === null ? 0 : raceKills.get(name) ?? 0);
 }
 const killFeed = createKillFeed();
 
@@ -220,6 +234,7 @@ const emp = createEmp({ race, mines, visuals: powerVisuals, onSound: playAt, onP
 function powerStatus() {
   if (car.wrecked > 0) return [];
   const lines = [], me = race.field[0], fuse = mines.fuseOn(me);
+  if (car.effects.cloak > 0) lines.push({ text: cloakLevel(me) >= 1 ? `CAMUFLADO ${cloakSecondsLeft(me).toFixed(1)}S` : car.effects.cloak > CLOAK_TOTAL / 2 ? 'CAMUFLANDO...' : 'REAPARECENDO', color: '#7ee0c8' });
   if (car.effects.shield > 0) lines.push({ text: `ESCUDO ${Math.round(shieldLevel(me, 1) * 100)}%`, color: '#6cc0ff' });
   if (car.effects.emp > 0) lines.push({ text: shockedByLightning(car.effects) ? `SEM NITRO, TIRO E ITENS ${car.effects.emp.toFixed(1)}S` : `EMP ${car.effects.emp.toFixed(1)}S: SEM NITRO E TIRO`, color: '#ff6a50' });
   if (harpoon.tetherLeft > 0) lines.push({ text: `ARPAO PRESO ${harpoon.tetherLeft.toFixed(1)}S`, color: '#ffd060' });
@@ -238,13 +253,17 @@ function powerStatus() {
   if (car.blueNitro > 0) lines.push({ text: `NITRO AZUL ${car.blueNitro.toFixed(1)}S`, color: '#4aa0ff' });
   return lines;
 }
-const traps = createTraps({ scene: world, car, race, harpoon, burning, mines, nets, emp, onCaught: onTrapCaught, onSound: playAt, onExtinguisher: racer => { foam.spray(racer); online.sendExtinguisher(racer); }, onPlaced: (type, dist, lane, owner, id) => { if (owner?.isPlayer && type.id !== 'fire') combatStats.trapPlaced(id); online.sendTrap(type, dist, lane, owner, id); }, onDetonated: id => online.sendTrapBoom(id), onDestroyed: onRacerDestroyed });
+const traps = createTraps({ scene: world, car, race, harpoon, burning, mines, nets, emp, deployBarrier: (dist, lane, racer) => {
+  const ob = obstacles.deployBarrier(dist, lane, racer);
+  if (racer.isPlayer) combatStats.trapPlaced(ob.id);
+}, onCaught: onTrapCaught, onSound: playAt, onExtinguisher: racer => { foam.spray(racer); online.sendExtinguisher(racer); }, onPlaced: (type, dist, lane, owner, id) => { if (owner?.isPlayer && type.id !== 'fire') combatStats.trapPlaced(id); online.sendTrap(type, dist, lane, owner, id); }, onDetonated: id => online.sendTrapBoom(id), onDestroyed: onRacerDestroyed });
 const obstacles = createObstacles({
   scene: world, race, car, onSound: playAt,
   isAuthority: () => !online.active || net.isAdmin,
   onPlayerHit: type => featFeed.announce(`BATEU ${type.hitText}`, { color: '#f06050' }),
   onSpawned: ob => online.sendObstacle(ob),
   onBroken: ob => online.sendObstacleBreak(ob),
+  onCaught: (racer, ob) => onTrapCaught(racer, TRAP_TYPES.barrier, ob.owner.isPlayer ? null : ob.owner, ob.id),   // barreira inflável de alguém
 });
 const lightning = createLightning({
   scene: world, race, car, onSound: playAt,
@@ -390,6 +409,7 @@ const results = createResultsScreen({
   localName: () => race.field[0].name,
   getUpcomingBiome: () => upcomingBiomeName(),
   getRaceKills: () => raceKills,
+  getMatchKills: matchKillsOf,
 });
 const podium = createPodiumScreen({
   stage,
@@ -461,7 +481,7 @@ const pause = createPauseMenu({
   onQuit: () => window.close(),                      // o navegador só permite em abas abertas por script
 });
 const matchTable = createMatchTable({
-  getMatch: () => match, race, localName: () => race.field[0].name,
+  getMatch: () => match, race, localName: () => race.field[0].name, getMatchKills: matchKillsOf,
   isBlocked: () => mainMenu.isOpen || multiplayer.isOpen || matchSetup.isOpen || podium.isOpen,   // ainda montando a partida ou já acabou
 });
 const chat = createChatBox({
@@ -535,12 +555,12 @@ race.reset();
 const elevationOf = (state, timer) => (timer > 0 ? flipElevation(state.flip, timer) : rigElevation(state.rig));
 
 function readRacerConditions() {
-  Object.assign(racerConditions[0], { x: car.wx, z: car.wz, yaw: car.yaw, vx: car.vx, vz: car.vz, health: car.health, burning: car.effects.burning > 0, elevation: car.wy + elevationOf(car, car.wrecked), visible: windowView.active });
+  Object.assign(racerConditions[0], { x: car.wx, z: car.wz, yaw: car.yaw, vx: car.vx, vz: car.vz, health: car.health, burning: car.effects.burning > 0, elevation: car.wy + elevationOf(car, car.wrecked), visible: windowView.active, cloaked: cloakLevel(race.field[0]) > 0 });
   opponents.forEach((op, i) => {
     const yaw = op.group.rotation.y;
     Object.assign(racerConditions[i + 1], {
       x: op.wx, z: op.wz, yaw, vx: -Math.sin(yaw) * op.v, vz: -Math.cos(yaw) * op.v, health: op.hp / op.maxHp, burning: op.effects.burning > 0 && op.dead <= 0, elevation: op.wy + elevationOf(op, op.dead),
-      visible: Math.hypot(op.x - car.x, op.z - car.z) < DAMAGE_EFFECT_RANGE,
+      visible: Math.hypot(op.x - car.x, op.z - car.z) < DAMAGE_EFFECT_RANGE, cloaked: cloakLevel(op) > 0,
     });
   });
   return activeConditions;
@@ -708,7 +728,9 @@ function restartRace() {
 }
 
 function beginRace(chosenBiome, seed, grid) {
+  saveRaceKills();
   raceKills.clear();
+  raceKillsOf = match && { match, index: match.racesDone };
   lastRace = { biome: chosenBiome, seed, grid };
   biome = chosenBiome;
   setSurface(biome.surface);
@@ -765,6 +787,7 @@ function finishRaceFlow(frameTime) {
   if (!raceRecorded) {
     raceRecorded = true;
     match.recordRace(race.finishOrder);
+    saveRaceKills();
     if (!online.active) planUpcomingBiome();
   }
   if ((sinceFinish += frameTime) < RESULTS_DELAY) return;

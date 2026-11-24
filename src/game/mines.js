@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { isHidden } from './cloak.js';
 import { CAR_MAX_HP } from '../config.js';
 import { damagePlayer } from './car.js';
 import { damageOpponent } from './opponents.js';
@@ -42,7 +43,7 @@ export function createMines({ scene, race, car, onSound, onExplode, onAttach = (
   function findTarget(owner) {
     let best = null, bestDistance = Infinity;
     for (const racer of race.field) {
-      if (racer === owner || racer.dead > 0 || racer.protectedFor > 0) continue;
+      if (racer === owner || racer.dead > 0 || racer.protectedFor > 0 || isHidden(racer)) continue;
       const distance = aimed(owner, racer);
       if (distance !== null && distance < bestDistance) { best = racer; bestDistance = distance; }
     }
@@ -71,7 +72,7 @@ export function createMines({ scene, race, car, onSound, onExplode, onAttach = (
       const x = owner.wx + aimX * NOSE_FORWARD, y = owner.wy + LAUNCH_HEIGHT, z = owner.wz + aimZ * NOSE_FORWARD;
       let best = Infinity, found = null;
       for (const racer of race.field) {
-        if (racer === owner || racer.dead > 0 || racer.protectedFor > 0) continue;
+        if (racer === owner || racer.dead > 0 || racer.protectedFor > 0 || isHidden(racer)) continue;
         const dx = racer.wx - x, dy = racer.wy + TARGET_HEIGHT - y, dz = racer.wz - z, d = Math.hypot(dx, dy, dz) || 1;
         if (d > MINE_RANGE || !inAim(x, z, yaw, racer.wx, racer.wz, MINE_RANGE) || d >= best) continue;
         best = d;
@@ -182,7 +183,7 @@ export function createMines({ scene, race, car, onSound, onExplode, onAttach = (
     const { owner } = mine;
     const len = Math.hypot(mine.dirX, mine.dirY ?? 0, mine.dirZ) || 1;
     const dir = [mine.dirX / len, (mine.dirY ?? 0) / len, mine.dirZ / len];
-    const alive = racer => racer && racer.dead <= 0 && racer.protectedFor <= 0;
+    const alive = racer => racer && racer.dead <= 0 && racer.protectedFor <= 0 && !isHidden(racer);   // camuflado, a mina perde o rastro
     if (!alive(mine.lock)) {
       mine.lock = null;
       let best = Infinity;
