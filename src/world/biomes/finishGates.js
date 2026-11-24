@@ -149,3 +149,15 @@ export function spaceGate(g, { postX, span }) {
   part(g, box(span * 0.55, 1.4, 0.25), 0x14182a, 0, 7.9);
   for (let x = -span * 0.25; x <= span * 0.25; x += 1.6) part(g, box(1, 0.16, 0.3), x % 3.2 ? 0xa060f0 : 0x40e0f0, x, 7.9, 0.15, { fog: false });
 }
+
+// Estrada do Rei: pilares de pedra com ameias, viga de madeira com faixa xadrez e bandeirolas do rei.
+export function kingsGate(g, { postX, span }) {
+  sides(s => {
+    part(g, box(2.2, 10, 2.2), 0x8a8478, s * postX, 5);
+    for (const [x, z] of [[-0.7, -0.7], [0.7, -0.7], [-0.7, 0.7], [0.7, 0.7]]) part(g, box(0.7, 0.9, 0.7), 0x9a948a, s * postX + x, 10.45, z);
+    part(g, box(1.4, 3, 0.1), s > 0 ? 0xa01a1a : 0x1a3a8a, s * postX, 6.5, 1.16);   // estandarte na frente do pilar
+  });
+  part(g, box(span, 0.7, 0.7), 0x5a3a20, 0, 8.4);
+  for (let x = -span * 0.4, k = 0; x <= span * 0.4 + 0.01; x += span * 0.8 / 9, k++) part(g, box(span * 0.8 / 9, 1.4, 0.2), k % 2 ? 0x1a1a1a : 0xf0ece0, x, 7.4);
+  for (let x = -span / 2 + 1.2, k = 0; x < span / 2; x += 2.1, k++) part(g, cone(0.6, 1.2, 3), k % 2 ? 0xe0b030 : 0xa01a1a, x, 9.2, 0, { rotX: Math.PI });
+}

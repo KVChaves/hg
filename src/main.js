@@ -449,6 +449,7 @@ const garage = createGarageScreen({
 });
 const spectator = createSpectator({ opponents, race, camera: new THREE.PerspectiveCamera(VIEW.fov, VIEW.width / VIEW.height, 0.1, 400) });
 const windowView = createWindowView({ scene: world, car, initialSpec: garage.carSpec(), seed: PLAYER_CAR_SEED });
+
 applyEquipment(equipment);
 // Pausa da corrida (ver os eventos de ESC mais abaixo).
 const pause = createPauseMenu({
@@ -783,6 +784,15 @@ function shotBlocked() { return Boolean(online?.active) && net.room?.config?.bac
 // sem perder velocidade. Voltar o olhar para perto da frente da cabine recolhe a cabeça sozinho.
 const WINDOW_OPEN_YAW = LOOK.maxYaw + 0.02, WINDOW_CLOSE_YAW = LOOK.maxYaw - 0.2;
 const NORMAL_LOOK = { minYaw: -LOOK.maxYaw, maxYaw: LOOK.maxYaw + 0.1, maxPitchUp: LOOK.maxPitchUp, maxPitchDown: LOOK.maxPitchDown };
+// Q vira o olhar para trás, como se o piloto arrastasse o mouse até o fim: a cabeça sai pela janela, dá para atirar para trás
+// (a regra da sala sobre tiro para trás vale igual) e o mouse continua girando a vista. Q de novo volta o olhar para a frente.
+function toggleLookBack() {
+  if (inMenus() || spectator.active || outOfAction()) return;
+  if (windowView.active || look.yaw > WINDOW_OPEN_YAW) { look.yaw = 0; look.pitch = 0; return; }
+  look.yaw = WINDOW_VIEW.maxYaw;
+  look.pitch = 0;
+}
+
 function updateWindowView() {
   const allowed = !inMenus() && !spectator.active && !outOfAction();
   const wanted = allowed && (windowView.active ? look.yaw > WINDOW_CLOSE_YAW : look.yaw > WINDOW_OPEN_YAW);
@@ -807,6 +817,7 @@ function step(frameTime) {
   }
   spectator.update(frameTime, wantsSpectate());
   if (inMenus() && isLocked()) document.exitPointerLock();   // numa tela de menu o mouse nunca fica preso
+  if (pressed('rearView')) toggleLookBack();
   updateWindowView();
   // A corrida fica parada nas telas de menu; online a pausa não pode parar os outros, só tira o controle do carro.
   const dt = inMenus() && !(online.active && (pause.isOpen || earlyGarage())) ? 0 : frameTime;

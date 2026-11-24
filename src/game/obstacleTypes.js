@@ -25,6 +25,8 @@ export const OBSTACLE_TYPES = {
   rover: { id: 'rover', keep: 0.3, spin: 1.5, hitText: 'NO ROVER', halfLength: 2.0, halfWidth: 1.3, damage: 0.25, hp: 120, debris: [0xd8d8e0, 0x2848a8, 0x303038] },
   antenna: { id: 'antenna', keep: 0.25, spin: 1.2, hitText: 'NA ANTENA', halfLength: 1.0, length: 9, damage: 0.3, hp: 140, debris: [0xb8bcc8, 0xe84030, 0x6a6e7a] },
   crystal: { id: 'crystal', keep: 0.5, spin: 0.9, hitText: 'NOS CRISTAIS', halfLength: 1.0, halfWidth: 1.4, damage: 0.2, hp: 70, debris: [0x40e0f0, 0xa0f4ff, 0x2a90c0] },
+  deer: { id: 'deer', keep: 0.6, spin: 0.8, hitText: 'NO CERVO', halfLength: 1.5, halfWidth: 0.9, damage: 0.15, hp: 60, debris: [0x9a6a3a, 0xe8dcc8, 0x3a2a1a] },
+  carriage: { id: 'carriage', keep: 0.3, spin: 1.4, hitText: 'NA CARRUAGEM', halfLength: 3.6, halfWidth: 1.4, damage: 0.25, hp: 140, debris: [0x7a4a24, 0xc8a040, 0x5a3a20, 0x8a2a2a] },
   crates: { id: 'crates', keep: 0.55, spin: 0.7, hitText: 'NAS CAIXAS', halfLength: 1.3, halfWidth: 1.6, damage: 0.18, hp: 60, debris: [0x8a6030, 0x9a7038] },
 };
 

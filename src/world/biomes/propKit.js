@@ -108,13 +108,14 @@ export function billboard(canvas, width, height, lift = 0) {
 }
 
 // Espalha numa faixa colada à estrada, entre `from` e `to` metros do centro, para fechar a vista.
-export function nearRoad(ctx, { count, from, to, parts, sizeOf = () => 1 }) {
+// `zone` ({ start, length }): só nesse trecho da pista; `where(distância)`: filtro de onde pode.
+export function nearRoad(ctx, { count, from, to, parts, sizeOf = () => 1, zone = null, where = () => true }) {
   const { random, isOpen, spotIsClear, heightAt } = ctx;
   const meshes = instancedParts(ctx, parts, count);
   let placed = 0;
   for (let i = 0; i < count; i++) {
-    const d = random() * track.length;
-    if (!isOpen(d)) continue;
+    const d = zone ? zone.start + random() * zone.length : random() * track.length;
+    if (!isOpen(d) || !where(d)) continue;
     const start = Math.max(from, behindWall());
     const t = trackAt(d), lateral = (random() < 0.5 ? -1 : 1) * (start + random() * (to - from));
     const x = t.x - t.tz * lateral, z = t.z + t.tx * lateral;
@@ -140,12 +141,12 @@ export function overRoad(ctx, { count, height, lateral, parts, sizeOf = () => 1 
 }
 
 // Enfileira objetos dos dois lados da pista a cada `every` metros, fora dos túneis.
-export function alongRoad(ctx, { every, offset, parts, sizeOf = () => 1, facesRoad = false }) {
+export function alongRoad(ctx, { every, offset, parts, sizeOf = () => 1, facesRoad = false, where = () => true }) {
   const { random, isOpen, heightAt } = ctx, count = Math.floor(track.length / every) * 2 + 2;
   const meshes = instancedParts(ctx, parts, count);
   let placed = 0;
   for (let d = every / 2; d < track.length; d += every) {
-    if (!isOpen(d)) continue;
+    if (!isOpen(d) || !where(d)) continue;
     for (const side of [-1, 1]) {
       const distance = Math.max(offset, behindWall());
       const t = trackAt(d), x = t.x - t.tz * side * distance, z = t.z + t.tx * side * distance;

@@ -18,6 +18,16 @@ export const PATCH_NOTES = [
     ],
   },
   {
+    title: 'MAPA NOVO: ESTRADA DO REI',
+    items: [
+      'Estrada de pedra entre campos de grama, aldeias com telhado de palha, moinhos e cercas de madeira.',
+      'Mata fechada com curvas bem onduladas, onde cervos atravessam a pista.',
+      'Carruagens andam devagar pela estrada. Bater nelas segura bastante o carro.',
+      'Ponte levadiça: ela é a rampa sobre o fosso e joga o carro pelo portão do castelo. O portão é baixo: quem sai do bico entre ~75 e ~105 km/h passa. Mais rápido que isso o carro bate na muralha e cai no fosso, então tire o pé antes da ponte. Devagar demais, não alcança a outra margem.',
+      'Dentro do castelo a pista é um carro mais estreita, com piso de mármore e tapete do rei, reta e com duas curvas de 90°.',
+    ],
+  },
+  {
     title: 'VOTAÇÃO DE MAPA',
     items: [
       'A partir da segunda corrida da partida, quem venceu a corrida anterior pode excluir um dos mapas da votação: é o botão X no canto do mapa. O mapa fica riscado e quem tinha votado nele escolhe outro. Se um bot venceu, o direito vai para o humano mais bem colocado.',

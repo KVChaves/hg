@@ -6,11 +6,14 @@
 //   drop   — cai do alto (`height` m) numa faixa `lanes` [de, até] do lado do ponto, com sombra e poeira antes;
 //   topple — árvore que fica de pé inclinada e tomba atravessando a pista, balançando antes;
 //   cross  — atravessa a pista de um lado para o outro a `speed` m/s, depois de esperar na beira;
-//   static — fica na faixa interditada até alguém bater (ou quebrar a tiro).
+//   static — fica na faixa interditada até alguém bater (ou quebrar a tiro);
+//   drive  — anda pela pista no sentido da corrida a `speed` m/s numa faixa `lanes` do lado do ponto, por `travel`
+//            metros (a reta que o ponto reserva), e então para. Sai quando todos passaram.
 // `warning`: segundos de aviso antes de ficar perigoso. `range`: metros à frente do carro em que o ponto dispara;
 // é calculado para o perigo ficar pronto mais ou menos quando o carro chega. `idle`: o obstáculo já fica no
 // lugar, esperando (árvore torta, obras). `opening`: abre o muro nesse ponto, para a travessia vir de fora.
-// `atTunnel`: fica logo depois da entrada de um túnel fechado.
+// `atTunnel`: fica logo depois da entrada de um túnel fechado. `zone`: só dentro desse trecho da pista (track.zones,
+// como a mata fechada da Estrada do Rei).
 
 export const HAZARD_KINDS = {
   rockfall: { obstacle: 'rock', motion: 'drop', height: 14, lanes: [0.5, 4.5], warning: 1.3, range: 62 },
@@ -33,5 +36,7 @@ export const HAZARD_KINDS = {
   roverCrossing: { obstacle: 'rover', motion: 'cross', speed: 4, warning: 1.3, range: 85, opening: true },
   brokenAntenna: { obstacle: 'antenna', motion: 'topple', warning: 1.1, range: 58, idle: true },
   crystalPatch: { obstacle: 'crystal', motion: 'static', lanes: [2.5, 4.2], idle: true },
+  deerCrossing: { obstacle: 'deer', motion: 'cross', speed: 7, warning: 0.8, range: 70, opening: true, zone: 'forest' },
+  carriage: { obstacle: 'carriage', motion: 'drive', speed: 3.5, lanes: [2.6, 5.2], travel: 160, idle: true },
   kaijuCrossing: { obstacle: 'kaiju', motion: 'cross', speed: 3.2, warning: 1.5, range: 95, opening: true },
 };

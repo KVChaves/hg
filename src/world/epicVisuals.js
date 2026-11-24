@@ -44,7 +44,7 @@ function addTube(group, { start, length }, style) {
 
 // Faixa sólida que acompanha a pista entre `from` e `to`, de `left` a `right` metros do centro, com o topo e a
 // base dados por (ponto da pista) => altura. Serve para o bloco sob a rampa e para as muretas.
-function slabGeometry(from, to, left, right, topOf, bottomOf) {
+export function slabGeometry(from, to, left, right, topOf, bottomOf) {
   const steps = Math.max(1, Math.round((to - from) / track.step)), pos = new Float32Array((steps + 1) * 12), uv = new Float32Array((steps + 1) * 8), index = [];
   const quad = (a, b, c, d) => index.push(a, b, c, a, c, d);
   for (let i = 0; i <= steps; i++) {
@@ -70,7 +70,7 @@ function slabGeometry(from, to, left, right, topOf, bottomOf) {
 
 // Pedras assentadas em fiadas desencontradas, com rejunte e manchas (musgo, neve, fuligem) mais fortes em cima.
 // `stone`: tons das pedras; `mortar`: rejunte; `moss`: cores das manchas. A imagem cobre 8 x 8 m.
-function masonryTexture({ stone, mortar, moss = [] }) {
+export function masonryTexture({ stone, mortar, moss = [] }) {
   const size = 32, canvas = document.createElement('canvas');
   canvas.width = canvas.height = size;
   const ctx = canvas.getContext('2d'), hex = c => `#${c.toString(16).padStart(6, '0')}`;
@@ -229,7 +229,7 @@ function addBridge(group, { start, length, water }) {
 // Ponte pênsil de tábuas (cânion): sem mureta, só o tabuleiro, torres nas cabeceiras e cabos lá no alto. Os cabos
 // e os tirantes não seguram ninguém: quem sai pela beirada cai no rio do fundo.
 const TOWER_HEIGHT = 16, CABLE_SAG = 9, HANGER_EVERY = 10, TRESTLE_EVERY = 30;
-function plankTexture() {
+export function plankTexture() {
   const size = 32, canvas = document.createElement('canvas');
   canvas.width = canvas.height = size;
   const ctx = canvas.getContext('2d');
@@ -251,7 +251,7 @@ function plankTexture() {
 
 // Tampo do tabuleiro: as tábuas atravessam a pista (uma imagem a cada PLANK_REPEAT metros de pista).
 const PLANK_REPEAT = 4;
-function deckGeometry(from, to, half) {
+export function deckGeometry(from, to, half) {
   const steps = Math.max(1, Math.round((to - from) / track.step)), pos = [], uv = [], index = [];
   for (let i = 0; i <= steps; i++) {
     const distance = from + (to - from) * i / steps, t = trackAt(distance);
@@ -401,6 +401,8 @@ export function buildEpicSections(group, layout, biome, onUpdate) {
   for (const section of layout.epics) {
     if (section.type === 'twist') {
       addTube(group, section, biome.epic.tube);
+    } else if (section.type === 'castle') {
+      addRiver(group, section, section.water, biome.epic.abyss, false, onUpdate);   // o fosso; o resto é de castle.js
     } else if (section.type === 'bridge') {
       addRiver(group, section, section.water, biome.epic.abyss, false, onUpdate);
       if (section.style === 'wood') addWoodBridge(group, section);

@@ -219,3 +219,7 @@ export function reedClump({ height = 2.6, colors } = {}) {
   }
   return [tinted(shade(leaves, true), colors), shade(heads)];
 }
+
+// Para outras peças montadas (casas, moinhos, feno): junta { geometry, color } com a mesma luz falsa por face.
+export const shadedPart = (pieces, colors) => tinted(shade(pieces), colors);
+export { bar as barGeometry, cone as coneGeometry };

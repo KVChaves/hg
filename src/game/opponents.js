@@ -5,8 +5,8 @@ import { LIVERIES } from '../world/car/carLivery.js';
 import { createCarModel } from '../world/car/carModel.js';
 import { alignToTwist, boostAt, gustAt, hazardAt, jumpBoostAhead, inFlightZone, inGap, onBridge, SHARP_RADIUS, surfaceAt, track, trackAt, turnAt, wrapDistance } from '../world/track.js';
 import { BOOST_SPEED, BOOST_TIME } from './car.js';
-import { FALL_TIME, fallIsCertain, GRAVITY, sinkStep, stepFlight } from './flight.js';
-import { BRIDGE_HALF } from './mapLayout.js';
+import { FALL_TIME, fallIsCertain, GRAVITY, hitsGate, sinkStep, stepFlight } from './flight.js';
+import { BRIDGE_HALF, CASTLE_JUMP } from './mapLayout.js';
 import { createFlip, lifeAfterDestruction, poseFlippingCar, RESPAWN_PROTECTION } from './carFlip.js';
 import { createRig, poseRig, resetRig, rigLean } from './carRoll.js';
 import { createEffects, tickEffects } from './effects.js';
@@ -19,7 +19,7 @@ import { upgradeFactor } from './shop.js';
 import { WEAPON_TYPES } from './weaponTypes.js';
 import { TRACK_WIDTH } from '../config.js';
 
-const LANE_LIMIT = TRACK_WIDTH / 2 - 1.2, LANE_SPEED = 3.5, DODGE_LANE_SPEED = 7;
+const LANE_LIMIT = TRACK_WIDTH / 2 - 1.2, LANE_SPEED = 3.5, DODGE_LANE_SPEED = 7, WALL_MARGIN = 0.3;
 const BLOCK_LANE = 2.4, PASS_STEP = 2.6;            // quem está nesta distância lateral atrapalha; quanto sai para ultrapassar
 const WRECK_SLOWDOWN = 1.2, DODGE_LOOKAHEAD = 40, DODGE_LOOKAHEAD_TIME = 1.6;   // vê a armadilha a 40 m ou 1,6 s à frente
 const OIL_LANE_SWING = 11, OIL_SWING_RATE = 5.5, OIL_NOSE_SWING = 0.3, LANE_DRIFT_LIMIT = LANE_LIMIT + 1.5;
@@ -212,7 +212,22 @@ export function placeOpponent(op) {
   op.yaw = op.group.rotation.y;
 }
 
-const SUNK_PITCH = 0.08, FACE_BOUNCE = 0.2;
+const SUNK_PITCH = 0.08, FACE_BOUNCE = 0.2, GATE_DAMAGE = 1.2;   // pontos de vida por m/s na batida na muralha do castelo
+
+// Ponte levadiça do castelo: a IA tira o pé até um ritmo que sorteia a cada passagem (quase sempre dentro da faixa
+// que passa pelo portão; às vezes rápido demais, e bate). Vale da `CASTLE_SIGHT` metros antes da ponte até o bico.
+const CASTLE_PACE = 24.5, CASTLE_PACE_SPREAD = [0.9, 1.25], CASTLE_SIGHT = 120;   // ~79 a ~110 km/h: passa até ~105
+function castleSpeedCap(op) {
+  for (const jump of track.jumps) {
+    if (!jump.gate) continue;
+    const ahead = wrapDistance(jump.start - op.dist);
+    if (ahead > CASTLE_SIGHT || ahead < -CASTLE_JUMP.ramp) continue;
+    op.castlePace ??= CASTLE_PACE * between(CASTLE_PACE_SPREAD);
+    return op.castlePace;
+  }
+  op.castlePace = null;
+  return Infinity;
+}
 
 // Na rampa do rio a IA também voa de verdade: a gravidade a freia na subida e, se sair devagar do bico, cai.
 function flyOpponent(op, dt) {
@@ -225,6 +240,12 @@ function flyOpponent(op, dt) {
   if (result === 'blocked' && op.jump) {             // bateu na face da outra margem: volta para o vão
     op.dist -= wrapDistance(op.dist - op.jump.gaps[0][1]) + 0.3;
     op.v *= -FACE_BOUNCE;
+  }
+  if (op.airborne && hitsGate(op.jump, op.prevDist ?? op.dist, op.dist, op.y)) {   // alto demais: bateu na muralha sobre o portão
+    op.dist -= wrapDistance(op.dist - op.jump.gate.at) + 0.4;
+    damageOpponent(op, Math.abs(op.v) * GATE_DAMAGE, null, 1);
+    op.v *= -FACE_BOUNCE;
+    op.vy = Math.min(op.vy, 0);
   }
   if (ground === null && fallIsCertain(op, op.jump, op.dist)) op.sunk = FALL_TIME;
   op.flying = op.airborne || op.sunk > 0;
@@ -401,7 +422,7 @@ export function updateOpponent(op, dt, field, racing, activeTraps, time = 0) {
     updateDrift(op, dt);
     op.boost = Math.max(0, (op.boost ?? 0) - dt);
     const topSpeed = op.nitroActive ? NITRO_MAX_SPEED * (op.blueNitro > 0 ? BLUE_NITRO.top : 1) : op.vmax + op.slipstream * SLIPSTREAM_KMH / 3.6;
-    let target = Math.min(tacticCap, avoidTraffic(op, targetSpeedForCurves(op, topSpeed), field, dt)) * speedFactorFromEffects(op.effects);
+    let target = Math.min(tacticCap, castleSpeedCap(op), avoidTraffic(op, targetSpeedForCurves(op, topSpeed), field, dt)) * speedFactorFromEffects(op.effects);
     if (op.boost > 0) target = Math.max(target, BOOST_SPEED);
     steerByTactics(op);
     dodgeTraps(op, activeTraps);
@@ -420,12 +441,16 @@ export function updateOpponent(op, dt, field, racing, activeTraps, time = 0) {
     op.lane += op.knock * dt;
     op.knock *= Math.exp(-KNOCK_DECAY * dt);
     if (track.gusts.length) op.lane += (gustAt(op.dist, time)?.push ?? 0) * GUST_LANE_RATE * dt;
-    op.lane = Math.max(-LANE_DRIFT_LIMIT, Math.min(LANE_DRIFT_LIMIT, op.lane));
+    // Também não passa da parede onde a pista é mais estreita que a faixa dos bots (castelo).
+    const wall = track.wall[Math.floor((((op.dist % track.length) + track.length) % track.length) / track.step) % track.count] - WALL_MARGIN;
+    const limit = Math.min(LANE_DRIFT_LIMIT, wall);
+    op.lane = Math.max(-limit, Math.min(limit, op.lane));
     op.laneRate = dt > 0 ? (op.lane - laneBefore) / dt : 0;
     if (track.boosts.length && !op.airborne) hitBoostPad(op);
     op.nose += op.spin * dt;
     op.spin *= Math.exp(-SPIN_DECAY * dt);
     op.nose *= Math.exp(-NOSE_RETURN * dt);
+    op.prevDist = op.dist;
     op.dist += op.v * dt;
     flyOpponent(op, dt);
     op.model.roll(op.v * dt);

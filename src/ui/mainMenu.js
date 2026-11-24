@@ -17,7 +17,7 @@ const BACK = { x: 245, y: 278, width: 150, height: 28 };
 const SETTINGS_BACK = { x: 170, y: 278, width: 145, height: 28 };
 const CONTROLS_BUTTON = { x: 325, y: 278, width: 145, height: 28 };
 // Tela de controles: duas colunas de ações, cada uma com dois botões de tecla.
-const CONTROLS_ROWS = 7, CONTROLS_COLUMN = { x: [46, 328], firstY: 64, gap: 26, labelWidth: 130, slotWidth: 68, slotGap: 4, height: 18 };
+const CONTROLS_ROWS = 8, CONTROLS_COLUMN = { x: [46, 328], firstY: 64, gap: 26, labelWidth: 130, slotWidth: 68, slotGap: 4, height: 18 };
 const CONTROLS_BACK = { x: 160, y: 302, width: 150, height: 26 };
 const CONTROLS_RESET = { x: 330, y: 302, width: 150, height: 26 };
 const slotBox = (index, slot) => ({
@@ -485,7 +485,7 @@ export function createMainMenu({ stage, settings, net, getName = () => '', onSin
       ['PODIOS', `${stats.podiums}  (${percent(stats.podiums, stats.races)})`],
       ['POSICAO MEDIA', stats.average == null ? '-' : stats.average.toFixed(2)],
       ['ABATES', stats.kills],
-      ['ABATES POR PARTIDA', stats.matches ? (stats.kills / stats.matches).toFixed(1) : '-'],
+      ['ABATES POR CORRIDA', stats.races ? (stats.kills / stats.races).toFixed(1) : '-'],
       ['PARTIDAS', stats.matches],
       ['MAIOR SEQ. DE VITORIAS', stats.winStreak],
       ['MAIOR SEQ. DE PODIOS', stats.podiumStreak],

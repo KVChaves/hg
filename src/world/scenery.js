@@ -5,6 +5,7 @@ import { createAtmosphere } from './atmosphere.js';
 import { buildTunnels } from './tunnels.js';
 import { buildWalls } from './walls.js';
 import { buildEpicSections } from './epicVisuals.js';
+import { buildCastle, castleFootprint } from './castle.js';
 import { buildBeltSites, buildBoostSites, buildGustSites, buildHazardSites, buildStormSites } from './hazardSites.js';
 import { createRandom, generateTrack, isOverChasm, surfaceAt, track, trackAt, valleyReach } from './track.js';
 import { noiseTexture, pixelTexture, surfaceTexture } from './textures.js';
@@ -137,7 +138,7 @@ function addRoad(group, biome, groundMaterial) {
   const kerbMaterial = new THREE.MeshBasicMaterial({ map: kerbTexture(biome.kerb), side: THREE.DoubleSide, ...offset(-3) });
 
   const roadY = k => py[k], kerbY = k => py[k] + 0.005, groundY = (k, x, z) => track.heightAt(x, z);
-  const isGap = k => track.gap[k] === 1 || track.bridge[k] > 0, overChasm = k => track.drop[k] > 0 || track.bed[k] > 0 || track.lift[k] > 0;   // a rampa é de pedra e a ponte, de gelo (desenhadas em epicVisuals): sem estrada comum nem barranco
+  const isGap = k => track.gap[k] === 1 || track.bridge[k] > 0 || track.ownFloor[k] === 1, overChasm = k => track.drop[k] > 0 || track.bed[k] > 0 || track.lift[k] > 0;   // a rampa é de pedra e a ponte, de gelo (desenhadas em epicVisuals): sem estrada comum nem barranco
   group.add(new THREE.Mesh(stripGeometry(-half, half, 10, roadY, roadY, isGap), roadMaterial));
   if (track.valley) {                                // vale: sem zebra nem acostamento, a terra sobe direto da estrada
     for (const side of [-1, 1]) group.add(new THREE.Mesh(valleyGeometry(side), groundMaterial));
@@ -262,6 +263,7 @@ export function createWorldScene() {
     buildTunnels(content, layout, biome.tunnel);
     biomeAnimations = [];
     buildEpicSections(content, layout, biome, animation => biomeAnimations.push(animation));
+    buildCastle(content, layout, biome, animation => biomeAnimations.push(animation));
     buildWalls(content, layout, biome.wall);
     buildHazardSites(content, layout, animation => biomeAnimations.push(animation));
     buildStormSites(content, layout, animation => biomeAnimations.push(animation));
@@ -269,7 +271,7 @@ export function createWorldScene() {
     buildGustSites(content, layout, animation => biomeAnimations.push(animation));
     buildBoostSites(content, layout, animation => biomeAnimations.push(animation));
     biome.addProps({
-      onUpdate: animation => biomeAnimations.push(animation), group: content, random: createRandom(seed + 2), bounds, heightAt: track.heightAt, spotIsClear: (() => { const isClear = spotChecker(); return (x, z, distance) => isClear(x, z, distance) && !isOverChasm(x, z); })(), isOpen: openCheck(layout),
+      onUpdate: animation => biomeAnimations.push(animation), group: content, random: createRandom(seed + 2), bounds, heightAt: track.heightAt, spotIsClear: (() => { const isClear = spotChecker(), inCastle = castleFootprint(layout); return (x, z, distance) => isClear(x, z, distance) && !isOverChasm(x, z) && !inCastle(x, z); })(), isOpen: openCheck(layout),
     });
     return layout;
   };

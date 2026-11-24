@@ -19,6 +19,7 @@ export const ACTIONS = [
   { id: 'reload', label: 'RECARREGAR', keys: ['KeyR', ''] },
   { id: 'trap', label: 'USAR ITEM', keys: ['KeyE', ''] },
   { id: 'recenter', label: 'CENTRALIZAR CAMERA', keys: ['KeyC', ''] },
+  { id: 'rearView', label: 'OLHAR PARA TRAS', keys: ['KeyQ', ''] },
   { id: 'scoreboard', label: 'TABELA DA PARTIDA', keys: ['Tab', ''] },
   { id: 'chat', label: 'ABRIR CHAT', keys: ['Enter', ''] },
 ];

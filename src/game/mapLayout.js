@@ -41,9 +41,11 @@ function createPlacer(random) {
   }
 
   // Sorteia um início `s` em que [s - before, s + after] esteja livre e sem curva acima de `maxCurve`.
-  function seek(before, after, maxCurve) {
-    const spots = [];
-    for (let i = 0; i < count; i++) if (isFree(i * step - before, i * step + after, maxCurve)) spots.push(i * step);
+  // `within` ({ start, length }): só dentro desse trecho da pista.
+  function seek(before, after, maxCurve, within = null) {
+    const spots = [], total = count * step;
+    const inZone = d => !within || ((d - within.start) % total + total) % total <= within.length - after;
+    for (let i = 0; i < count; i++) if (inZone(i * step) && isFree(i * step - before, i * step + after, maxCurve)) spots.push(i * step);
     return spots.length ? spots[Math.floor(random() * spots.length)] : null;
   }
 
@@ -162,6 +164,51 @@ function placeRiverJump(plan, placer, layout) {
 }
 const JUMP_BOOST_RUNUP = 40, JUMP_BOOST_AT = 26, JUMP_BOOST_HALF = 3.5;
 
+// Castelo da Estrada do Rei (track.castle, que o traçado já trouxe): a ponte levadiça meio erguida é a rampa sobre o
+// fosso, o carro voa pelo portão e cai no pátio, que fica no alto (a mesma altura do bico) e é um carro mais estreito
+// que a estrada; lá dentro são duas curvas de 90°, e do outro lado do portão de saída uma descida de pedra.
+// O portão é baixo de propósito: com o bico a 0,3 (6 m acima do chão) e o fosso de 24 m, só alcança o pátio quem sai
+// do bico a mais de ~75 km/h; acima de ~105 km/h o carro passa alto demais e bate na muralha sobre o portão (vão de
+// 5,2 m, CASTLE_GATE), volta e cai no fosso. Na velocidade máxima sem nitro (120 km/h) bate: é preciso tirar o pé
+// antes da ponte. (Faixa medida com a física do jogo, flight.js, em várias pistas.)
+export const CASTLE_HALF = TRACK_WIDTH / 2 - 1.8, CASTLE_WALL = CASTLE_HALF - 0.4;
+// `height`: vão livre do portão acima do pátio; `depth`: espessura da muralha (o túnel do portão).
+export const CASTLE_GATE = { height: 5.2, depth: 5 };
+export const CASTLE_JUMP = { ramp: 40, lip: 0.3, gap: 24, descent: 80, depth: 12, bank: 3 };
+const CASTLE_RUNUP = 110;                            // reta livre antes da ponte, sem nada no caminho
+function placeCastle(plan, placer, layout) {
+  const castle = track.castle;
+  if (!castle) return;
+  // A rampa e o fosso caem em amostras da pista, contadas em números inteiros: o bico fica exatamente na altura e o
+  // portão exatamente no começo do pátio. Fora do alinhamento a rampa ganharia uma amostra (0,9 m mais alta) e a
+  // faixa de velocidade que passa pelo portão mudaria de pista para pista.
+  const { step, count, py, gap: gaps, epic, bed, lift, flight, ownFloor } = track, { descent, bank } = CASTLE_JUMP;
+  const rampN = Math.round(CASTLE_JUMP.ramp / step), gapN = Math.round(CASTLE_JUMP.gap / step), gateIndex = Math.round(castle.gate / step);
+  const ramp = rampN * step, gap = gapN * step, flat = castle.exitGate - gateIndex * step;
+  const firstIndex = gateIndex - rampN - gapN, start = firstIndex * step, length = ramp + gap + flat + descent, river = { ...CASTLE_JUMP, ramp, gap, flat };
+  const bedDepth = Math.max(CASTLE_JUMP.depth, (plan.below ?? WATER_BELOW) + 6);
+  placer.reserve(start - CASTLE_RUNUP, start + length + EPIC_MARGIN);
+  const { heightAt } = riverProfile(river), span = [start + ramp, start + ramp + gap], bankN = Math.round(bank / step);
+  for (let k = 0; k * step <= length; k++) {
+    const i = ((firstIndex + k) % count + count) % count;
+    lift[i] = heightAt(k * step);
+    py[i] += lift[i];
+    epic[i] = flight[i] = 1;
+    if (k >= rampN - bankN && k < rampN + gapN + bankN) bed[i] = bedDepth;
+    if (k >= rampN && k < rampN + gapN) gaps[i] = 1;
+    if (k < rampN + gapN + flat / step) ownFloor[i] = 1;   // ponte levadiça e pátio: o castelo desenha o chão
+  }
+  narrowWalls(placer, start, length, CASTLE_WALL);
+  markEnclosed(span[1], flat);
+  const section = {
+    type: 'castle', start, length, river, gaps: [span], blocks: [[start, span[0]], [span[1], start + length]], respawn: start - RESPAWN_BACK,
+    water: 0, floor: 0, depth: bedDepth, below: plan.below ?? WATER_BELOW, fallLabel: plan.fallLabel ?? 'CAIU NO FOSSO', volcano: false,
+    gate: { at: span[1], ...CASTLE_GATE }, castle,   // a muralha fica onde o chão do pátio começa de verdade (na amostra)
+  };
+  layout.epics.push(section);
+  track.jumps.push(section);
+}
+
 // `icy: false` faz uma ponte seca (de tábuas, no cânion): track.bridge vale 2 nela, e o carro não escorrega.
 // `style`: como epicVisuals.js desenha ('ice' ou 'wood').
 function placeBridge(plan, placer, layout) {
@@ -261,15 +308,34 @@ function placeBoosts(plan, placer, layout) {
 
 // Pontos de perigo (hazardKinds.js): retas livres, longe uns dos outros e dos trechos especiais. O de túnel fica
 // logo depois da entrada de um túnel fechado (sem ser o escuro). `side`: de que lado da pista vem o perigo.
-const HAZARD_MARGIN = 45, HAZARD_MAX_CURVE = 1 / 70, TUNNEL_HAZARD_IN = 10;
+// `zone` (hazardKinds.js): só dentro desse trecho da pista (track.zones), com curva ou não. `travel`: o obstáculo anda
+// pela pista; o ponto reserva a reta toda por onde ele vai, para não entrar em salto, túnel ou castelo.
+const HAZARD_MARGIN = 45, HAZARD_MAX_CURVE = 1 / 70, TUNNEL_HAZARD_IN = 10, TRAVEL_MAX_CURVE = 1 / 30, BEFORE_CASTLE_STOP = 50;
 function placeHazards(plans, placer, layout) {
   const random = placer.random;
   for (const { kind, count } of plans) {
-    const tunnels = layout.tunnels.filter(tunnel => !tunnel.open && !tunnel.dark);
+    const tunnels = layout.tunnels.filter(tunnel => !tunnel.open && !tunnel.dark), type = HAZARD_KINDS[kind];
     for (let n = 0; n < count; n++) {
       let dist = null;
-      if (HAZARD_KINDS[kind].atTunnel) {
+      if (type.atTunnel) {
         if (n < tunnels.length) dist = tunnels[n].start + TUNNEL_HAZARD_IN;
+      } else if (type.zone) {
+        const zone = track.zones[type.zone];
+        dist = zone ? placer.seek(HAZARD_MARGIN, HAZARD_MARGIN, Infinity, zone) : null;
+        if (dist !== null) placer.reserve(dist - HAZARD_MARGIN, dist + HAZARD_MARGIN);
+      } else if (type.travel) {
+        // A primeira vai pela estrada que chega ao castelo e para na beira pouco antes da ponte levadiça: quem vem
+        // embalado para o salto tem de passar por ela. Fica nesse lugar fixo, sem sorteio (a reta da ponte já está
+        // reservada pelo castelo).
+        const castle = n === 0 && layout.epics.find(epic => epic.type === 'castle');
+        const before = castle ? castle.start - BEFORE_CASTLE_STOP - type.travel : null;
+        if (before !== null && before - HAZARD_MARGIN > START_CLEAR) {
+          dist = before;
+          placer.reserve(dist - HAZARD_MARGIN, castle.start);
+        } else {
+          dist = placer.seek(HAZARD_MARGIN, type.travel + HAZARD_MARGIN, TRAVEL_MAX_CURVE);
+        }
+        if (dist !== null) placer.reserve(dist - HAZARD_MARGIN, dist + type.travel + HAZARD_MARGIN);
       } else {
         dist = placer.seek(HAZARD_MARGIN, HAZARD_MARGIN, HAZARD_MAX_CURVE);
         if (dist !== null) placer.reserve(dist - HAZARD_MARGIN, dist + HAZARD_MARGIN);
@@ -337,8 +403,9 @@ function recomputeSlope() {
 export function createMapLayout(plan, seed) {
   const random = createRandom(seed + 5), placer = createPlacer(random);
   const layout = { tunnels: [], epics: [], hazards: [], storms: [], belts: [], gusts: [], boosts: [] };
+  if (plan.castle) placeCastle(plan.castle, placer, layout);   // o castelo já tem lugar marcado no traçado: vem antes de tudo
   if (plan.twist) placeTwist(placer, layout);        // os trechos épicos pedem retas longas: escolhem primeiro
-  placeRiverJump(plan.jump ?? {}, placer, layout);
+  if (!plan.castle) placeRiverJump(plan.jump ?? {}, placer, layout);   // no castelo, a ponte levadiça é o salto
   for (const bridge of [plan.bridge ?? []].flat()) placeBridge(bridge, placer, layout);   // uma ponte ou uma lista delas
   if (plan.dark) placeDarkTunnel(plan.dark, placer, layout);
   if (plan.storm) placeStorm(plan.storm, placer, layout);

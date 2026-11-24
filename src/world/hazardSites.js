@@ -126,6 +126,9 @@ const BUILDERS = {
     addSign(group, dist - SIGN_AHEAD, diamondSign(ctx => { ctx.fillRect(9, 13, 13, 6); ctx.fillRect(20, 10, 5, 5); for (const x of [10, 13, 18, 21]) ctx.fillRect(x, 19, 2, 5); }));
   },
 
+  // Travessia de cervos na mata: a mesma trilha de terra e a placa de animais.
+  deerCrossing(group, site) { BUILDERS.animalCrossing(group, site); },
+
   // Guindaste na beira com a carga pendurada sobre a faixa do lado dele.
   crane(group, { dist, side }) {
     const yellow = solid(0xe8b020), dark = solid(0x2a2622);

@@ -157,6 +157,64 @@ const BUILDERS = {
       mesh.rotation.z = t;
     }
   },
+  deer(body) {                                       // de frente para +x: corpo alto e fino, pescoço erguido, galhada
+    const fur = 0x9a6a3a, dark = 0x5a3a1e, belly = 0xe8dcc8;
+    add(body, box(1.6, 0.75, 0.62), fur, 0, 1.45, 0);
+    add(body, box(1.2, 0.2, 0.5), belly, 0, 1.08, 0);
+    add(body, box(0.32, 0.9, 0.3), fur, 0.85, 2.0, 0).rotation.z = -0.4;   // pescoço
+    add(body, box(0.62, 0.36, 0.34), fur, 1.25, 2.42, 0);
+    add(body, box(0.2, 0.16, 0.24), 0x2a1a10, 1.58, 2.36, 0);   // focinho
+    for (const z of [0.15, -0.15]) {
+      add(body, box(0.08, 0.6, 0.08), dark, 1.15, 2.85, z * 1.4);
+      add(body, box(0.36, 0.07, 0.07), dark, 1.0, 3.05, z * 2.2);
+      add(body, box(0.07, 0.32, 0.07), dark, 0.88, 3.25, z * 2.6);
+      add(body, box(0.2, 0.08, 0.14), fur, 1.0, 2.62, z * 2.4);   // orelhas
+    }
+    add(body, box(0.22, 0.24, 0.2), belly, -0.86, 1.62, 0);       // rabo branco
+    for (const [x, z] of [[0.62, 0.2], [0.62, -0.2], [-0.6, 0.2], [-0.6, -0.2]]) add(body, box(0.14, 1.08, 0.14), dark, x, 0.54, z);
+  },
+  carriage(body) {                                   // de frente para +x: cavalo na frente, cocheiro e caixa com teto atrás
+    const wood = 0x7a4a24, trim = 0xc8a040, red = 0x8a2a2a, horse = 0x4a3020;
+    add(body, box(3.2, 1.7, 2.1), red, -1.3, 2.0, 0);              // caixa
+    add(body, box(3.4, 0.18, 2.3), trim, -1.3, 1.12, 0);
+    add(body, box(3.5, 0.3, 2.4), wood, -1.3, 3.0, 0);             // teto
+    add(body, box(2.6, 0.5, 1.8), wood, -1.3, 3.35, 0);
+    for (const z of [1.06, -1.06]) add(body, box(1.0, 0.7, 0.05), 0x2a2018, -1.3, 2.25, z);   // janelas
+    add(body, box(0.8, 0.9, 1.6), wood, 0.65, 1.5, 0);             // banco do cocheiro
+    add(body, box(0.45, 0.8, 0.45), 0x3a5a8a, 0.6, 2.35, 0);        // cocheiro
+    add(body, box(0.36, 0.36, 0.36), 0xd8a880, 0.6, 2.95, 0);
+    add(body, box(0.5, 0.12, 0.5), 0x2a2018, 0.6, 3.2, 0);
+    for (const z of [0.5, -0.5]) add(body, box(2.4, 0.1, 0.1), wood, 1.9, 1.2, z);   // varais
+    add(body, box(1.7, 0.8, 0.7), horse, 2.7, 1.75, 0);             // cavalo
+    add(body, box(0.4, 0.9, 0.36), horse, 3.55, 2.3, 0).rotation.z = -0.5;
+    add(body, box(0.7, 0.34, 0.34), horse, 3.85, 2.7, 0);
+    add(body, box(0.6, 0.12, 0.12), 0x1a120a, 3.4, 2.55, 0);        // crina
+    add(body, box(0.5, 0.5, 0.16), 0x1a120a, 1.85, 1.75, 0);        // rabo
+    const legs = [];
+    for (const [x, z] of [[3.25, 0.22], [3.25, -0.22], [2.15, 0.22], [2.15, -0.22]]) {
+      const leg = add(body, box(0.16, 1.2, 0.16), 0x2a1a10, x, 0.6, z);
+      legs.push(leg);
+    }
+    const wheels = [];
+    for (const x of [-0.2, -2.4]) for (const z of [1.2, -1.2]) {
+      const wheel = new THREE.Group();
+      wheel.position.set(x, 0.75, z);
+      add(wheel, cylinder(0.75, 0.75, 0.14, 10), wood).rotation.x = Math.PI / 2;
+      add(wheel, box(1.4, 0.1, 0.16), 0x3a2414);                   // raios
+      add(wheel, box(0.1, 1.4, 0.16), 0x3a2414);
+      body.add(wheel);
+      wheels.push(wheel);
+    }
+    let travelled = 0;
+    // As rodas giram e as patas do cavalo marcam o passo conforme a carroça anda.
+    return {
+      roll(step) {
+        travelled += step;
+        for (const wheel of wheels) wheel.rotation.z = -travelled / 0.75;
+        legs.forEach((leg, i) => { leg.rotation.z = Math.sin(travelled * 2.2 + (i % 2) * Math.PI) * 0.35; });
+      },
+    };
+  },
   crates(body) {
     add(body, box(1.3, 1.3, 1.3), 0x8a6030, -0.7, 0.65, 0);
     add(body, box(1.1, 1.1, 1.1), 0x9a7038, 0.75, 0.55, 0.2);
@@ -180,9 +238,9 @@ const BUILDERS = {
 export function createObstacleVisual(id) {
   const group = new THREE.Group(), body = new THREE.Group();
   group.add(body);
-  BUILDERS[id](body);
+  const extra = BUILDERS[id](body) ?? {};           // `roll(passo)`: o que anda pela pista anima rodas e patas
   return {
-    group, body,
+    group, body, ...extra,
     dispose() {
       group.traverse(object => { object.geometry?.dispose(); object.material?.dispose(); });
     },

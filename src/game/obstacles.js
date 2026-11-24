@@ -21,7 +21,8 @@ const LEAF_COLORS = [0x2f7a2a, 0x3a8c30, 0x5a3a20];
 // Som de quebrar por material (nomes em audio/soundFiles.js); o que não está aqui usa `crash`.
 const OBSTACLE_SOUND = {
   tree: 'obstacleWood', crates: 'obstacleWood', umbrella: 'obstacleWood', cactus: 'obstacleWood', coconut: 'obstacleWood', tumbleweed: 'obstacleWood',
-  animal: 'obstacleFlesh', camel: 'obstacleFlesh', crab: 'obstacleFlesh', kaiju: 'obstacleFlesh',
+  carriage: 'obstacleWood',
+  animal: 'obstacleFlesh', deer: 'obstacleFlesh', camel: 'obstacleFlesh', crab: 'obstacleFlesh', kaiju: 'obstacleFlesh',
   stalactite: 'obstacleIce', snowball: 'obstacleIce', crystal: 'obstacleCrystal',
   rock: 'obstacleRock', pillar: 'obstacleRock', meteor: 'obstacleRock',
   barrels: 'obstacleMetal', antenna: 'obstacleMetal', rover: 'obstacleMetal',
@@ -30,6 +31,7 @@ const CAR_HALF_WIDTH = 0.95, CAR_HALF_LENGTH = 1.8, HIT_SLOWDOWN = 0.55, LEADER_
 const PASSED_MARGIN = 35, LINGER = 8, CLEAR_VIEW = 120;   // caído na pista sem ninguém por perto, some depois de LINGER s
 const EDGE_LANE = TRACK_WIDTH / 2 - 1.2, CROSS_FROM = TRACK_WIDTH / 2 + 4, BOT_LANE_LIMIT = TRACK_WIDTH / 2 - 1.2;
 const DODGE_CHANCE = 0.65, DODGE_SIGHT = 55, DODGE_CLEARANCE = 2.4, DODGE_HOLD = 1;
+const DRIVE_PASSED_RANGE = 400;                      // carroça: sai quando todos já a passaram (e ninguém ficou muito para trás nela)
 
 const between = ([low, high]) => low + Math.random() * (high - low);
 const clamp = (v, limit) => Math.max(-limit, Math.min(limit, v));
@@ -58,7 +60,8 @@ export function createObstacles({ scene, race, car, isAuthority, onSound, onPlay
   }
 
   // Fase inicial: o que cai ou atravessa nasce já avisando; árvore e obras nascem esperando.
-  const firstPhase = motion => ({ drop: 'warning', cross: 'warning', topple: 'idle', static: 'solid' })[motion];
+  // A carroça (`drive`) já nasce andando.
+  const firstPhase = motion => ({ drop: 'warning', cross: 'warning', topple: 'idle', static: 'solid', drive: 'solid' })[motion];
 
   function add(id, typeId, dist, lane, side, siteIndex, phase) {
     const type = OBSTACLE_TYPES[typeId], site = sites[siteIndex] ?? null, kind = site ? kindOf(site) : { motion: 'static' };
@@ -77,6 +80,7 @@ export function createObstacles({ scene, race, car, isAuthority, onSound, onPlay
     }
     if (ob.motion === 'topple') ob.body.rotation.z = side * TOPPLE_LEAN;
     if (ob.motion === 'cross') ob.walk = -side;
+    if (ob.motion === 'drive') { ob.travelled = 0; ob.body.rotation.y = Math.PI / 2; }   // de frente para +x: vira para o sentido da pista
     if (site) { site.ob = ob; site.state = 'active'; }
     scene.add(ob.group);
     place(ob);
@@ -90,6 +94,7 @@ export function createObstacles({ scene, race, car, isAuthority, onSound, onPlay
     let lane;
     if (kind.motion === 'topple') lane = site.side * EDGE_LANE;
     else if (kind.motion === 'cross') lane = site.side * CROSS_FROM;
+    else if (kind.motion === 'drive') lane = site.side * between(kind.lanes);
     else if (kind.atTunnel) lane = between(kind.lanes);
     else lane = site.side * between(kind.lanes);
     onSpawned(add(nextId++, typeId, site.dist, lane, site.side, site.index));
@@ -253,11 +258,21 @@ export function createObstacles({ scene, race, car, isAuthority, onSound, onPlay
         place(ob);
       }
       ob.body.rotation.y = ob.type.radius ? 0 : ob.walk > 0 ? 0 : Math.PI;
+    } else if (ob.motion === 'drive' && ob.travelled < kind.travel) {
+      // A carroça segue pela faixa dela, devagar, até o fim da reta que o ponto reservou; aí para.
+      const step = Math.min(kind.speed * dt, kind.travel - ob.travelled);
+      ob.dist += step;
+      ob.travelled += step;
+      ob.visual.roll?.(step);
+      place(ob);
     }
   }
 
   // O que ninguém mais vai alcançar sai da pista: todos já passaram, ou terminou a travessia.
-  const passedByAll = ob => ob.phase !== 'idle' && race.field.every(racer => wrapDistance(racer.dist - ob.dist) > PASSED_MARGIN);
+  const passedByAll = ob => ob.phase !== 'idle' && race.field.every(racer => {
+    const behind = wrapDistance(racer.dist - ob.dist);
+    return behind > PASSED_MARGIN && (ob.motion !== 'drive' || behind < DRIVE_PASSED_RANGE);
+  });
   const crossedOver = ob => ob.motion === 'cross' && Math.sign(ob.lane) === Math.sign(ob.walk) && Math.abs(ob.lane) > CROSS_FROM;
 
   obstacles.reset = () => {
@@ -271,7 +286,7 @@ export function createObstacles({ scene, race, car, isAuthority, onSound, onPlay
   };
 
   function updateSites(dt) {
-    const push = pressure(), busy = obstacles.active.filter(ob => ob.phase !== 'idle' && ob.motion !== 'static').length;
+    const push = pressure(), busy = obstacles.active.filter(ob => ob.phase !== 'idle' && ob.motion !== 'static' && ob.motion !== 'drive').length;
     let available = MAX_ACTIVE - busy;
     for (const site of sites) {
       const kind = kindOf(site);
@@ -302,9 +317,9 @@ export function createObstacles({ scene, race, car, isAuthority, onSound, onPlay
       }
       // Pedra caída, árvore tombada: saem quando todos passaram, ou depois de um tempo longe de todo mundo.
       // As obras (static) ficam até alguém bater.
-      const settled = ob.phase === 'solid' && ob.motion !== 'static';
+      const settled = ob.phase === 'solid' && ob.motion !== 'static' && ob.motion !== 'drive';
       if (settled) ob.solidFor = (ob.solidFor ?? 0) + dt;
-      if (crossedOver(ob) || (settled && (passedByAll(ob) || (ob.solidFor > LINGER && !anyoneNear(ob.dist, CLEAR_VIEW))))) remove(ob);
+      if (crossedOver(ob) || (settled && (passedByAll(ob) || (ob.solidFor > LINGER && !anyoneNear(ob.dist, CLEAR_VIEW)))) || (ob.motion === 'drive' && passedByAll(ob))) remove(ob);
     }
   };
 

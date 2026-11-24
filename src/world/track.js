@@ -1,11 +1,12 @@
 import * as THREE from 'three';
 import { TRACK_WIDTH } from '../config.js';
 import { fbm } from '../art/shade.js';
+import { insertCastle, insertWaves, resample } from './trackShapes.js';
 
 // Pista gerada por semente: uma curva fechada em volta do centro, reamostrada em passos iguais, apoiada
 // num relevo. `track` é sempre o mesmo objeto; gerar outra pista troca o conteúdo dele.
 
-export const track = { length: 1, count: 0, step: 1, px: null, py: null, pz: null, tx: null, tz: null, slope: null, curvature: null, turn: null, wall: null, shoulder: 0, roll: null, gap: null, epic: null, drop: null, bed: null, enclosed: null, lift: null, flight: null, bridge: null, jumps: [], bridges: [], darkZones: [], stormZones: [], belts: [], gusts: [], boosts: [], hazards: [], valley: null, openWall: 0, chasmRange: null, heightAt: () => 0, meshHeightAt: () => 0 };
+export const track = { length: 1, count: 0, step: 1, px: null, py: null, pz: null, tx: null, tz: null, slope: null, curvature: null, turn: null, wall: null, shoulder: 0, roll: null, gap: null, epic: null, drop: null, bed: null, enclosed: null, lift: null, flight: null, bridge: null, ownFloor: null, castle: null, zones: {}, jumps: [], bridges: [], darkZones: [], stormZones: [], belts: [], gusts: [], boosts: [], hazards: [], valley: null, openWall: 0, chasmRange: null, heightAt: () => 0, meshHeightAt: () => 0 };
 
 const CONTROL_COUNT = 18, HARMONICS = [[2, 0.8], [3, 0.55], [4, 0.3]];
 export const OPEN_WALL = TRACK_WIDTH / 2 + 3;         // até onde o centro do carro pode sair da pista, onde ficam os muros
@@ -199,18 +200,66 @@ function countSharpCurves({ count, curvature }, radius) {
   return curves;
 }
 
+// Trechos desenhados à mão (trackShapes.js): `shape.castle` põe o castelo com a ponte levadiça e `shape.waves` uma
+// sequência de curvas onduladas. Devolve a pista nova e as distâncias (m) dos pontos que importam, ou nulo.
+const CASTLE_SHAPE = { radius: 16, exit: 120, rejoin: 460, keepClear: [320, 220], maxRejoinCurve: 1 / 140 };
+const WAVE_SHAPE = { keepClear: [220, 160] };
+function shapeTrack(sampled, random, shape) {
+  let points = sampled.points.slice(0, sampled.count), castle = null, zones = {};
+  if (shape.castle) {
+    const { approach, inside } = shape.castle;
+    const result = insertCastle(points, sampled.step, random, { ...CASTLE_SHAPE, approach, inside });
+    if (!result) return null;
+    const { sampled: next, at } = resample(result.points, 3, result.marks);
+    points = next.points;
+    castle = { ...at, side: result.side };
+    sampled = next;
+  }
+  if (shape.waves) {
+    const avoid = castle ? [[castle.gate - shape.castle.approach - 120, castle.rejoin]] : [];
+    const result = insertWaves(points, sampled.step, random, { ...WAVE_SHAPE, ...shape.waves }, avoid);
+    if (!result) return null;
+    // As ondas alongam um pouco a pista: as distâncias marcadas (início e fim delas, pontos do castelo) são refeitas.
+    const marks = { waveFrom: Math.round(result.from / sampled.step), waveTo: Math.round(result.to / sampled.step) };
+    if (castle) for (const [name, d] of Object.entries(castle)) if (name !== 'side') marks[name] = Math.round(d / sampled.step) % points.length;
+    const { sampled: next, at } = resample(result.points, 3, marks);
+    zones = { [shape.waves.zone ?? 'waves']: { start: at.waveFrom, length: at.waveTo - at.waveFrom } };
+    if (castle) for (const name of Object.keys(castle)) if (name !== 'side') castle[name] = at[name];
+    sampled = next;
+  }
+  return { sampled, castle, zones };
+}
+
+// Chão plano sob o castelo: a estrada fica na altura da largada do trecho de `from` a `to` (metros) e emenda
+// com o relevo em `blend` metros de cada lado.
+const CASTLE_FLAT_BLEND = 140;
+function flattenRoad(py, step, from, to) {
+  const count = py.length, total = count * step, level = py[Math.round(from / step) % count];
+  for (let i = 0; i < count; i++) {
+    const d = i * step, before = ((from - d) % total + total) % total, after = ((d - to) % total + total) % total;
+    const inside = ((d - from) % total + total) % total <= to - from;
+    const weight = inside ? 1 : Math.max(before < CASTLE_FLAT_BLEND ? 1 - smoothstep(0, CASTLE_FLAT_BLEND, before) : 0, after < CASTLE_FLAT_BLEND ? 1 - smoothstep(0, CASTLE_FLAT_BLEND, after) : 0);
+    if (weight > 0) py[i] += (level - py[i]) * weight;
+  }
+}
+
 // `shape` traz wiggle, targetLength, relief e hillScale, definidos por bioma.
 export function generateTrack(seed, shape) {
   const random = createRandom(seed);
   const wanted = shape.sharpCurves ?? 0;
-  let geometry = null, bestScore = -Infinity;
+  let geometry = null, bestScore = -Infinity, extras = { castle: null, zones: {} };
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const sampled = sampleCurve(controlPoints(random, shape));
     if (!armsKeepApart(sampled)) continue;
-    const candidate = fillGeometry(sampled), sharp = countSharpCurves(candidate, SHARP_RADIUS), bends = countSharpCurves(candidate, FLAT_OUT_RADIUS);
-    // Fora as curvas fechadas pedidas, nenhuma outra deve exigir freada.
+    const base = fillGeometry(sampled), sharp = countSharpCurves(base, SHARP_RADIUS), bends = countSharpCurves(base, FLAT_OUT_RADIUS);
+    // Fora as curvas fechadas pedidas, nenhuma outra deve exigir freada (conta na curva sorteada, antes dos trechos à mão).
     const score = -Math.abs(sharp - wanted) * 2 - Math.abs(bends - wanted);
-    if (score > bestScore) { geometry = candidate; bestScore = score; }
+    if (score <= bestScore) continue;
+    const shaped = shape.castle || shape.waves ? shapeTrack(sampled, random, shape) : { sampled, castle: null, zones: {} };
+    if (!shaped || !armsKeepApart(shaped.sampled)) continue;
+    geometry = shaped.sampled === sampled ? base : fillGeometry(shaped.sampled);
+    extras = shaped;
+    bestScore = score;
     if (score === 0) break;
   }
   if (!geometry) geometry = fillGeometry(sampleCurve(controlPoints(random, { ...shape, sharpCurves: 0 })));
@@ -219,6 +268,14 @@ export function generateTrack(seed, shape) {
   for (let i = 0; i < MAX_RELIEF_RETRIES; i++) {
     heightAt = createHeightField(createRandom(seed + 1), { ...shape, relief: heights }, geometry.px[0], geometry.pz[0]);
     road = measureRoad(geometry, heightAt);
+    if (extras.castle) {                             // o castelo e a ponte ficam no plano
+      flattenRoad(road.py, geometry.step, extras.castle.gate - shape.castle.approach - 40, extras.castle.causewayEnd + 40);
+      road.steepest = 0;
+      for (let k = 0; k < geometry.count; k++) {
+        road.slope[k] = (road.py[(k + 1) % geometry.count] - road.py[(k - 1 + geometry.count) % geometry.count]) / (2 * geometry.step);
+        road.steepest = Math.max(road.steepest, Math.abs(road.slope[k]));
+      }
+    }
     if (road.steepest <= MAX_SLOPE) break;
     heights *= RELIEF_REDUCTION;
   }
@@ -231,7 +288,8 @@ export function generateTrack(seed, shape) {
     py: road.py, slope: road.slope, wall: new Float32Array(geometry.count).fill(openWall), openWall, shoulder, valley: shape.valley ?? null, chasmRange: shape.chasmRange ?? [RIVER_FROM, RIVER_TO],
     roll: new Float32Array(geometry.count), gap: new Uint8Array(geometry.count), epic: new Uint8Array(geometry.count),
     drop: new Float32Array(geometry.count), bed: new Float32Array(geometry.count), enclosed: new Uint8Array(geometry.count),
-    lift: new Float32Array(geometry.count), flight: new Uint8Array(geometry.count), bridge: new Uint8Array(geometry.count), jumps: [], bridges: [], darkZones: [], stormZones: [], belts: [], gusts: [], boosts: [], hazards: [],
+    lift: new Float32Array(geometry.count), flight: new Uint8Array(geometry.count), bridge: new Uint8Array(geometry.count), ownFloor: new Uint8Array(geometry.count),
+    castle: extras.castle, zones: extras.zones, jumps: [], bridges: [], darkZones: [], stormZones: [], belts: [], gusts: [], boosts: [], hazards: [],
     heightAt: groundAt, meshHeightAt: meshAt,
   });
 }
