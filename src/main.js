@@ -31,7 +31,7 @@ import { loadEquipment } from './game/equipment.js';
 import { upgradeFactor } from './game/shop.js';
 import { createRoadsideHelp } from './game/roadsideHelp.js';
 import { loadSettings } from './game/settings.js';
-import { qualityOf } from './game/quality.js';
+import { qualityOf, useSceneryQuality } from './game/quality.js';
 import { loadWeaponCustoms } from './game/weaponCustomization.js';
 import { createWeapon } from './game/weapon.js';
 import { createLapSupplies } from './game/lapSupplies.js';
@@ -89,6 +89,7 @@ const worldPass = createWorldPass(renderer);
 const camera = new THREE.PerspectiveCamera(VIEW.fov, VIEW.width / VIEW.height, 0.1, 400);
 const world = createWorldScene();
 let biome = BIOMES[0];
+useSceneryQuality(loadSettings().quality);           // o mapa de fundo já sai na qualidade salva
 world.buildMap(biome, 1);                            // mapa de fundo, antes da primeira corrida
 
 const car = createCar();
@@ -363,6 +364,7 @@ function applyQuality(level) {
   world.setViewLimit(quality.viewLimit);
   world.setParticleDensity(quality.particles);
   cabin.renderMirror.setEvery(quality.mirrorEvery);
+  useSceneryQuality(level);
 }
 const mainMenu = createMainMenu({
   stage,

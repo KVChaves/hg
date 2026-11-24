@@ -48,6 +48,6 @@ export function createCombatStats({ weapon, car }) {
       stats.trapsScored++;
     },
     caughtInTrap() { stats.caught++; },
-    snapshot: () => ({ ...stats, shots: Math.max(0, weapon.shots - baseShots), hits: Math.max(0, weapon.landed - baseLanded) }),
+    snapshot: () => ({ ...stats, weapon: weapon.type.id, shots: Math.max(0, weapon.shots - baseShots), hits: Math.max(0, weapon.landed - baseLanded) }),
   };
 }

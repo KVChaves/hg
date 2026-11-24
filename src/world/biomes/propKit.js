@@ -3,6 +3,7 @@ import { TRACK_WIDTH } from '../../config.js';
 import { OPEN_WALL, track, trackAt } from '../track.js';
 import { pixelTexture } from '../textures.js';
 import { addCulledInstances } from '../instancing.js';
+import { sceneryQuality } from '../../game/quality.js';
 
 // Peças comuns aos biomas: objetos instanciados espalhados fora da pista ou enfileirados na beira dela.
 
@@ -26,6 +27,9 @@ function instancedParts(ctx, parts, count) {
 }
 
 const finish = (ctx, meshes, placed) => addCulledInstances(ctx.group, meshes, placed);
+
+// Quantas peças espalhadas de fato, pela qualidade gráfica (game/quality.js).
+const thinned = count => Math.round(count * sceneryQuality().props);
 
 const dimensions = size => (Array.isArray(size) ? size : [size, size, size]);
 
@@ -72,6 +76,7 @@ function placeInstance(meshes, parts, index, x, y, z, yaw, size, random) {
 
 // `sizeOf(random)` devolve um número ou [largura, altura, profundidade]; `clearance` é a distância mínima até a pista.
 export function scatter(ctx, { count, clearance, parts, sizeOf = () => 1 }) {
+  count = thinned(count);
   const { random, spotIsClear, bounds, heightAt } = ctx;
   const meshes = instancedParts(ctx, parts, count), distance = Math.max(clearance, behindWall());
   let placed = 0;
@@ -110,6 +115,7 @@ export function billboard(canvas, width, height, lift = 0) {
 // Espalha numa faixa colada à estrada, entre `from` e `to` metros do centro, para fechar a vista.
 // `zone` ({ start, length }): só nesse trecho da pista; `where(distância)`: filtro de onde pode.
 export function nearRoad(ctx, { count, from, to, parts, sizeOf = () => 1, zone = null, where = () => true }) {
+  count = thinned(count);
   const { random, isOpen, spotIsClear, heightAt } = ctx;
   const meshes = instancedParts(ctx, parts, count);
   let placed = 0;

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { pickFrom } from './propKit.js';
+import { sceneryQuality } from '../../game/quality.js';
 
 // Vegetação montada com várias peças (tronco, galhos, tufos de copa, folhas de palmeira) juntas numa geometria só,
 // com luz falsa por face: o material não recebe luz, então cada face ganha um tom pelo ângulo em relação a uma luz
@@ -55,7 +56,7 @@ function bar(from, to, radius, radiusEnd = radius, sides = 6) {
 }
 
 // Tufo de folhagem: icosaedro amassado com os vértices mexidos, para não parecer bola.
-function clump(at, radius, squash = 0.8, detail = 1) {
+function clump(at, radius, squash = 0.8, detail = sceneryQuality().foliage) {
   const geometry = new THREE.IcosahedronGeometry(radius, detail), pos = geometry.attributes.position, v = new THREE.Vector3();
   const moved = new Map();                           // o mesmo vértice repetido em faces vizinhas recebe o mesmo empurrão
   for (let i = 0; i < pos.count; i++) {

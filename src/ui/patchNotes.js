@@ -6,6 +6,9 @@ export const PATCH_NOTES = [
   {
     title: 'ESTATÍSTICAS',
     items: [
+      'GERAL: os pódios aparecem só em %, e o verde vai para a maior %. A quantidade de partidas e os photo finishes saíram.',
+      'COMBATE: nova ARMA FAVORITA, a que você usou em mais corridas (só conta corrida em que atirou). Vale a partir das próximas corridas rankeadas.',
+      'Nas estatísticas, o número fica vermelho quando o jogador é o pior de todos naquele item (se todos empatam, ninguém fica).',
       'Nas estatísticas, o número fica verde quando aquele jogador é o melhor de todos naquele item (nas mortes, quedas em armadilha e lideranças perdidas, o melhor é o menor).',
       'Nova estatística no COMBATE: maior sequência de abates numa corrida, sem morrer no meio. Conta a partir das próximas corridas rankeadas.',
     ],

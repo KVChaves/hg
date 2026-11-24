@@ -2,10 +2,11 @@ import * as THREE from 'three';
 import { paintGradient, paintSilhouette } from '../atmosphere.js';
 import { track } from '../track.js';
 import { alongRoad, EDGE, nearRoad, pickFrom, scatter, solid } from './propKit.js';
+import { sceneryQuality } from '../../game/quality.js';
 import { barGeometry, broadleafTree, bush, coneGeometry, grassTuft, pineTree, shadedPart } from './plants.js';
 import { kingsGate } from './finishGates.js';
 import { pixelTexture } from '../textures.js';
-import { enableCulling } from '../instancing.js';
+import { addCulledInstances } from '../instancing.js';
 
 // Estrada do Rei: estrada de pedra entre campos de grama, aldeias de telhado de palha e moinhos; uma mata fechada
 // longa, de curvas onduladas e pista estreita, onde cervos e javalis cruzam a pista; carruagens indo devagar pela estrada; e o castelo do rei, em que
@@ -191,7 +192,8 @@ function narrowedSpots(spacing) {
   return spots;
 }
 
-// Instâncias de `parts` nos pontos dados ({ x, z, yaw, size }), assentadas no chão.
+// Instâncias de `parts` nos pontos dados ({ x, z, yaw, size }), assentadas no chão, repartidas em blocos que a
+// câmera descarta quando saem da tela (world/instancing.js).
 function placeAll(ctx, parts, spots) {
   if (!spots.length) return;
   const meshes = parts.map(part => new THREE.InstancedMesh(part.geometry, part.material, spots.length));
@@ -203,7 +205,7 @@ function placeAll(ctx, parts, spots) {
       if (parts[m].colorOf) mesh.setColorAt(i, color.setHex(parts[m].colorOf(ctx.random)));
     });
   });
-  meshes.forEach(mesh => { enableCulling(mesh); ctx.group.add(mesh); });
+  addCulledInstances(ctx.group, meshes, spots.length);
 }
 
 const lateralPoint = (k, lateral) => ({ x: track.px[k] - track.tz[k] * lateral, z: track.pz[k] + track.tx[k] * lateral });
@@ -265,7 +267,7 @@ function addNarrowForest(ctx, oaks, pine) {
   const trees = [];
   for (const { k, wall } of narrowedSpots(4.5)) {
     for (const side of [-1, 1]) {
-      if (ctx.random() < 0.35) continue;
+      if (ctx.random() > 0.65 * sceneryQuality().props) continue;
       trees.push({ ...lateralPoint(k, side * (wall + CAR_HALF + 3.5 + ctx.random() * 9)), yaw: ctx.random() * Math.PI * 2, size: 0.8 + ctx.random() * 0.6, kind: Math.floor(ctx.random() * 4) });
     }
   }
@@ -286,8 +288,8 @@ function addNarrowForest(ctx, oaks, pine) {
     { geometry: new THREE.BoxGeometry(0.1, 0.1, 0.1).translate(-0.28, 0.3, 0), color: 0xf0ece0 },
   ]);
   const critters = side => narrowedSpots(9).filter(() => ctx.random() < 0.5).map(({ k, wall }) => ({ ...lateralPoint(k, side * (wall + CAR_HALF + 4 + ctx.random() * 16)), yaw: ctx.random() * Math.PI * 2, size: 0.9 + ctx.random() * 0.3 }));
-  placeAll(ctx, [deer], [...critters(-1), ...critters(1)].filter(() => ctx.random() < 0.45));
-  placeAll(ctx, [rabbit], [...critters(-1), ...critters(1)].filter(() => ctx.random() < 0.6));
+  placeAll(ctx, [deer], [...critters(-1), ...critters(1)].filter(() => ctx.random() < 0.45 * sceneryQuality().props));
+  placeAll(ctx, [rabbit], [...critters(-1), ...critters(1)].filter(() => ctx.random() < 0.6 * sceneryQuality().props));
 }
 
 // Moinho: torre de pedra afinando, telhado cônico e quatro pás de madeira que giram devagar.

@@ -27,14 +27,14 @@ ROOT = Path(__file__).resolve().parent.parent
 RANKING_FILE = Path(__file__).resolve().parent / "ranking_v2.json"        # ranking atual: desempenho por corrida
 LEGACY_RANKING_FILE = Path(__file__).resolve().parent / "ranking.json"    # ranking antigo (medalhas): congelado, só leitura
 HISTORY_FILE = Path(__file__).resolve().parent / "history.jsonl"   # uma linha por corrida disputada, só acrescenta
+LEADER_DAYS_FILE = Path(__file__).resolve().parent / "leader_days.json"   # contagem oculta: dia -> quem ficou em 1º do ranking
 RANKING_LIMIT = 50
 COMBAT_COUNTS = ("kills", "backKills", "deaths", "shots", "hits", "trapsPlaced", "trapsScored", "caught")   # contadores da mensagem `combat`
 # Campos da página COMBATE no ranking; "kills" do combate vira "combatKills" (o "kills" antigo vem do fim da partida).
 COMBAT_FIELDS = {"combatRaces": 0, "combatKills": 0, "backKills": 0, "deaths": 0, "shots": 0, "hits": 0, "trapsPlaced": 0, "trapsScored": 0, "caught": 0,
-                 "killStreak": 0, "victims": dict, "killers": dict, "causes": dict, "leadRaces": 0, "leadTime": 0.0, "leadLost": 0, "leadRaceTime": 0.0}
+                 "killStreak": 0, "victims": dict, "killers": dict, "causes": dict, "weapons": dict, "leadRaces": 0, "leadTime": 0.0, "leadLost": 0, "leadRaceTime": 0.0}
 KILL_CAUSES = ("shot", "ram", "fire", "splash", "other")
 MAX_COMBAT_COUNT = 5000                            # teto de qualquer contador numa corrida
-PHOTO_FINISH = 0.5                                  # segundos entre dois pilotos vizinhos na chegada para contar como photo finish
 MIN_MAP_RACES = 2                                  # corridas num mapa para ele valer como melhor/pior; se nenhum tiver, vale qualquer um
 RIVALS_SHOWN = 6
 COMBAT_TOP = 3                                     # vítimas e carrascos mostrados
@@ -153,6 +153,8 @@ class Ranking:
         for field in ("victims", "killers", "causes"):
             for key, count in stats[field].items():
                 entry[field][key] = entry[field].get(key, 0) + count
+        if stats["weapon"] and stats["shots"] > 0:    # arma usada: uma vez por corrida em que atirou com ela
+            entry["weapons"][stats["weapon"]] = entry["weapons"].get(stats["weapon"], 0) + 1
 
     def record_race(self, name, position, racers):
         entry = self.entry(name)
@@ -181,6 +183,24 @@ class Ranking:
         } for name, entry in self.players.items() if entry["races"] > 0]
         rows.sort(key=lambda row: (not row["ranked"], -row["rating"], -row["wins"], -row["races"]))      # sem posição por último
         return rows[:RANKING_LIMIT]
+
+
+class LeaderDays:
+    """Contagem oculta (não vai para nenhum cliente): em cada dia com pelo menos uma corrida rankeada, quem está em 1º
+    do ranking. Cada corrida do dia sobrescreve o registro, então vale quem terminou o dia na ponta."""
+
+    def __init__(self, path):
+        self.path = path
+        self.days = load_players(path)       # "AAAA-MM-DD" (fuso do servidor) -> nome
+
+    def record(self, table):
+        leader = next((row["name"] for row in table if row["ranked"]), None)
+        if leader is None:                    # ninguém com corridas suficientes para ter posição
+            return
+        self.days[time.strftime("%Y-%m-%d")] = leader
+        temporary = self.path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(self.days, ensure_ascii=False), encoding="utf-8")
+        temporary.replace(self.path)
 
 
 class Client:
@@ -266,6 +286,7 @@ class Lobby:
         self.rooms = {}
         self.pending = {}                   # token -> cliente que caiu e ainda pode voltar
         self.ranking = Ranking(RANKING_FILE)
+        self.leader_days = LeaderDays(LEADER_DAYS_FILE)
         self.legacy_rows = legacy_table(load_players(LEGACY_RANKING_FILE))
         self.chat = collections.deque(maxlen=CHAT_LOG)   # chat global: todos os conectados leem tudo, em sala ou fora dela
 
@@ -447,6 +468,7 @@ class Lobby:
                 self.ranking.record_lead(name, min(lead, seconds), lost, seconds)
         room.combat_pending = {name.casefold() for name, *_ in humans}
         self.ranking.save()
+        self.leader_days.record(self.ranking.table())
         room.race_no += 1
         self.append_history({"at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "room": room.name, "match": room.match_id, "n": room.race_no,
                              "biome": clean_text(message.get("biome"), 20), "racers": sorted(racers, key=lambda racer: racer["position"])})
@@ -486,8 +508,8 @@ class Lobby:
         return races
 
     # Estatísticas em que ter o maior (1) ou o menor (-1) valor é ser o melhor; as outras não entram na comparação.
-    BEST_DIRECTION = {"rating": 1, "races": 1, "wins": 1, "podiums": 1, "average": -1, "kills": 1, "killsPerRace": 1, "matches": 1,
-                      "winStreak": 1, "podiumStreak": 1, "gap": -1, "photoFinishes": 1}
+    BEST_DIRECTION = {"rating": 1, "races": 1, "wins": 1, "podiumRate": 1, "average": -1, "kills": 1, "killsPerRace": 1,
+                      "winStreak": 1, "podiumStreak": 1, "gap": -1}
     BEST_COMBAT_DIRECTION = {"kills": 1, "killStreak": 1, "backKills": 1, "deaths": -1, "killDeath": 1, "accuracy": 1, "trapsPlaced": 1,
                              "trapsScored": 1, "caught": -1, "leadShare": 1, "leadAverage": 1, "leadLost": -1}
 
@@ -504,24 +526,28 @@ class Lobby:
         mine["accuracy"] = combat["hits"] / combat["shots"] if combat["shots"] else None
         return {"general": general, "combat": mine}
 
-    def best_flags(self, name, history):
-        """Chaves das estatísticas em que `name` tem o melhor valor entre todos os jogadores (empate com o melhor vale)."""
+    def rank_flags(self, name, history):
+        """Chaves das estatísticas em que `name` tem o melhor e o pior valor entre todos os jogadores (empates valem).
+        Se todos empatam, ninguém é o pior."""
         table = {player: self.comparable(self.player_stats(player, history, with_best=False)) for player in self.ranking.players
                  if self.ranking.players[player]["races"] > 0}
         mine = table.get(next((player for player in table if player.casefold() == name.casefold()), None))
         if mine is None or len(table) < 2:
-            return {"general": [], "combat": []}
-        flags = {}
+            return {"general": [], "combat": []}, {"general": [], "combat": []}
+        best, worst = {}, {}
         for page, directions in (("general", self.BEST_DIRECTION), ("combat", self.BEST_COMBAT_DIRECTION)):
-            flags[page] = []
+            best[page], worst[page] = [], []
             for key, direction in directions.items():
                 values = [row[page][key] for row in table.values() if row[page][key] is not None]
                 value = mine[page][key]
-                if value is None or not values or (direction > 0 and value <= 0):
+                if value is None:
                     continue
-                if (value == max(values)) if direction > 0 else (value == min(values)):
-                    flags[page].append(key)
-        return flags
+                top, bottom = (max(values), min(values)) if direction > 0 else (min(values), max(values))
+                if value == top and not (direction > 0 and value <= 0):     # zero não é o melhor de nada que se soma
+                    best[page].append(key)
+                elif value == bottom and top != bottom:
+                    worst[page].append(key)
+        return best, worst
 
     def player_stats(self, name, history=None, with_best=True):
         """Estatísticas de um jogador tiradas do ranking e de todo o histórico de corridas rankeadas."""
@@ -529,7 +555,7 @@ class Lobby:
         history = self.all_history() if history is None else history
         entry = next((value for key, value in self.ranking.players.items() if key.casefold() == wanted), None)
         maps, rivals = {}, {}
-        win_run = podium_run = best_wins = best_podiums = photo = 0
+        win_run = podium_run = best_wins = best_podiums = 0
         gaps, last = [], None
         for race in history:
             racers = race.get("racers") or []
@@ -550,8 +576,6 @@ class Lobby:
             mine, winner = times.get(position), times.get(1)
             if mine is not None and winner is not None:
                 gaps.append(mine - winner)
-            if mine is not None and any(times.get(position + d) is not None and abs(times[position + d] - mine) < PHOTO_FINISH for d in (-1, 1)):
-                photo += 1
             for other in racers:
                 if other is me or not other.get("human"):
                     continue
@@ -564,10 +588,10 @@ class Lobby:
         result = {
             "name": name, "races": races, "last": last,
             "rating": round(100 * entry["score"] / races, 1) if races else None,
-            "wins": entry["wins"] if entry else 0, "podiums": entry["podiums"] if entry else 0,
+            "wins": entry["wins"] if entry else 0, "podiumRate": round(100 * entry["podiums"] / races) if races else None,
             "average": round(entry["positionSum"] / races, 2) if races else None,
-            "kills": entry["kills"] if entry else 0, "matches": entry["matches"] if entry else 0,
-            "winStreak": best_wins, "podiumStreak": best_podiums, "photoFinishes": photo,
+            "kills": entry["kills"] if entry else 0,
+            "winStreak": best_wins, "podiumStreak": best_podiums,
             "gap": round(sum(gaps) / len(gaps), 1) if gaps else None,
             "bestMap": max(rated, key=lambda row: row["rating"]) if rated else None,
             "worstMap": min(rated, key=lambda row: row["rating"]) if rated else None,
@@ -576,7 +600,7 @@ class Lobby:
             "combat": self.combat_stats(entry or {}),
         }
         if with_best:
-            result["best"] = self.best_flags(name, history)
+            result["best"], result["worst"] = self.rank_flags(name, history)
         return result
 
     @staticmethod
@@ -585,11 +609,13 @@ class Lobby:
         get = lambda field: entry.get(field, 0)
         top = lambda table: [{"name": name, "count": count} for name, count in sorted(table.items(), key=lambda item: -item[1])[:COMBAT_TOP]]
         lead_races = get("leadRaces")
+        favorite = max(entry.get("weapons", {}).items(), key=lambda item: item[1], default=None)
         return {
             "races": get("combatRaces"), "killStreak": get("killStreak"), "kills": get("combatKills"), "backKills": get("backKills"), "deaths": get("deaths"),
             "shots": get("shots"), "hits": get("hits"), "trapsPlaced": get("trapsPlaced"), "trapsScored": get("trapsScored"), "caught": get("caught"),
             "victims": top(entry.get("victims", {})), "killers": top(entry.get("killers", {})),
             "causes": {cause: entry.get("causes", {}).get(cause, 0) for cause in KILL_CAUSES},
+            "favoriteWeapon": {"id": favorite[0], "races": favorite[1]} if favorite else None,
             "leadRaces": lead_races, "leadLost": get("leadLost"),
             "leadAverage": round(get("leadTime") / lead_races, 1) if lead_races else None,
             "leadShare": round(100 * get("leadTime") / get("leadRaceTime")) if get("leadRaceTime") else None,
@@ -619,7 +645,10 @@ class Lobby:
         streak = stats.get("killStreak", 0)   # versões antigas não mandam
         if not isinstance(streak, int) or isinstance(streak, bool) or not 0 <= streak <= counts["kills"]:
             return None
-        return {**counts, **tables, "killStreak": streak}
+        weapon = stats.get("weapon")          # versões antigas não mandam
+        if weapon is not None and not (isinstance(weapon, str) and re.fullmatch(r"[a-z]{1,16}", weapon)):
+            return None
+        return {**counts, **tables, "killStreak": streak, "weapon": weapon}
 
     def on_combat(self, client, message):
         """Cada humano manda as próprias estatísticas de combate no fim de uma corrida rankeada; vale uma vez por corrida."""
