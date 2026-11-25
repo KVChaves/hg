@@ -50,6 +50,14 @@ const BARREL = {
     barrelBase(r, 3, 25);
     for (let x = 3; x < 15; x += 4) r.rect(x, 13, 2, 1, 0xe0601c);        // o pedaço que saiu
   },
+  wide(r) {                                          // boca larga: um sino bem aberto
+    tube(r, 16, 10, 12, 7);
+    r.poly([[2, 3], [17, 9], [17, 18], [2, 24]], STEEL[2]);
+    r.line(2, 3, 16, 9, STEEL[4]);
+    r.line(2, 24, 16, 18, STEEL[0]);
+    r.rect(2, 4, 2, 20, STEEL[1]);
+    barrelBase(r, 3, 25);
+  },
   choke(r) {
     tube(r, 14, 10, 14, 7);
     r.poly([[3, 6], [15, 9], [15, 18], [3, 21]], STEEL[2]);
@@ -77,6 +85,11 @@ const GRIP = {
   firm(r) {
     gripBody(r, (x, y) => ((x + y) % 3 === 0 ? RUBBER[2] : RUBBER[1]));
     for (const y of [10, 15, 20]) r.line(13 + (y - 10) / 4, y, 26 + (y - 10) / 4, y - 1, RUBBER[0], 2);   // ressaltos dos dedos
+  },
+  steady(r) {                                        // apoio: base larga de borracha embaixo do cabo
+    gripBody(r, (x, y) => (y > 15 ? ((x + y) % 3 === 0 ? RUBBER[2] : RUBBER[1]) : (x * 2 - y) % 7 === 0 ? WOOD[1] : WOOD[2]));
+    r.rect(14, 22, 18, 3, RUBBER[1]);
+    r.rect(14, 22, 18, 1, RUBBER[2]);
   },
   light(r) {
     gripBody(r, (x, y) => ((x * 2 - y) % 7 === 0 ? WOOD[2] : WOOD[3]));
@@ -156,6 +169,15 @@ const AMMO = {
     r.rect(14, 5, 2, 7, 0xe08a4a);
     r.rect(14, 3, 8, 2, 0xe08a4a);
     r.rect(16, 3, 4, 4, 0x1c0a04);
+  },
+  tar(r) {                                           // flecha de piche: ponta preta pegando fogo
+    r.rect(17, 9, 2, 16, 0x8a6a40);
+    r.rect(17, 9, 1, 16, 0xb08a58);
+    r.rect(15, 21, 6, 4, 0xc02818);
+    r.ellipse(18, 7, 4, 4, 0x18120e);
+    r.rect(14, 1, 3, 4, 0xff7a20);
+    r.rect(19, 0, 3, 5, 0xffb040);
+    r.rect(17, 2, 2, 3, 0xffe080);
   },
   impact(r) {                                         // ponta azul arredondada, com as ondas da pancada
     casing(r);

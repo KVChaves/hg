@@ -4,6 +4,16 @@
 
 export const PATCH_NOTES = [
   {
+    title: 'ARMAS: PEÇAS PARA TODAS',
+    items: [
+      'Toda arma tem agora pelo menos uma opção de CANO, EMPUNHADURA, CARREGADOR e MUNIÇÃO.',
+      'EMPUNHADURA APOIO (R$ 40) para RIFLE, REVÓLVER PESADO, SNIPER, BESTA e LANÇA-GRANADAS: atira 12% mais rápido, dano -8%.',
+      'CANO BOCA LARGA (R$ 40) no LANÇA-GRANADAS: explosão 35% maior, dano -15%.',
+      'FLECHA DE PICHE (R$ 50) na BESTA: o fogo dura 50% mais, dano do impacto -25%.',
+      'A munição de IMPACTO agora vale no LANÇA-GRANADAS, e a explosão balança todos os carros que ela pega.',
+    ],
+  },
+  {
     title: 'LOJA: PREÇOS DAS ARMAS E PEÇAS',
     items: [
       'Armas que subiram: RIFLE R$ 360 (antes 320) e SUBMETRALHADORA R$ 280 (antes 240).',

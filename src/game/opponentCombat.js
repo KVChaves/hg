@@ -230,7 +230,8 @@ export function createOpponentCombat({ scene, car, race, opponents, traps, mines
       if (racer === op || racer === direct || racer.dead > 0 || racer.protectedFor > 0) continue;
       const distance = Math.hypot(racer.wx - point.x, racer.wy + TARGET_HEIGHT - point.y, racer.wz - point.z);
       if (distance > radius) continue;
-      hurt(racer, op, type.damage * (1 - (1 - min) * distance / radius), bearingFrom(car, look, point.x, point.z));
+      const share = 1 - (1 - min) * distance / radius;   // munição de impacto: a explosão também balança
+      hurt(racer, op, type.damage * share, bearingFrom(car, look, point.x, point.z), (type.shake ?? 0) * share);
     }
   }
 

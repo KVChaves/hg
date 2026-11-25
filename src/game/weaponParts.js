@@ -12,6 +12,7 @@ import { WEAPON_TYPES } from './weaponTypes.js';
 //   roundTime  tempo de recarga (por bala ou pelo pente inteiro)
 //   reserve    balas de reserva (a arma começa descarregada, então é o total da corrida)
 //   reach      distância em que a escopeta perde o dano (falloff)
+//   splash     raio da explosão da granada     burn   segundos de fogo da flecha incendiária
 // Somas: `magazine` (balas a mais no pente, por arma em EXTRA_ROUNDS), `impact` (balanço por ponto de dano).
 // `ammo`: tipo de munição; muda o dano contra escudo e blindagem (ver bulletHit).
 //
@@ -24,6 +25,9 @@ const SHOTGUNS = ['shotgun', 'autoshotgun'];
 // (rifle, revólver pesado, sniper, besta, granada) peça de recuo seria vantagem ou desvantagem de graça.
 const RECOIL_MATTERS = ['revolver', 'shotgun', 'smg', 'heavymg', 'autoshotgun'];
 const ALL = Object.keys(WEAPON_TYPES);
+// As lentas: a empunhadura delas troca cadência por dano (o recuo já voltou no tiro seguinte).
+const SLOW = ALL.filter(id => !RECOIL_MATTERS.includes(id));
+// Toda arma tem pelo menos uma variante de cada peça; as que não fazem sentido numa arma ficam de fora dela.
 export const EXTRA_ROUNDS = { smg: 10, heavymg: 25, rifle: 2 };
 const IMPACT_SHAKE = 0.007;                          // balanço da munição de impacto por ponto de dano do tiro
 
@@ -41,6 +45,7 @@ export const WEAPON_PARTS = {
       heavy: { name: 'Pesado', price: 50, summary: 'DANO +15%, ATIRA 20% MAIS DEVAGAR, RESERVA -15%', stats: { damage: 1.15, interval: 1.2, reserve: 0.85 }, only: ALL.filter(id => id !== 'grenade') },
       short: { name: 'Curto', price: 60, summary: 'ATIRA 15% MAIS RAPIDO, RECUO +35%, RAJADA ABRE +25%', stats: { interval: 0.85, kick: 1.35, bloom: 1.25 }, only: RECOIL_MATTERS },
       choke: { name: 'Choke', price: 45, summary: 'O DANO DURA 35% MAIS LONGE, DANO -12%', stats: { reach: 1.35, damage: 0.88 }, only: SHOTGUNS },
+      wide: { name: 'Boca larga', price: 40, summary: 'EXPLOSAO 35% MAIOR, DANO -15%', stats: { splash: 1.35, damage: 0.85 }, only: ['grenade'] },
     },
   },
   grip: {
@@ -49,6 +54,7 @@ export const WEAPON_PARTS = {
       stock: STOCK,
       firm: { name: 'Firme', price: 30, summary: 'A MIRA VOLTA 60% MAIS RAPIDO, RECARGA +15%', stats: { recover: 1.6, roundTime: 1.15 }, only: RECOIL_MATTERS },
       light: { name: 'Leve', price: 35, summary: 'RECARGA -15%, RECUO +25%', stats: { roundTime: 0.85, kick: 1.25 }, only: RECOIL_MATTERS },
+      steady: { name: 'Apoio', price: 40, summary: 'ATIRA 12% MAIS RAPIDO, DANO -8%', stats: { interval: 0.89, damage: 0.92 }, only: SLOW },
     },
   },
   magazine: {
@@ -66,7 +72,8 @@ export const WEAPON_PARTS = {
       stock: STOCK,
       pierce: { name: 'Perfurante', price: 45, summary: 'ATRAVESSA METADE DO ESCUDO E DA BLINDAGEM, DANO -12%', stats: { damage: 0.88, ammo: 'pierce' }, only: BULLETS },
       hollow: { name: 'Ponta oca', price: 100, summary: 'DANO +15%, MAS -40% NO ESCUDO E A BLINDAGEM SEGURA O DOBRO', stats: { damage: 1.15, ammo: 'hollow' }, only: BULLETS },
-      impact: { name: 'Impacto', price: 35, summary: 'BALANCA O CARRO ATINGIDO, DANO -12%', stats: { damage: 0.88, impact: IMPACT_SHAKE }, only: BULLETS },
+      impact: { name: 'Impacto', price: 35, summary: 'BALANCA O CARRO ATINGIDO, DANO -12%', stats: { damage: 0.88, impact: IMPACT_SHAKE }, only: [...BULLETS, 'grenade'] },
+      tar: { name: 'Flecha de piche', price: 50, summary: 'O FOGO DURA 50% MAIS, DANO DO IMPACTO -25%', stats: { burn: 1.5, damage: 0.75 }, only: ['crossbow'] },
     },
   },
 };
@@ -92,7 +99,7 @@ export const weaponPartsCost = (weaponId, parts) => WEAPON_PART_KEYS.reduce((sum
 // A arma `weaponId` com as peças `parts` ({ barrel, grip, magazine, ammo }).
 export function buildWeapon(weaponId, parts) {
   const base = WEAPON_TYPES[weaponId], chosen = sanitizeWeaponParts(weaponId, parts);
-  const m = { damage: 1, interval: 1, kick: 1, recover: 1, bloom: 1, roundTime: 1, reserve: 1, reach: 1, magazine: 0, impact: 0, ammo: null };
+  const m = { damage: 1, interval: 1, kick: 1, recover: 1, bloom: 1, roundTime: 1, reserve: 1, reach: 1, splash: 1, burn: 1, magazine: 0, impact: 0, ammo: null };
   for (const key of WEAPON_PART_KEYS) {
     for (const [name, value] of Object.entries(WEAPON_PARTS[key].variants[chosen[key]].stats)) {
       if (name === 'ammo') m.ammo = value;
@@ -116,6 +123,8 @@ export function buildWeapon(weaponId, parts) {
     type.falloff = { full: base.falloff.full * m.reach, zero: base.falloff.zero * m.reach, min: base.falloff.min * m.damage };
     type.range = Math.max(base.range, Math.ceil(type.falloff.zero));
   }
+  if (base.splash) type.splash = { ...base.splash, radius: base.splash.radius * m.splash };
+  if (base.burn) type.burn = base.burn * m.burn;
   if (m.impact) type.shake = (base.shake ?? 0) + base.damage * m.impact;
   return type;
 }

@@ -74,10 +74,11 @@ export function createWeapon({ scene, camera, targets, extraTargets = () => [], 
       if (target === direct) continue;
       const distance = target.group.position.distanceTo(point);
       if (distance > radius) continue;
-      const amount = weapon.type.damage * (1 - (1 - min) * distance / radius);
+      const share = 1 - (1 - min) * distance / radius, amount = weapon.type.damage * share;
       if (target.isObstacle) { onObstacleHit(target, amount); continue; }
       hurt = true;
-      if (damageOpponent(target, amount, shooter)) { onKill(target, 'splash'); weapon.hitMarker = 0.4; }
+      // Munição de impacto: a explosão também balança quem ela pega, menos nas bordas.
+      if (damageOpponent(target, amount, shooter, (weapon.type.shake ?? 0) * share)) { onKill(target, 'splash'); weapon.hitMarker = 0.4; }
     }
     return hurt;
   }

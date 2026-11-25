@@ -10,17 +10,18 @@ import { hash } from '../../art/shade.js';
 //   tag      etiqueta colorida da munição (perfurante, ponta oca, impacto)
 //   quick    onde vai a fita do carregador rápido, quando a entrada da munição (`art.load`) fica fora da arma
 //   heavy    reforço do cano pesado, quando a boca não é um cano (a besta)
+//   pad      soleira de borracha do apoio, quando a mão não segura um cabo (a do rifle fica na alavanca)
 //   extend   desenho próprio do pente estendido
 const SPOTS = {
   revolver: { belt: { x: 9, y: 23, count: 5, on: [12, 21], kind: 'rounds' }, tag: [46, 15] },
   shotgun: { belt: { x: 30, y: 29, count: 6, on: [32, 25], kind: 'shells' }, tag: [64, 18] },
   smg: { belt: { x: 9, y: 21, count: 4, on: [12, 19], kind: 'rounds' }, tag: [41, 46], quick: [42, 54], extend: extendSmg },
-  rifle: { belt: { x: 102, y: 17, count: 6, on: [104, 20], kind: 'rounds' }, tag: [73, 18], extend: extendRifle },
+  rifle: { belt: { x: 102, y: 17, count: 6, on: [104, 20], kind: 'rounds' }, tag: [73, 18], pad: { x: 132, y: 14, w: 5, h: 20 }, extend: extendRifle },
   magnum: { belt: { x: 8, y: 23, count: 6, on: [10, 20], kind: 'rounds' }, tag: [47, 26] },
   sniper: { belt: { x: 144, y: 19, count: 6, on: [146, 22], kind: 'rounds' }, tag: [112, 26] },
   autoshotgun: { belt: { x: 12, y: 22, count: 6, on: [14, 19], kind: 'shells' }, tag: [60, 20] },
-  crossbow: { belt: { x: 62, y: 37, count: 4, on: [66, 34], kind: 'bolts' }, heavy: { x: 22, y: 31, w: 32, h: 4 } },
-  grenade: { belt: { x: 36, y: 30, count: 4, on: [36, 27], kind: 'grenades' }, quick: [60, 26] },
+  crossbow: { belt: { x: 62, y: 37, count: 4, on: [66, 34], kind: 'bolts' }, tag: [62, 33], heavy: { x: 22, y: 31, w: 32, h: 4 } },
+  grenade: { belt: { x: 36, y: 30, count: 4, on: [36, 27], kind: 'grenades' }, tag: [74, 22], quick: [60, 26] },
   heavymg: { belt: { x: 34, y: 24, count: 6, on: [36, 21], kind: 'rounds' }, tag: [103, 23], quick: [84, 30], extend: extendGatling },
 };
 
@@ -29,9 +30,9 @@ const SHELL = [0x6a1410, 0xa82418, 0xd04a30];
 const GRENADE = [0x3a4224, 0x5c6a38, 0x8a9a58];
 const BOLT = { shaft: 0x8a6a40, tip: 0xb8b8c0, fletch: 0xc02818 };
 const TIP = { stock: 0xb08030, pierce: 0x18181c, hollow: 0xc0602a, impact: 0x2a78d8 };
-const TAG = { pierce: [0x101012, 0xd8d8dc], hollow: [0x8a3a14, 0xe08a4a], impact: [0x14408a, 0x5aa8ff] };
+const TAG = { pierce: [0x101012, 0xd8d8dc], hollow: [0x8a3a14, 0xe08a4a], impact: [0x14408a, 0x5aa8ff], tar: [0x101010, 0xff7a20] };
 const LEATHER = [0x2a1a10, 0x4a2e1a];
-const RUBBER = [0x141416, 0x28282c];
+const RUBBER = [0x141416, 0x28282c, 0x3e3e46];
 const PULL_TAB = [0x8a2a08, 0xe0601c];
 const SHORT_SHARE = 0.3, SHORT_MAX = 22;              // o cano curto corta até 30% do caminho da boca ao pivô
 const GRIP_REACH = 12;                               // raio, em pixels, da empunhadura em volta da mão
@@ -156,13 +157,14 @@ function shortBarrel(art, m) {
   art.muzzle = [mx + cut, my];
 }
 
-function choke(art, m) {
+// Choke da escopeta; `flare` abre mais a boca (a boca larga do lança-granadas).
+function choke(art, m, flare = 0) {
   const [mx, my] = art.muzzle, layer = layerAt(art, mx + 2, my);
   paintOn(layer, (ctx, canvas) => {
     const { top, bottom } = barrelSpan(canvas, art.muzzle);
-    fill(ctx, m.metal[1], mx, top - 1, 6, bottom - top + 3);
-    fill(ctx, m.metal[2], mx, top - 2, 2, bottom - top + 5);                   // boca alargada
-    for (const x of [mx + 1, mx + 4]) fill(ctx, m.metal[4], x, top - 1, 1, bottom - top + 3);
+    fill(ctx, m.metal[1], mx, top - 1, 6 + flare, bottom - top + 3);
+    for (let k = 0; k <= flare; k++) fill(ctx, m.metal[2], mx + k, top - 2 - flare + k, 2, bottom - top + 5 + (flare - k) * 2);   // boca alargada
+    for (const x of [mx + 1, mx + 4 + flare]) fill(ctx, m.metal[4], x, top - 1, 1, bottom - top + 3);
   });
 }
 
@@ -181,6 +183,26 @@ function firmGrip(art) {
       }
     }
     ctx.restore();
+  });
+}
+
+// Apoio: só a metade de baixo do cabo ganha borracha, com uma base para a palma.
+function steadyGrip(art) {
+  const [hx, hy] = art.hand;
+  paintOn(layerAt(art, hx, hy), ctx => {
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-atop';
+    for (let y = hy; y <= hy + GRIP_REACH; y++) {
+      for (let x = hx - GRIP_REACH; x <= hx + GRIP_REACH; x++) fill(ctx, y % 3 === 0 ? RUBBER[0] : RUBBER[1], x, y);
+    }
+    ctx.restore();
+  });
+}
+
+function buttPad(art, { x, y, w, h }) {
+  paintOn(layerAt(art, x - 2, y + h / 2, 0, true), ctx => {
+    fill(ctx, RUBBER[0], x, y, w, h);
+    for (let k = y + 1; k < y + h - 1; k += 3) fill(ctx, RUBBER[2], x + 1, k, w - 2, 1);
   });
 }
 
@@ -304,7 +326,9 @@ export function applyCombatParts(art, id, parts, m) {
   if (parts.barrel === 'heavy') heavyBarrel(art, m, spot.heavy);
   if (parts.barrel === 'short') shortBarrel(art, m);
   if (parts.barrel === 'choke') choke(art, m);
+  if (parts.barrel === 'wide') choke(art, m, 2);
   if (parts.grip === 'firm') firmGrip(art);
   if (parts.grip === 'light') lightGrip(art);
+  if (parts.grip === 'steady') (spot.pad ? buttPad(art, spot.pad) : steadyGrip(art));
   return art;
 }
