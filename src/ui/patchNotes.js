@@ -4,6 +4,13 @@
 
 export const PATCH_NOTES = [
   {
+    title: 'FLORESTA MAIS LEVE',
+    items: [
+      'O mapa da floresta ficou mais leve para a placa de vídeo, com praticamente o mesmo visual.',
+      'Na qualidade ALTA, as folhas de longe usam um desenho mais simples. A mudança vale também para árvores e moitas parecidas dos outros mapas.',
+    ],
+  },
+  {
     title: 'RANKING: FILTRO POR SEMANA',
     items: [
       'As setas no topo do ranking mostram a classificação de cada semana (segunda a domingo); clicar nas datas volta para o GERAL.',

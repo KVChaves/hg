@@ -6,6 +6,7 @@ import { TUNNEL_HEIGHT } from '../game/mapLayout.js';
 import { gustAt, raceClock, track, trackAt } from './track.js';
 import { pixelTexture } from './textures.js';
 import { pirateShip } from './pirateShip.js';
+import { enableCulling } from './instancing.js';
 
 // O motivo de cada ponto de perigo, no cenário: paredão de onde caem pedras, encosta de neve, placa de travessia
 // de animais, guindaste, obras sinalizadas, faixa de pedestres do kaiju... Assim o jogador vê de longe que ali
@@ -65,17 +66,28 @@ const BUILDERS = {
   // Paredão de pedra na beira, debruçado sobre a pista, com blocos soltos no alto.
   rockfall(group, { dist, side }) {
     const rock = new THREE.DodecahedronGeometry(1, 0), colors = [0x6a5e54, 0x7c7066, 0x5a4e46];
+    const stones = [];                               // o paredão inteiro numa só chamada de desenho
+    const stone = (color, at, width, height = width) => stones.push({ color, at, width, height });
     for (let along = -16; along <= 16; along += 3) {
       for (let level = 0; level < 5; level++) {
         const lateral = side * (12 + level * -0.6 + Math.random() * 3), size = 2.4 + Math.random() * 1.6;
-        const mesh = put(group, rock, solid(colors[Math.floor(Math.random() * colors.length)]), spot(dist + along + Math.random() * 2, lateral, level * 3));
-        mesh.scale.set(size, size * 0.9, size);
+        stone(colors[Math.floor(Math.random() * colors.length)], spot(dist + along + Math.random() * 2, lateral, level * 3), size, size * 0.9);
       }
     }
     for (let i = 0; i < 4; i++) {                    // pedras soltas na beirada do alto: é de lá que elas caem
-      const mesh = put(group, rock, solid(0x8a7e72), spot(dist - 6 + i * 4, side * (HALF + 2.5), 13.5));
-      mesh.scale.setScalar(1.1 + Math.random() * 0.5);
+      stone(0x8a7e72, spot(dist - 6 + i * 4, side * (HALF + 2.5), 13.5), 1.1 + Math.random() * 0.5);
     }
+    const wall = new THREE.InstancedMesh(rock, solid(0xffffff), stones.length), dummy = new THREE.Object3D(), tint = new THREE.Color();
+    stones.forEach(({ color, at, width, height }, i) => {
+      dummy.position.set(at.x, at.y, at.z);
+      dummy.rotation.set(0, at.yaw, 0);
+      dummy.scale.set(width, height, width);
+      dummy.updateMatrix();
+      wall.setMatrixAt(i, dummy.matrix);
+      wall.setColorAt(i, tint.setHex(color));
+    });
+    enableCulling(wall);
+    group.add(wall);
     addSign(group, dist - SIGN_AHEAD, diamondSign(ctx => { for (const [x, y, s] of [[12, 9, 5], [18, 15, 4], [11, 19, 6]]) ctx.fillRect(x, y, s, s); }));
   },
 

@@ -20,7 +20,16 @@ const solidTinted = solidShaded.clone(), doubleTinted = doubleShaded.clone();
 
 // Junta as peças `{ geometry, color }` numa geometria com cor por vértice. `twoSided`: folhas finas, vistas dos
 // dois lados (o tom usa o ângulo sem sinal).
+// Se algum tufo tem versão simples (`userData.far`), a planta inteira ganha uma, usada de longe (world/instancing.js).
 function shade(pieces, twoSided = false) {
+  const geometry = bake(pieces, twoSided);
+  if (pieces.some(piece => piece.geometry.userData.far)) {
+    geometry.userData.far = bake(pieces.map(piece => ({ ...piece, geometry: piece.geometry.userData.far ?? piece.geometry })), twoSided);
+  }
+  return { geometry, material: twoSided ? doubleShaded : solidShaded };
+}
+
+function bake(pieces, twoSided) {
   const positions = [], colors = [], normal = new THREE.Vector3(), a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
   for (const { geometry, color = 0xffffff } of pieces) {
     const flat = geometry.index ? geometry.toNonIndexed() : geometry;
@@ -39,7 +48,7 @@ function shade(pieces, twoSided = false) {
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  return { geometry, material: twoSided ? doubleShaded : solidShaded };
+  return geometry;
 }
 
 // Parte que recebe cor por instância (lista de cores) ou fica com a cor já pintada.
@@ -55,15 +64,23 @@ function bar(from, to, radius, radiusEnd = radius, sides = 6) {
   return geometry;
 }
 
-// Tufo de folhagem: icosaedro amassado com os vértices mexidos, para não parecer bola.
+// Tufo de folhagem: icosaedro amassado com os vértices mexidos, para não parecer bola. Com detalhe, leva junto em
+// `userData.far` o mesmo tufo com 20 triângulos, um pouco maior para a silhueta não encolher na troca.
+const FAR_GROW = 1.07;
 function clump(at, radius, squash = 0.8, detail = sceneryQuality().foliage) {
-  const geometry = new THREE.IcosahedronGeometry(radius, detail), pos = geometry.attributes.position, v = new THREE.Vector3();
   const moved = new Map();                           // o mesmo vértice repetido em faces vizinhas recebe o mesmo empurrão
+  const geometry = lump(at, radius, squash, detail, moved);
+  if (detail > 0) geometry.userData.far = lump(at, radius, squash, 0, moved, FAR_GROW);
+  return geometry;
+}
+
+function lump(at, radius, squash, detail, moved, grow = 1) {
+  const geometry = new THREE.IcosahedronGeometry(radius, detail), pos = geometry.attributes.position, v = new THREE.Vector3();
   for (let i = 0; i < pos.count; i++) {
     v.fromBufferAttribute(pos, i);
     const key = `${v.x.toFixed(3)},${v.y.toFixed(3)},${v.z.toFixed(3)}`;
     if (!moved.has(key)) moved.set(key, 0.82 + Math.random() * 0.32);
-    v.multiplyScalar(moved.get(key));
+    v.multiplyScalar(moved.get(key) * grow);
     pos.setXYZ(i, v.x, v.y * squash, v.z);
   }
   geometry.translate(...at);

@@ -154,28 +154,36 @@ function addPalmArches(group, { start, length }, style) {
 }
 
 // Pórticos de madeira: dois troncos de pé, viga de tronco por cima e folhagem de outono pendurada.
+// Cada tipo de peça vira uma chamada de desenho só por trecho.
 function addTimberArches(group, { start, length }, style) {
   const post = new THREE.CylinderGeometry(0.55, 0.65, TUNNEL_HEIGHT + 0.6, 7), beam = new THREE.CylinderGeometry(0.5, 0.5, TUNNEL_HALF_WIDTH * 2 + 3, 7);
   const bark = new THREE.MeshBasicMaterial({ color: style.rib }), foliage = new THREE.MeshBasicMaterial({ color: style.leaves });
-  const tuft = new THREE.IcosahedronGeometry(1.1, 0);
+  const tuft = new THREE.IcosahedronGeometry(1.1, 0), posts = [], beams = [], tufts = [];
+  const dummy = new THREE.Object3D();
+  const place = (list, x, y, z, yaw = 0, roll = 0, squash = 1) => {
+    dummy.position.set(x, y, z);
+    dummy.rotation.set(0, yaw, roll);
+    dummy.scale.set(1, squash, 1);
+    dummy.updateMatrix();
+    list.push(dummy.matrix.clone());
+  };
   for (let d = 0; d <= length; d += OPEN_RIB_EVERY * 1.5) {
     const t = trackAt(start + d), yaw = Math.atan2(-t.tx, -t.tz);
     for (const side of [-1, 1]) {
       const x = side * (TUNNEL_HALF_WIDTH + 0.8);
-      const mesh = new THREE.Mesh(post, bark);
-      mesh.position.set(t.x - t.tz * x, t.y + (TUNNEL_HEIGHT + 0.6) / 2, t.z + t.tx * x);
-      group.add(mesh);
+      place(posts, t.x - t.tz * x, t.y + (TUNNEL_HEIGHT + 0.6) / 2, t.z + t.tx * x);
     }
-    const top = new THREE.Mesh(beam, bark);
-    top.position.set(t.x, t.y + TUNNEL_HEIGHT + 0.6, t.z);
-    top.rotation.set(0, yaw, Math.PI / 2);
-    group.add(top);
+    place(beams, t.x, t.y + TUNNEL_HEIGHT + 0.6, t.z, yaw, Math.PI / 2);
     for (let i = -2; i <= 2; i++) {
-      const lateral = i * 3.2, mesh = new THREE.Mesh(tuft, foliage);
-      mesh.position.set(t.x - t.tz * lateral, t.y + TUNNEL_HEIGHT - 0.3 - (i % 2) * 0.4, t.z + t.tx * lateral);
-      mesh.scale.set(1, 0.6, 1);
-      group.add(mesh);
+      const lateral = i * 3.2;
+      place(tufts, t.x - t.tz * lateral, t.y + TUNNEL_HEIGHT - 0.3 - (i % 2) * 0.4, t.z + t.tx * lateral, 0, 0, 0.6);
     }
+  }
+  for (const [geometry, material, matrices] of [[post, bark, posts], [beam, bark, beams], [tuft, foliage, tufts]]) {
+    const mesh = new THREE.InstancedMesh(geometry, material, matrices.length);
+    matrices.forEach((placed, i) => mesh.setMatrixAt(i, placed));
+    enableCulling(mesh);
+    group.add(mesh);
   }
 }
 

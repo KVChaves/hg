@@ -10,6 +10,7 @@ import { buildBeltSites, buildBoostSites, buildGustSites, buildHazardSites, buil
 import { createRandom, generateTrack, isOverChasm, surfaceAt, track, trackAt, valleyReach } from './track.js';
 import { noiseTexture, pixelTexture, surfaceTexture } from './textures.js';
 import { enableCulling } from './instancing.js';
+import { flushProps } from './biomes/propKit.js';
 import { pngNow } from '../cabin/pngPixels.js';
 
 const pngReady = path => Boolean(pngNow(path));
@@ -356,9 +357,12 @@ export function createWorldScene() {
     buildBeltSites(content, layout, animation => biomeAnimations.push(animation));
     buildGustSites(content, layout, animation => biomeAnimations.push(animation));
     buildBoostSites(content, layout, animation => biomeAnimations.push(animation));
-    biome.addProps({
+    const props = {
+      pending: new Map(),
       onUpdate: animation => biomeAnimations.push(animation), group: content, random: createRandom(seed + 2), bounds, heightAt: track.heightAt, spotIsClear: (() => { const isClear = spotChecker(), inCastle = castleFootprint(layout); return (x, z, distance) => isClear(x, z, distance) && !isOverChasm(x, z) && !inCastle(x, z); })(), isOpen: openCheck(layout),
-    });
+    };
+    biome.addProps(props);
+    flushProps(props);
     return layout;
   };
 

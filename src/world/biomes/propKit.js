@@ -20,13 +20,43 @@ const CAR_ZONE = 8, FOOTPRINT_STEP = 6;              // metros: altura que atrap
 export const solid = (color, extra = {}) => new THREE.MeshBasicMaterial({ color, ...extra });
 export const pickFrom = list => random => list[Math.floor(random() * list.length)];
 
-// Os meshes daqui só recebem as posições; no fim (`finish`) as instâncias vão para a cena repartidas em blocos
-// que a câmera pode descartar (world/instancing.js).
+// Os meshes daqui só recebem as posições. `finish` os guarda por peça em `ctx.pending`, e no fim da montagem
+// `flushProps` junta as chamadas que usam a mesma peça (espalhada e colada na estrada, por exemplo) e manda tudo para
+// a cena em blocos que a câmera pode descartar (world/instancing.js): a mesma peça não é desenhada em dobro.
 function instancedParts(ctx, parts, count) {
   return parts.map(part => new THREE.InstancedMesh(part.geometry, part.material, count));
 }
 
-const finish = (ctx, meshes, placed) => addCulledInstances(ctx.group, meshes, placed);
+function finish(ctx, meshes, placed) {
+  if (!placed) return;
+  const key = meshes.map(mesh => `${mesh.geometry.uuid}:${mesh.material.uuid}:${Boolean(mesh.instanceColor)}`).join('|');
+  if (!ctx.pending.has(key)) ctx.pending.set(key, []);
+  ctx.pending.get(key).push({ meshes, placed });
+}
+
+export function flushProps(ctx) {
+  for (const batches of ctx.pending.values()) {
+    const total = batches.reduce((sum, batch) => sum + batch.placed, 0);
+    const joined = batches[0].meshes.map((first, m) => {
+      if (batches.length === 1) return first;
+      const mesh = new THREE.InstancedMesh(first.geometry, first.material, total);
+      let index = 0;
+      for (const { meshes, placed } of batches) {
+        for (let i = 0; i < placed; i++, index++) {
+          meshes[m].getMatrixAt(i, matrix);
+          mesh.setMatrixAt(index, matrix);
+          if (meshes[m].instanceColor) {
+            meshes[m].getColorAt(i, tint);
+            mesh.setColorAt(index, tint);
+          }
+        }
+      }
+      return mesh;
+    });
+    addCulledInstances(ctx.group, joined, total);
+  }
+  ctx.pending.clear();
+}
 
 // Quantas peças espalhadas de fato, pela qualidade gráfica (game/quality.js).
 const thinned = count => Math.round(count * sceneryQuality().props);
