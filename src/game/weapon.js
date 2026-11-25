@@ -7,6 +7,10 @@ import { groundHit } from '../world/track.js';
 const DEFAULT_TRACER = 0xffe9a0;
 const HIT_PART_TIME = 0.7;
 const ROUND_PICKUP_AT = 0.5, OUT_OF_AMMO_NOTICE = 1, TRACER_LENGTH = 120, DRY_FIRE_INTERVAL = 0.35;
+// Recuo (type.kick): a mira sobe um pouco a cada tiro e volta sozinha. `weapon.kick` é somado à direção da cabeça
+// (cabin.js), separado de `look`, para não esbarrar no limite de quanto a cabeça levanta. O tiro sai da câmera,
+// então vai para onde a mira foi empurrada.
+const KICK_VARIATION = 0.3, MAX_KICK_PITCH = 0.2, MAX_KICK_YAW = 0.08;
 
 // `onIgnite(alvo, segundos)`: a flecha incendiária acertou um carro. `onGroundFire(ponto)`: caiu no asfalto
 // (ponto de world/track.js groundHit). A granada que erra explode onde bate no chão.
@@ -24,11 +28,12 @@ export function createWeapon({ scene, camera, targets, extraTargets = () => [], 
     type: WEAPON_TYPES.revolver, ammo: 0, capacity: 0, reserve: 0, outOfAmmo: 0, cooldown: 0,
     isReloading: false, roundsToLoad: 0, roundProgress: 0, carryingRound: false,
     flash: 0, hitMarker: 0, hitPart: null, hitPartTime: 0, kills: 0, sinceShot: Infinity, spin: 0, shots: 0, landed: 0, dryFires: 0,   // `landed`: disparos que machucaram algum carro (mira)
+    kick: { pitch: 0, yaw: 0 },
   };
 
-  // `reserveFactor` é a melhoria de munição comprada.
-  weapon.equip = (id, reserveFactor = 1) => {
-    const type = WEAPON_TYPES[id];
+  // `type` é a arma já montada com as peças (weaponParts.buildWeapon); `reserveFactor` é a melhoria de munição comprada.
+  weapon.equip = (type, reserveFactor = 1) => {
+    weapon.kick.pitch = weapon.kick.yaw = 0;
     // A arma começa descarregada: a primeira recarga é por conta do piloto.
     Object.assign(weapon, { type, ammo: 0, capacity: type.magazine, maxReserve: Math.ceil(type.reserve * reserveFactor), reserve: Math.ceil(type.reserve * reserveFactor), isReloading: false, carryingRound: false, roundProgress: 0, roundsToLoad: 0, cooldown: 0, flash: 0, hitMarker: 0, outOfAmmo: 0, kills: 0, sinceShot: Infinity, spin: 0 });
     raycaster.far = type.range;
@@ -114,7 +119,7 @@ export function createWeapon({ scene, camera, targets, extraTargets = () => [], 
         onHit(target);
         const part = partHit(hits[0].object, target.group.worldToLocal(hits[0].point.clone()));
         if (part.label) { weapon.hitPart = part.label; weapon.hitPartTime = HIT_PART_TIME; }
-        if (damageOpponent(target, damageAtDistance(type, hits[0].distance) * part.multiplier, shooter, shakeAtDistance(type, hits[0].distance))) {
+        if (damageOpponent(target, damageAtDistance(type, hits[0].distance) * part.multiplier, shooter, shakeAtDistance(type, hits[0].distance), type.ammo)) {
           onKill(target, 'shot');
           weapon.hitMarker = 0.4;
         }
@@ -131,7 +136,15 @@ export function createWeapon({ scene, camera, targets, extraTargets = () => [], 
     }
     if (landed) weapon.landed++;
     showTracer(origin, direction, end);
+    addKick(type.kick);
   };
+
+  // O recuo vale para o próximo tiro: este já saiu.
+  function addKick({ up, side }) {
+    const { kick } = weapon;
+    kick.pitch = Math.min(MAX_KICK_PITCH, kick.pitch + up * (1 + (Math.random() - 0.5) * 2 * KICK_VARIATION));
+    kick.yaw = Math.max(-MAX_KICK_YAW, Math.min(MAX_KICK_YAW, kick.yaw + (Math.random() - 0.5) * 2 * side));
+  }
 
   // Ciclo de recarga: a mão pega no meio do ciclo e coloca na arma no fim.
   // Armas de balas soltas repetem o ciclo por bala; a submetralhadora troca o pente num ciclo só.
@@ -161,6 +174,9 @@ export function createWeapon({ scene, camera, targets, extraTargets = () => [], 
     weapon.hitPartTime -= dt;
     weapon.outOfAmmo -= dt;
     if (weapon.type.bloom) bloom = Math.max(0, bloom - weapon.type.bloom.decay * dt);
+    const settle = Math.exp(-weapon.type.kick.recover * dt);
+    weapon.kick.pitch *= settle;
+    weapon.kick.yaw *= settle;
     if (weapon.isReloading) loadRounds(dt);
     // Metralhadora: os canos só giram com o gatilho apertado e a arma pronta para atirar.
     weapon.spin = stepSpin(weapon.type, weapon.spin, triggerHeld && !weapon.isReloading && weapon.ammo > 0 && shooter.effects.emp <= 0, dt);

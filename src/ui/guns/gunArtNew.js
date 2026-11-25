@@ -563,6 +563,7 @@ export function buildGatling(custom, m) {
   return {
     size: [W, H], pivot: [94, 26], muzzle: [0, AXIS], hand: [104, 40], load: [76, 44], eject: [82, 32],
     carry: 'ammobox', casing: 'round', flashSize: 1.25, smoke: 0.9,
+    ammoBox: { ...BOX, colors: OLIVE },                // para a caixa maior do carregador estendido (gunParts.js)
     recoil: { back: 3, up: 3, tilt: 0.05, stiffness: 420, damping: 28, shake: 1 },
     reload: { x: 494, y: 202, angle: -0.22 },
     layers: [
@@ -659,6 +660,7 @@ export function buildGatling(custom, m) {
       },
       // caixa de munição com a cinta subindo para a culatra; cai e volta inteira na recarga
       {
+        isAmmoBox: true,
         pose: p => ({ dy: p.magDrop * BOX_DROP, hidden: p.magDrop >= 1 }),
         paint: (ctx, p) => {
           const { x, y, w, h } = BOX;

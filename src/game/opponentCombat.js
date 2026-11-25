@@ -10,6 +10,7 @@ import { damageOpponent } from './opponents.js';
 import { shakeCar } from './shake.js';
 import { damageAtDistance, fireInterval, shakeAtDistance, stepSpin, WEAPON_TYPES } from './weaponTypes.js';
 import { rollPart } from './carParts.js';
+import { bulletHit } from './weaponParts.js';
 import { EMP_RADIUS } from './trapTypes.js';
 import { effectiveRange, healthOf, isAlive, isVulnerable, styleOf, weaponOf } from './botStyles.js';
 
@@ -23,6 +24,10 @@ const CHASE_SIGHT = 260;                             // até onde procura o alvo
 const BASE_ACCURACY = 0.46, MIN_ACCURACY = 0.05, MAX_ACCURACY = 0.8;
 const DISTANCE_ACCURACY_LOSS = 0.6, GRUDGE_ACCURACY = 1.25, TARGET_IN_SMOKE_ACCURACY = 0.5;
 const DODGING_LANE_RATE = 2.5, DODGING_ACCURACY = 0.8, SHAKY_ACCURACY = 0.75;   // alvo ziguezagueando; atirador deslizando
+// Recuo (type.kick): os bots não miram com câmera, então o recuo acumulado (arsenal.kick, em radianos) vira chance perdida.
+// O quanto a mira saiu do lugar, em metros na distância do alvo, dividido por KICK_MISS_METERS: com a mira 3 m acima,
+// a chance cai pela metade.
+const KICK_MISS_METERS = 3;
 const AIM_TIME = [0.45, 1], BURST_SIZE = [3, 6], PAUSE_VARIATION = [0.7, 1.3];
 const GRUDGE_PACE = 0.7, FINISH_HEALTH = 0.3, FINISH_PACE = 0.5;   // alvo quase destruído: atira mais seguido
 const WEAK_PELLETS = 0.35, SLOW_WEAPON = 0.7, MIN_SLOW_CHANCE = 0.2;   // disciplina de tiro (ver worthShooting)
@@ -145,6 +150,7 @@ export function createOpponentCombat({ scene, car, race, opponents, traps, mines
     if (target.effects.smoke > 0 || traps.smokeBlocks(op.x, op.z, target.x, target.z)) chance *= TARGET_IN_SMOKE_ACCURACY;
     if (Math.abs(target.laneRate ?? 0) > DODGING_LANE_RATE) chance *= DODGING_ACCURACY;
     if (op.effects.oil > 0 || Math.abs(op.knock) > 4) chance *= SHAKY_ACCURACY;
+    chance /= 1 + op.arsenal.kick * distance / KICK_MISS_METERS;
     return Math.max(MIN_ACCURACY, Math.min(MAX_ACCURACY, chance));
   }
 
@@ -158,13 +164,15 @@ export function createOpponentCombat({ scene, car, race, opponents, traps, mines
     return chance >= MIN_SLOW_CHANCE || finishing;
   }
 
-  function hurt(target, op, amount, bearing, shake = 0) {
+  // `ammo`: tipo de munição do tiro (weaponParts.bulletHit); a explosão da granada não tem.
+  function hurt(target, op, amount, bearing, shake = 0, ammo = null) {
     if (!target.isPlayer) {
-      if (damageOpponent(target, amount, op, shake)) onKill(target, op);
+      if (damageOpponent(target, amount, op, shake, ammo)) onKill(target, op);
       return;
     }
     const wasAlive = car.health > 0 && car.wrecked <= 0;
-    damagePlayer(car, amount * car.parts.bullet / CAR_MAX_HP);
+    const hit = bulletHit(ammo, amount, car.parts.bullet, car.effects.shield > 0);
+    damagePlayer(car, hit.amount / CAR_MAX_HP, hit.pierce);
     if (shake > 0 && car.health > 0) shakeCar(car, shake);
     if (wasAlive && car.health <= 0) onKill(target, op);
     combat.hitFlash = HIT_FLASH_TIME;
@@ -186,6 +194,7 @@ export function createOpponentCombat({ scene, car, race, opponents, traps, mines
   function shoot(op, target, chance) {
     const { arsenal } = op, { type } = arsenal;
     arsenal.ammo--;
+    arsenal.kick += type.kick.up;
     const dx = target.x - op.x, dz = target.z - op.z, distance = Math.hypot(dx, dz) || 1;
     const ux = dx / distance, uz = dz / distance;
     const hit = Math.random() < chance;
@@ -202,7 +211,7 @@ export function createOpponentCombat({ scene, car, race, opponents, traps, mines
     const bearing = bearingFrom(car, look, op.x, op.z);
     onShot(type.id, Math.hypot(car.x - op.x, car.z - op.z), -Math.sin(bearing));
 
-    if (hit) hurt(target, op, damageAtDistance(type, distance) * rollPart().multiplier, bearing, shakeAtDistance(type, distance));
+    if (hit) hurt(target, op, damageAtDistance(type, distance) * rollPart().multiplier, bearing, shakeAtDistance(type, distance), type.ammo);
     if (hit && target.isPlayer) onPlayerShot();       // bala batendo na lataria
     if (!hit && target.isPlayer && !type.splash && !type.burn) onSound('ricochet', to.x, to.z);   // passou raspando
     if (type.splash) splash(op, type, to, hit ? target : null);
@@ -254,6 +263,7 @@ export function createOpponentCombat({ scene, car, race, opponents, traps, mines
   function updateGun(op, dt, target, style) {
     const { arsenal } = op, { type } = arsenal;
     arsenal.cooldown -= dt;
+    arsenal.kick *= Math.exp(-type.kick.recover * dt);
     arsenal.spin = stepSpin(type, arsenal.spin ?? 0, arsenal.burstLeft > 0 && arsenal.reloadLeft <= 0 && op.effects.emp <= 0, dt);
     if (arsenal.reloadLeft > 0) {
       arsenal.reloadLeft -= dt;

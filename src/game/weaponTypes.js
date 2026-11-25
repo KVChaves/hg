@@ -1,48 +1,53 @@
 // `shake` (escopetas): o carro atingido balança, com giro, empurrão lateral e inclinação; quanto mais perto, mais forte.
+// `recoil`: só o tranco visual da arma na mão. `kick`: o recuo de verdade, que levanta a mira (game/weapon.js):
+//   up      radianos que cada tiro sobe a mira (com uma variação pequena)
+//   side    radianos que cada tiro pode jogar a mira para um lado ou para o outro
+//   recover por segundo, quão rápido a mira volta sozinha (o resto o piloto corrige com o mouse)
+// Nas armas que atiram devagar a mira já voltou quando sai o próximo tiro; nas automáticas o recuo se acumula.
 // Armas de fogo disponíveis. Com toda a munição e sem errar, cada uma causa cerca de 1000 de dano;
 // o preço (`price`, em reais) depende de quão fácil é aproveitar esse dano numa corrida.
 
 export const WEAPON_TYPES = {
   revolver: {
     id: 'revolver', family: 'revolver', label: 'REVOLVER', price: 150, summary: 'PRECISO A MEIA DISTANCIA',
-    damage: 34, interval: 0.38, range: 160, magazine: 6, reserve: 24, roundTime: 0.42, recoil: 1,
+    damage: 34, interval: 0.38, range: 160, magazine: 6, reserve: 24, roundTime: 0.42, recoil: 1, kick: { up: 0.03, side: 0.008, recover: 4 },
   },
   shotgun: {
     id: 'shotgun', family: 'shotgun', label: 'ESCOPETA', price: 240, summary: 'DEVASTADORA DE PERTO',
     damage: 92, falloff: { full: 30, zero: 50, min: 5 }, shake: 1.4, interval: 0.45, range: 60,
-    magazine: 2, reserve: 10, roundTime: 0.6, recoil: 1.5,
+    magazine: 2, reserve: 10, roundTime: 0.6, recoil: 1.5, kick: { up: 0.06, side: 0.015, recover: 4 },
   },
   smg: {
     id: 'smg', family: 'smg', label: 'SUBMETRALHADORA', price: 240, summary: 'SEGURE O CLIQUE',
-    damage: 13, interval: 0.09, range: 110, magazine: 30, reserve: 60, roundTime: 1.6, recoil: 0.35,
-    automatic: true, reloadsWholeMagazine: true, bloom: { perShot: 0.012, max: 0.07, decay: 0.12 },
+    damage: 13, interval: 0.09, range: 110, magazine: 30, reserve: 60, roundTime: 1.6, recoil: 0.35, kick: { up: 0.009, side: 0.006, recover: 5 },
+    automatic: true, reloadsWholeMagazine: true, bloom: { perShot: 0.01, max: 0.05, decay: 0.12 },
   },
   rifle: {
     id: 'rifle', family: 'rifle', label: 'RIFLE', price: 320, summary: 'LONGO ALCANCE E TIRO LENTO',
-    damage: 75, interval: 0.75, range: 230, magazine: 5, reserve: 13, roundTime: 0.55, recoil: 1.3,
+    damage: 75, interval: 0.75, range: 230, magazine: 5, reserve: 13, roundTime: 0.55, recoil: 1.3, kick: { up: 0.045, side: 0.01, recover: 3.5 },
   },
   magnum: {
     id: 'magnum', family: 'revolver', style: 'topbreak', label: 'REVOLVER PESADO', price: 190, summary: 'DEVAGAR E PESADO',
-    damage: 70, interval: 0.75, range: 150, magazine: 4, reserve: 10, roundTime: 0.5, recoil: 1.8,
+    damage: 70, interval: 0.75, range: 150, magazine: 4, reserve: 10, roundTime: 0.5, recoil: 1.8, kick: { up: 0.055, side: 0.015, recover: 3.5 },
   },
   sniper: {
     id: 'sniper', family: 'rifle', style: 'bolt', label: 'SNIPER', price: 340, summary: 'UM TIRO, ALCANCE ENORME',
-    damage: 105, interval: 1.6, range: 320, magazine: 1, reserve: 7, roundTime: 0.9, recoil: 2.2,
+    damage: 105, interval: 1.6, range: 320, magazine: 1, reserve: 7, roundTime: 0.9, recoil: 2.2, kick: { up: 0.08, side: 0.01, recover: 3 },
   },
   autoshotgun: {
     id: 'autoshotgun', family: 'shotgun', style: 'autoshotgun', label: 'ESCOPETA AUTO', price: 320, summary: 'ESCOPETA QUE ATIRA SEGURANDO',
-    damage: 48, falloff: { full: 30, zero: 42, min: 4 }, shake: 0.8, interval: 0.28, range: 50, magazine: 6, reserve: 18, roundTime: 0.45, recoil: 1.2,
-    automatic: true, bloom: { perShot: 0.02, max: 0.08, decay: 0.15 },
+    damage: 48, falloff: { full: 30, zero: 42, min: 4 }, shake: 0.8, interval: 0.28, range: 50, magazine: 6, reserve: 18, roundTime: 0.45, recoil: 1.2, kick: { up: 0.035, side: 0.012, recover: 4 },
+    automatic: true, bloom: { perShot: 0.016, max: 0.06, decay: 0.15 },
   },
   // `burn`: segundos em chamas para o carro atingido; errando, a flecha deixa o chão queimando (game/burning.js).
   crossbow: {
     id: 'crossbow', family: 'rifle', style: 'crossbow', label: 'BESTA INCENDIARIA', price: 300, summary: 'FLECHA QUE INCENDEIA CARRO E CHAO',
-    damage: 70, burn: 9, tracer: 0xff7a20, interval: 1.25, range: 140, magazine: 1, reserve: 8, roundTime: 1, recoil: 1.4,
+    damage: 70, burn: 9, tracer: 0xff7a20, interval: 1.25, range: 140, magazine: 1, reserve: 8, roundTime: 1, recoil: 1.4, kick: { up: 0.03, side: 0.008, recover: 4 },
   },
   // `splash`: explode onde acerta (ou no chão, se errar) e machuca quem estiver em volta, menos quanto mais longe.
   grenade: {
     id: 'grenade', family: 'shotgun', style: 'pump', label: 'LANCA-GRANADAS', price: 380, summary: 'GRANADA QUE EXPLODE EM AREA',
-    damage: 85, splash: { radius: 7, min: 0.35 }, tracer: 0xb0b070, interval: 1.1, range: 120, magazine: 3, reserve: 8, roundTime: 0.75, recoil: 1.7,
+    damage: 85, splash: { radius: 7, min: 0.35 }, tracer: 0xb0b070, interval: 1.1, range: 120, magazine: 3, reserve: 8, roundTime: 0.75, recoil: 1.7, kick: { up: 0.05, side: 0.012, recover: 4 },
   },
   // `spinUp`: os canos aceleram enquanto o gatilho está apertado. O intervalo vai de `startInterval` (parado) até
   // `interval` (girando no máximo) em `time` segundos, e solto os canos param em `spinDown` segundos.
@@ -50,8 +55,8 @@ export const WEAPON_TYPES = {
   heavymg: {
     id: 'heavymg', family: 'smg', style: 'gatling', label: 'METRALHADORA', price: 260, summary: 'QUANTO MAIS SEGURA, MAIS RAPIDO',
     damage: 10, interval: 0.06, spinUp: { startInterval: 0.16, time: 0.9, spinDown: 0.9 }, range: 100,
-    magazine: 50, reserve: 50, roundTime: 2.4, recoil: 0.45, automatic: true, reloadsWholeMagazine: true, botBurst: [12, 24],
-    bloom: { perShot: 0.005, max: 0.1, decay: 0.08 },
+    magazine: 50, reserve: 50, roundTime: 2.4, recoil: 0.45, kick: { up: 0.006, side: 0.007, recover: 4.5 }, automatic: true, reloadsWholeMagazine: true, botBurst: [12, 24],
+    bloom: { perShot: 0.004, max: 0.08, decay: 0.08 },
   },
 };
 

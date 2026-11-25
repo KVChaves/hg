@@ -440,7 +440,7 @@ const INTERIOR = {
   },
 };
 
-export const weaponThumb = (id, custom) => createGunRig(id, custom).snapshot();
+export const weaponThumb = (id, custom, parts = null) => createGunRig(id, custom, parts).snapshot();
 export const trunkItemThumb = id => paintTrapIcon(id);
 
 export const exteriorThumb = (key, option) => EXTERIOR[key](option);

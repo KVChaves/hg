@@ -1,4 +1,4 @@
-import { CAR_MAX_HP } from '../config.js';
+import { CAR_MAX_HP, CAR_TOUGHNESS } from '../config.js';
 import { inGap, surfaceAt, trackAt, wrapDistance } from '../world/track.js';
 import { createTrapVisual } from '../world/trapVisuals.js';
 import { damagePlayer } from './car.js';
@@ -85,7 +85,7 @@ export function createTraps({ scene, car, race, harpoon, burning, mines, nets, e
 
   // Vale para qualquer piloto: o escudo absorve parte do dano por um tempo (game/shield.js).
   traps.raiseShield = racer => {
-    raiseShield(racer, racer.isPlayer ? 1 : racer.maxHp);
+    raiseShield(racer, racer.isPlayer ? 1 : racer.maxHp / CAR_TOUGHNESS);   // o escudo não cresce com a resistência base
     onSound('shield', racer.x, racer.z);
   };
 

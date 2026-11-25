@@ -2,6 +2,7 @@ import { Raster } from '../../art/raster.js';
 import { colorRamp, dither } from '../../art/shade.js';
 import { familyOf } from '../../game/weaponTypes.js';
 import { DARK_STEEL, layerOf, materials, STEEL } from './gunPaint.js';
+import { applyCombatParts } from './gunParts.js';
 import { buildAutoShotgun, buildCrossbow, buildGatling, buildGrenadeLauncher, buildMagnum, buildSniper } from './gunArtNew.js';
 
 // Armas desenhadas em partes móveis (mesmos ids de game/weaponTypes.js). Cada camada é uma imagem do
@@ -257,7 +258,8 @@ const BASE_GRIP = {
   magnum: [0x5a5448, 0x8a8270, 0xb4ac98, 0xd8d0bc, 0xf0ead8], sniper: colorRamp(0x9a8a64), autoshotgun: colorRamp(0x5a4a3a), heavymg: colorRamp(0x4a3a2c),
 };
 
-export function buildGunArt(id, custom) {
+// `parts`: peças de combate da arma (game/weaponParts.js), desenhadas por cima (gunParts.js).
+export function buildGunArt(id, custom, parts = null) {
   const m = materials(BASE_METAL[id] ?? BASE_METAL[familyOf(id)] ?? STEEL, custom, BASE_GRIP[id]);
-  return { ...(BUILDERS[id] ?? BUILDERS[familyOf(id)])(custom, m), flash: m.flash };
+  return applyCombatParts({ ...(BUILDERS[id] ?? BUILDERS[familyOf(id)])(custom, m), flash: m.flash }, id, parts, m);
 }

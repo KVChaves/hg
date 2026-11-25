@@ -1,6 +1,6 @@
 import { shakeOpponent } from './shake.js';
 import { surface } from './surface.js';
-import { ACCEL, BLUE_NITRO, CAR_MAX_HP, MAX_SPEED, NITRO_ACCEL, NITRO_DRAIN, NITRO_MAX_SPEED, SLIPSTREAM_KMH } from '../config.js';
+import { ACCEL, BLUE_NITRO, CAR_MAX_HP, CAR_TOUGHNESS, MAX_SPEED, NITRO_ACCEL, NITRO_DRAIN, NITRO_MAX_SPEED, SLIPSTREAM_KMH } from '../config.js';
 import { LIVERIES } from '../world/car/carLivery.js';
 import { createCarModel } from '../world/car/carModel.js';
 import { alignToTwist, boostAt, bridgeHalfAt, splitAt, gustAt, hazardAt, jumpBoostAhead, inFlightZone, inGap, onBridge, SHARP_RADIUS, surfaceAt, track, trackAt, turnAt, wrapDistance } from '../world/track.js';
@@ -15,7 +15,7 @@ import { styleOf } from './botStyles.js';
 import { createTactics, planTactics, steerByTactics } from './botTactics.js';
 import { TRAP_TYPES } from './trapTypes.js';
 import { upgradeFactor } from './shop.js';
-import { WEAPON_TYPES } from './weaponTypes.js';
+import { buildWeapon, bulletHit } from './weaponParts.js';
 import { TRACK_WIDTH } from '../config.js';
 
 const LANE_LIMIT = TRACK_WIDTH / 2 - 1.2, LANE_SPEED = 3.5, DODGE_LANE_SPEED = 7, WALL_MARGIN = 0.3;
@@ -37,11 +37,11 @@ const GUST_LANE_RATE = 1 / 4, JUMP_BOOST_SIGHT = 150, JUMP_BOOST_AIM = [0.2, 1.2
 const between = ([low, high]) => low + Math.random() * (high - low);
 
 function createArsenal(profile) {
-  const type = WEAPON_TYPES[profile.weapon];
+  const type = buildWeapon(profile.weapon, profile.weaponParts);
   const maxReserve = Math.ceil(type.reserve * upgradeFactor('ammo', profile.upgrades.ammo));
   return {
     type, ammo: 0, reserve: maxReserve, maxReserve, cooldown: 0, reloadLeft: 0, loading: 0,
-    aimTime: 0, burstLeft: 0, spin: 0, target: null, aimingAt: null, retargetIn: 0,
+    aimTime: 0, burstLeft: 0, spin: 0, kick: 0, target: null, aimingAt: null, retargetIn: 0,
     traps: profile.traps.map(id => ({ type: TRAP_TYPES[id], charges: TRAP_TYPES[id].charges, capacity: TRAP_TYPES[id].charges })),
     powerupTimer: 0, powerupCheck: 0, idle: 0, curveWait: 0, trapTimer: FIRST_TRAP_DELAY[0] + Math.random() * (FIRST_TRAP_DELAY[1] - FIRST_TRAP_DELAY[0]),
   };
@@ -74,7 +74,7 @@ function createOpponent(scene, index) {
 
   const skill = 0.92 + Math.random() * 0.14;
   const profile = OPPONENT_PROFILES[index];
-  const maxHp = CAR_MAX_HP * upgradeFactor('life', profile.upgrades.life);
+  const maxHp = CAR_MAX_HP * CAR_TOUGHNESS * upgradeFactor('life', profile.upgrades.life);
   const opponent = {
     livery, slipstream: 0, wx: 0, wy: 0, wz: 0, twist: 0, twistHeading: 0, twistYaw: 0, twistPitch: 0, y: 0, yaw: 0, vx: 0, vz: 0, remote: false, netId: `local${index}`, snapshot: null, onRemoteDamage: null, onRemoteIgnite: null, burnBy: null, group, model, name: profile.name, profile, arsenal: createArsenal(profile),
     dist: 0, v: 0, lane: 0, laneTarget: 0, preferredLane: 0, laneHold: 0, x: 0, z: 0,
@@ -130,14 +130,16 @@ function avoidTraffic(op, target, field, dt) {
 
 // Devolve true se o carro foi destruído. Quem leva dano fica com raiva de quem atacou e revida.
 // `attacker` é outro piloto de race.field.
-export function damageOpponent(op, amount, attacker, shake = 0) {
+// `ammo`: tipo de munição do tiro (weaponParts.bulletHit); nulo para o que não é bala ou para munição comum.
+export function damageOpponent(op, amount, attacker, shake = 0, ammo = null) {
   if (op.remote) {                                   // quem aplica o dano é o navegador que simula esse carro
-    op.onRemoteDamage(amount, attacker, shake);
+    op.onRemoteDamage(amount, attacker, shake, ammo);
     return false;
   }
   if (op.protectedFor > 0 || op.dead > 0) return false;
   if (shake > 0) shakeOpponent(op, shake);           // escopeta: o carro balança
-  op.hp -= absorbShield(op, amount);
+  const hit = bulletHit(ammo, amount, 1, op.effects.shield > 0);   // os bots não têm peças de blindagem
+  op.hp -= absorbShield(op, hit.amount, hit.pierce);
   if (attacker && attacker !== op) {
     op.grudge = GRUDGE_TIME;
     op.grudgeTarget = attacker;

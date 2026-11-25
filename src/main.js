@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { LOOK, MAX_RACERS, VIEW, WINDOW_VIEW } from './config.js';
+import { CAR_TOUGHNESS, LOOK, MAX_RACERS, VIEW, WINDOW_VIEW } from './config.js';
 import { createAudioSystem } from './audio/audioSystem.js';
 import { createRenderer, createWorldPass } from './core/renderer.js';
 import { clampLook, isLocked, keys, look, setupInput } from './core/input.js';
@@ -34,6 +34,7 @@ import { loadSettings } from './game/settings.js';
 import { qualityOf, useSceneryQuality } from './game/quality.js';
 import { loadWeaponCustoms } from './game/weaponCustomization.js';
 import { createWeapon } from './game/weapon.js';
+import { buildWeapon } from './game/weaponParts.js';
 import { createLapSupplies } from './game/lapSupplies.js';
 import { createOnlineMatch } from './net/onlineMatch.js';
 import { createRoomClient, LEFT_REASONS } from './net/roomClient.js';
@@ -335,13 +336,13 @@ const scope = createScope({
   canAim: () => !spectator.active && !inMenus() && !outOfAction(),
 });
 
-function applyEquipment({ weaponId, trunk, upgrades, parts }) {
-  weapon.equip(weaponId, upgradeFactor('ammo', upgrades.ammo));
+function applyEquipment({ weaponId, trunk, upgrades, parts, weaponParts }) {
+  weapon.equip(buildWeapon(weaponId, weaponParts?.[weaponId]), upgradeFactor('ammo', upgrades.ammo));
   race.field[0].weaponId = weaponId;                // os bots sabem com o que o jogador atira (botStyles.weaponOf)
   weapon.setTracerColor(customs[weaponId].colors.flash);
   cabin.setWeapon(weapon.type, weapon.maxReserve);
   traps.setLoadout(Object.entries(trunk).flatMap(([id, count]) => (count > 0 ? [{ id, count }] : [])));
-  car.armor = upgradeFactor('life', upgrades.life);
+  car.armor = upgradeFactor('life', upgrades.life) * CAR_TOUGHNESS;
   car.parts = partStats(parts);
   car.nitroCapacity = upgradeFactor('nitro', upgrades.nitro);
 }
@@ -427,6 +428,8 @@ let garageReopening = false;
 const workshop = createWeaponWorkshop({
   stage,
   customs,
+  equipment,
+  onPurchase: () => audio.playBuy(),
   onChange: id => {
     hands.rebuildGun(id);
     if (id === weapon.type.id) weapon.setTracerColor(customs[id].colors.flash);

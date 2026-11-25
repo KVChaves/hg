@@ -6,6 +6,7 @@ import { loadSavedCars, SAVED_CAR_SLOTS, storeSavedCars } from '../../game/saved
 import { BUDGET, fitsBudget, loadoutCost, maxUpgradeLevel, trunkUnits, UPGRADES, upgradeFactor, upgradePrice } from '../../game/shop.js';
 import { TRAP_TYPES } from '../../game/trapTypes.js';
 import { WEAPON_TYPES } from '../../game/weaponTypes.js';
+import { savedWeaponParts, weaponPartsCost } from '../../game/weaponParts.js';
 import { Raster } from '../../art/raster.js';
 import { CAR_SLOTS, loadCarSelection, randomizeLook, resolveCarSpec, saveCarSelection } from '../../world/car/carOptions.js';
 import { createNameField } from '../nameField.js';
@@ -83,7 +84,7 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
   ];
 
   const equipmentSlots = [
-    { key: 'weapon', short: 'ARMA', label: 'Arma', options: weaponOptions(), thumbOf: id => weaponThumb(id, customs[id]) },
+    { key: 'weapon', short: 'ARMA', label: 'Arma', options: weaponOptions(), thumbOf: id => weaponThumb(id, customs[id], equipment.weaponParts?.[id]) },
   ].map((slot, i) => ({
     ...slot, group: 'equipment', hasColor: false, thumbs: null,
     x: EQUIPMENT.x + 6 + (i % EQUIPMENT.columns) * TILE.gapX,
@@ -162,7 +163,7 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
       cabin.setPart(kind, PARTS[kind].options[saved.cabin[kind]] ? saved.cabin[kind] : PARTS[kind].default);   // carros salvos antes de uma peça existir
       cabin.setPartColor(kind, saved.cabin.colors?.[kind] ?? null);
     }
-    const savedEquipment = { ...structuredClone(saved.equipment), trunk: savedTrunk(saved.equipment), parts: savedParts(saved.equipment.parts) };
+    const savedEquipment = { ...structuredClone(saved.equipment), trunk: savedTrunk(saved.equipment), parts: savedParts(saved.equipment.parts), weaponParts: savedWeaponParts(saved.equipment.weaponParts) };
     if (fitsBudget(savedEquipment)) {
       Object.assign(equipment, savedEquipment);
       saveEquipment(equipment);
@@ -226,7 +227,7 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
   const priceOfEquipment = (slot, id) => {
     if (isPartSlot(slot)) return slot.options[id].price;
     if (slot.group !== 'equipment') return null;
-    return WEAPON_TYPES[id].price;
+    return WEAPON_TYPES[id].price + weaponPartsCost(id, equipment.weaponParts?.[id]);   // a arma já com as peças de combate dela
   };
 
   function choose(slot, id) {

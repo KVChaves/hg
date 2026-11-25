@@ -15,8 +15,9 @@ export const REST_POSE = {
 // Recuo padrão (mola): quanto a arma vai para trás, sobe e gira a cada tiro, e como ela volta.
 export const DEFAULT_RECOIL = { back: 5, up: 9, tilt: 0.26, stiffness: 260, damping: 18, shake: 0 };
 
-export function createGunRig(id, custom) {
-  const art = buildGunArt(id, custom);
+// `parts`: peças de combate (game/weaponParts.js); nulo desenha a arma original.
+export function createGunRig(id, custom, parts = null) {
+  const art = buildGunArt(id, custom, parts);
   const [pivotX, pivotY] = art.pivot;
   art.recoil = { ...DEFAULT_RECOIL, ...art.recoil };
 

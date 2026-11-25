@@ -22,7 +22,7 @@ export const TRAP_TYPES = {
   smoke: { id: 'smoke', category: 'control', label: 'FUMACA', caughtText: 'NA FUMACA', price: 50, maxCharges: 3, summary: 'ESCONDE A PISTA', charges: 1, halfLength: 8, halfWidth: 6.5, life: 9, effect: 'smoke', duration: 3 },
   extinguisher: { id: 'extinguisher', category: 'defense', label: 'EXTINTOR', price: 75, maxCharges: 3, summary: 'RECUPERA 20% DA VIDA', charges: 1, powerup: true },
   shield: { id: 'shield', category: 'defense', label: 'ESCUDO', price: 90, maxCharges: 2, summary: 'ABSORVE 80% DA VIDA POR 8 S', charges: 1, powerup: true },
-  emp: { id: 'emp', category: 'defense', label: 'PULSO EMP', price: 80, maxCharges: 3, summary: 'SEM NITRO, TIRO E ITENS POR 8 S, A 80 M', charges: 1, powerup: true },
+  emp: { id: 'emp', category: 'defense', label: 'PULSO EMP', price: 100, maxCharges: 3, summary: 'SEM NITRO, TIRO E ITENS POR 8 S, A 80 M', charges: 1, powerup: true },
   mine: { id: 'mine', category: 'attack', label: 'MINA TELEGUIADA', price: 135, maxCharges: 3, summary: 'PERSEGUE O CARRO A FRENTE, GRUDA E EXPLODE', charges: 1, powerup: true },
   net: { id: 'net', category: 'control', label: 'LANCA-REDES', price: 95, maxCharges: 3, summary: 'PERSEGUE O CARRO NA MIRA ATE 60 M E TRAVA A DIRECAO DELE POR 2,8 S', charges: 1, powerup: true },
   barrier: { id: 'barrier', category: 'control', label: 'BARREIRA INFLAVEL', caughtText: 'NA BARREIRA', price: 60, maxCharges: 4, summary: 'FECHA UMA FAIXA. QUEM BATE PERDE MUITA VELOCIDADE. O TIRO ESTOURA', charges: 2, halfWidth: 1.1, barrier: true },

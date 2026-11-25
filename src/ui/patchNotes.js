@@ -4,6 +4,60 @@
 
 export const PATCH_NOTES = [
   {
+    title: 'CARROS MAIS RESISTENTES',
+    items: [
+      'Todos os carros aguentam 15% mais: sem melhoria, a vida vai de 250 para 287,5. Vale contra tudo (tiro, batida, obstáculo, raio, mina e fogo) e para os bots também.',
+      'O escudo continua absorvendo o mesmo tanto de dano de antes.',
+    ],
+  },
+  {
+    title: 'ARMAS: AS PEÇAS APARECEM NA ARMA',
+    items: [
+      'As peças de combate mudam o desenho da arma, na mão do piloto e na oficina: compensador com janelas (o fogo sai por cima), cano pesado com estrias, cano curto, choke na boca da escopeta.',
+      'Empunhadura firme deixa o cabo de borracha; a leve deixa o cabo vazado.',
+      'Carregador: o pente estendido fica maior (a caixa da metralhadora cresce), o rápido ganha uma fita laranja de puxar e o cinto prende munição na arma (balas, cartuchos, granadas ou flechas).',
+      'A munição especial ganha uma etiqueta colorida: preta na perfurante, cobre na ponta oca e azul na de impacto. No cinto, a ponta da bala tem a mesma cor.',
+    ],
+  },
+  {
+    title: 'ARMAS: RECUO',
+    items: [
+      'As armas agora têm recuo de verdade: cada tiro levanta a mira um pouco e ela volta sozinha. O tiro vai para onde a mira foi.',
+      'Nas armas lentas a mira já voltou quando sai o próximo tiro. Nas automáticas o recuo se acumula: segurando o gatilho, puxe o mouse para baixo.',
+      'A abertura da rajada da SUBMETRALHADORA, da ESCOPETA AUTO e da METRALHADORA diminuiu, para compensar o recuo.',
+      'Os bots também sofrem o recuo: atirando sem parar, eles erram mais.',
+    ],
+  },
+  {
+    title: 'ARMAS: PEÇAS DE COMBATE',
+    items: [
+      'Novo painel COMBATE na OFICINA: CANO, EMPUNHADURA, CARREGADOR e MUNIÇÃO. Cada peça troca uma vantagem por uma desvantagem e sai do saldo da garagem.',
+      'As peças ficam guardadas por arma; só as da arma equipada entram na conta. A FICHA mostra em destaque o que as peças mudaram.',
+      'Compensador, cano curto e as empunhaduras só existem nas armas em que o recuo pesa (revólver, escopetas, submetralhadora e metralhadora).',
+      'MUNIÇÃO: a perfurante atravessa metade do escudo e da blindagem; a ponta oca bate mais forte, mas perde muito contra escudo e blindagem; a de impacto balança o carro atingido.',
+      'Alguns bots já correm com uma peça que combina com o estilo deles.',
+    ],
+  },
+  {
+    title: 'LOJA',
+    items: [
+      'O PULSO EMP agora custa R$ 100 (antes, R$ 80).',
+    ],
+  },
+  {
+    title: 'ESTATÍSTICAS: POSIÇÕES',
+    items: [
+      'Nova página POSIÇÕES nas estatísticas: quantas vezes o jogador chegou em cada posição e a % das corridas dele em cada uma.',
+    ],
+  },
+  {
+    title: 'RANKING: HISTÓRICO',
+    items: [
+      'O histórico mostra todas as corridas rankeadas, não só as mais recentes: role a lista com a roda do mouse.',
+      'As setas no topo filtram por jogador; clicar no nome volta para TODOS.',
+    ],
+  },
+  {
     title: 'ESTATÍSTICAS',
     items: [
       'GERAL: os pódios aparecem só em %, e o verde vai para a maior %. A quantidade de partidas e os photo finishes saíram.',

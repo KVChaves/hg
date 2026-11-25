@@ -25,7 +25,7 @@ export function createRoomClient() {
   const waiting = [];                                // pedidos à espera da conexão (rodam no `welcome`)
 
   const client = {
-    status: 'offline', id: null, rooms: [], room: null, notice: '', ranking: null, history: null, matchRaces: null, stats: null, statsPlayers: null, token: null, chat: [],
+    status: 'offline', id: null, rooms: [], room: null, notice: '', ranking: null, history: null, historyPlayers: [], matchRaces: null, stats: null, statsPlayers: null, token: null, chat: [],
     online: null,                                    // jogadores conectados ao servidor (contando este); nulo sem conexão
     onStarted: () => {}, onEnded: () => {}, onGame: () => {}, onRoomChange: () => {}, onLeft: () => {},
     connect, setName, create, join, leave, kick, configure, start, endRace, endMatch, requestRanking, requestHistory, requestMatch, requestStats, sendCombat, sendChat, relay,
@@ -48,7 +48,7 @@ export function createRoomClient() {
     ranking(message) { client.ranking = message.players; },
     history(message) {
       if (message.match) client.matchRaces = message.races;
-      else client.history = message.races;
+      else { client.history = message.races; client.historyPlayers = message.players ?? []; }
     },
     chat(message) {
       client.chat = [...client.chat, { name: message.name, text: message.text, at: performance.now() }].slice(-CHAT_KEEP);   // `at`: quando chegou, para a mensagem sumir da tela sozinha

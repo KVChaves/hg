@@ -55,17 +55,22 @@ const STATS_PREV = { x: 46, y: 68, width: 18, height: 16 };
 const STATS_NAME = { x: 68, y: 68, width: 150, height: 16 };
 const STATS_NEXT = { x: 222, y: 68, width: 18, height: 16 };
 const STATS_PAGES = [
-  { page: 'general', label: 'GERAL', x: 468, y: 68, width: 64, height: 16 },
-  { page: 'combat', label: 'COMBATE', x: 536, y: 68, width: 64, height: 16 },
+  { page: 'general', label: 'GERAL', x: 424, y: 68, width: 48, height: 16 },
+  { page: 'combat', label: 'COMBATE', x: 475, y: 68, width: 58, height: 16 },
+  { page: 'positions', label: 'POSICOES', x: 536, y: 68, width: 66, height: 16 },
 ];
 const KILL_CAUSE_LABELS = [['shot', 'TIRO'], ['ram', 'PANCADA'], ['fire', 'FOGO'], ['splash', 'EXPLOSAO'], ['other', 'OUTROS']];
+const POSITION_COLUMNS = { place: 120, count: 200, share: 270, bar: 330, barWidth: 190 };   // página POSICOES das estatísticas
 const BEST_COLOR = '#6fe070';   // estatística em que o jogador é o melhor de todos
 const WORST_COLOR = '#ff5a4a';  // e em que é o pior
 const STATS_TOP = 98, STATS_LINE = 13, STATS_LEFT = 46, STATS_LEFT_VALUE = 196, STATS_RIGHT = 318, STATS_RIGHT_VALUE = 410;
 const biomeLabel = id => BIOMES.find(biome => biome.id === id)?.name ?? String(id || '-').toUpperCase();
 const HISTORY_COLUMNS = [{ label: 'DATA', x: 14 }, { label: 'BIOMA', x: 82 }, { label: 'VENCEDOR', x: 150 }, { label: 'TEMPO', x: 246 }, { label: 'HUMANOS', x: 290 }];
 const MATCH_BUTTON = { x: 46, y: 268, width: 150, height: 24 };
-const FILTER_BOX = { x: 46, y: 58, width: 420, height: 12 };
+// Histórico: seletor de jogador (setas e nome; sem filtro mostra TODOS) na faixa entre as abas e a tabela.
+const FILTER_PREV = { x: 46, y: 57, width: 18, height: 13 };
+const FILTER_NAME = { x: 68, y: 57, width: 150, height: 13 };
+const FILTER_NEXT = { x: 222, y: 57, width: 18, height: 13 };
 const MATCH_POINTS = [3, 1.5, 1];                    // mesmo peso do campeonato: ouro, prata e bronze
 const TITLE_SCALE = 4;
 const NOTES_PANEL = { x: 30, y: 28, width: 580, height: 268 };
@@ -99,7 +104,7 @@ function drawPerson(ctx, x, y, color) {
 const formatTime = seconds => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
 
 export function createMainMenu({ stage, settings, net, getName = () => '', onSingleplayer, onMultiplayer, onGarage, onSettingChange, onEffectsPreview, onQuit }) {
-  let page = 'main', helpOpen = false, notesScroll = 0, pointer = { x: -1, y: -1 }, dragging = null, rebinding = null, swallowClick = false, queued = null, view = 'ranking', selectedRace = null, viewingMatch = null, historyFilter = null, statsPlayer = null, statsPage = 'general';
+  let page = 'main', helpOpen = false, notesScroll = 0, pointer = { x: -1, y: -1 }, dragging = null, rebinding = null, swallowClick = false, queued = null, view = 'ranking', selectedRace = null, viewingMatch = null, historyFilter = null, historyScroll = 0, statsPlayer = null, statsPage = 'general';
 
   const screen = { isOpen: true, isRebinding: () => rebinding !== null };
 
@@ -107,6 +112,7 @@ export function createMainMenu({ stage, settings, net, getName = () => '', onSin
     if (next === 'ranking') {
       view = 'ranking';
       selectedRace = viewingMatch = historyFilter = null;
+      historyScroll = 0;
       net.requestRanking();
       net.requestHistory();
     }
@@ -191,9 +197,12 @@ export function createMainMenu({ stage, settings, net, getName = () => '', onSin
     saveSettings(settings);
   });
   stage.addEventListener('wheel', e => {
-    if (!screen.isOpen || page !== 'notes') return;
+    if (!screen.isOpen) return;
+    const history = page === 'ranking' && view === 'history' && !selectedRace && !viewingMatch;
+    if (page !== 'notes' && !history) return;
     e.preventDefault();
-    notesScroll = Math.max(0, Math.min(notesMax(), notesScroll + Math.sign(e.deltaY) * NOTES_LINE * 3));
+    if (history) historyScroll = Math.max(0, Math.min(historyMax(), historyScroll + Math.sign(e.deltaY) * 3));
+    else notesScroll = Math.max(0, Math.min(notesMax(), notesScroll + Math.sign(e.deltaY) * NOTES_LINE * 3));
   }, { passive: false });
   stage.addEventListener('click', e => {
     if (!screen.isOpen) return;
@@ -253,6 +262,7 @@ export function createMainMenu({ stage, settings, net, getName = () => '', onSin
 
   function setHistoryFilter(name) {
     historyFilter = name;
+    historyScroll = 0;
     selectedRace = null;
     net.requestHistory(name ?? '');
   }
@@ -265,10 +275,23 @@ export function createMainMenu({ stage, settings, net, getName = () => '', onSin
       if (racer) setHistoryFilter(racer.name);                          // clicar num nome filtra o histórico por ele
       return;
     }
-    if (historyFilter && inside(FILTER_BOX, x, y)) { setHistoryFilter(null); return; }
-    const index = (net.history ?? []).slice(0, RANKING_ROWS).findIndex((_, i) => inside(historyRowBox(i), x, y));
-    if (index >= 0) selectedRace = net.history[index];
+    if (historyFilter && inside(FILTER_NAME, x, y)) { setHistoryFilter(null); return; }
+    const step = inside(FILTER_PREV, x, y) ? -1 : inside(FILTER_NEXT, x, y) ? 1 : 0;
+    if (step) { stepHistoryFilter(step); return; }
+    const index = visibleRaces().findIndex((_, i) => inside(historyRowBox(i), x, y));
+    if (index >= 0) selectedRace = visibleRaces()[index];
   }
+
+  // As setas percorrem TODOS e cada jogador do histórico, dando a volta.
+  function stepHistoryFilter(step) {
+    const options = [null, ...net.historyPlayers];
+    if (options.length < 2) return;
+    const index = Math.max(0, options.findIndex(name => name?.toLowerCase() === historyFilter?.toLowerCase()));
+    setHistoryFilter(options[(index + step + options.length) % options.length]);
+  }
+
+  const historyMax = () => Math.max(0, (net.history?.length ?? 0) - RANKING_ROWS);
+  const visibleRaces = () => (net.history ?? []).slice(historyScroll, historyScroll + RANKING_ROWS);
 
   // Logo inclinado e, embaixo, a faixa de corrida em três tons.
   function drawTitle(ctx) {
@@ -429,22 +452,20 @@ export function createMainMenu({ stage, settings, net, getName = () => '', onSin
     });
   }
 
-  // Histórico do multiplayer: as corridas mais recentes, com o vencedor e a posição de cada humano.
+  // Histórico do multiplayer: todas as corridas, a mais nova primeiro, com o vencedor e a posição de cada humano.
   function drawHistory(ctx) {
     panelBox(ctx, RANKING_PANEL);
     if (viewingMatch) return drawMatchSummary(ctx);
     if (selectedRace) return drawRaceDetail(ctx, selectedRace);
     const top = RANKING_PANEL.y + 44;
-    if (historyFilter) {
-      markClickable(FILTER_BOX);
-      ctxText(ctx, `SO CORRIDAS DE ${historyFilter.toUpperCase()}  (CLIQUE AQUI PARA LIMPAR)`, FILTER_BOX.x, FILTER_BOX.y + 2, inside(FILTER_BOX, pointer.x, pointer.y) ? COLOR.selected : COLOR.muted);
-    }
+    historyScroll = Math.min(historyScroll, historyMax());
+    drawHistoryFilter(ctx);
     HISTORY_COLUMNS.forEach(({ label, x }) => ctxText(ctx, label, RANKING_PANEL.x + x, top, COLOR.muted));
     drawRule(ctx, RANKING_PANEL.x + 8, top + 10, RANKING_PANEL.width - 16);
     const races = net.history;
     const message = net.status === 'offline' ? 'SERVIDOR NAO ENCONTRADO' : !races ? 'CARREGANDO...' : races.length ? '' : 'NENHUMA CORRIDA ONLINE AINDA';
     if (message) ctxText(ctx, message, Math.round(VIEW.width / 2 - textWidth(message) / 2), top + 60, COLOR.text);
-    (races ?? []).slice(0, RANKING_ROWS).forEach((race, i) => {
+    visibleRaces().forEach((race, i) => {
       const y = top + 16 + i * 16, winner = race.racers[0], humans = race.racers.filter(racer => racer.human);
       const cells = [
         formatDate(race.at), String(race.biome || '-').toUpperCase(), winner?.name ?? '-',
@@ -458,6 +479,25 @@ export function createMainMenu({ stage, settings, net, getName = () => '', onSin
         ctxText(ctx, fit(value, next - x - 6), RANKING_PANEL.x + x, y, column === 0 ? COLOR.muted : COLOR.text);
       });
     });
+    if (historyMax() > 0) {   // barra de rolagem
+      const trackTop = top + 12, trackHeight = RANKING_ROWS * 16, thumb = Math.max(16, trackHeight * RANKING_ROWS / races.length);
+      ctx.fillStyle = COLOR.rust;
+      ctx.fillRect(RANKING_PANEL.x + RANKING_PANEL.width - 6, Math.round(trackTop + (trackHeight - thumb) * historyScroll / historyMax()), 3, Math.round(thumb));
+    }
+  }
+
+  function drawHistoryFilter(ctx) {
+    drawButton(ctx, FILTER_PREV, '<', inside(FILTER_PREV, pointer.x, pointer.y), { style: 'arrow' });
+    drawButton(ctx, FILTER_NEXT, '>', inside(FILTER_NEXT, pointer.x, pointer.y), { style: 'arrow' });
+    const hovered = Boolean(historyFilter) && inside(FILTER_NAME, pointer.x, pointer.y);
+    if (historyFilter) markClickable(FILTER_NAME);
+    drawRowStripe(ctx, FILTER_NAME, 0, hovered);
+    const shown = fit(historyFilter?.toUpperCase() ?? 'TODOS', FILTER_NAME.width - 8);
+    ctxText(ctx, shown, Math.round(FILTER_NAME.x + FILTER_NAME.width / 2 - textWidth(shown) / 2), FILTER_NAME.y + 3, COLOR.selected);
+    const total = net.history?.length ?? 0;
+    const count = !total ? '' : historyMax() ? `${historyScroll + 1}-${historyScroll + visibleRaces().length} DE ${total}   RODA DO MOUSE ROLA` : `${total} ${total === 1 ? 'CORRIDA' : 'CORRIDAS'}`;
+    const hint = hovered ? 'CLIQUE PARA VER TODOS' : count;
+    ctxText(ctx, hint, FILTER_NEXT.x + FILTER_NEXT.width + 10, FILTER_NAME.y + 3, COLOR.muted);
   }
 
   // Estatísticas de um jogador (só partidas rankeadas), com setas para ver as dos outros.
@@ -482,6 +522,7 @@ export function createMainMenu({ stage, settings, net, getName = () => '', onSin
     for (const box of STATS_PAGES) drawButton(ctx, box, box.label, inside(box, pointer.x, pointer.y), { style: 'tab', active: box.page === statsPage });
     if (!stats) { ctxText(ctx, 'CARREGANDO...', STATS_LEFT, STATS_TOP + 20, COLOR.text); return; }
     if (statsPage === 'combat') { drawCombatStats(ctx, stats.combat, stats.best?.combat, stats.worst?.combat); return; }
+    if (statsPage === 'positions') { drawPositionStats(ctx, stats.positions); return; }
 
     const percent = (part, whole) => (whole ? `${Math.round(100 * part / whole)}%` : '-');
     const rankColor = rankColors(stats.best?.general, stats.worst?.general);
@@ -531,6 +572,30 @@ export function createMainMenu({ stage, settings, net, getName = () => '', onSin
     });
 
     const footer = `SO PARTIDAS RANKEADAS${stats.last ? `   ULTIMA CORRIDA ${formatDate(stats.last)}` : ''}`;
+    ctxText(ctx, footer, STATS_LEFT, RANKING_PANEL.y + RANKING_PANEL.height - 14, COLOR.muted);
+  }
+
+  // Página POSICOES: quantas vezes o jogador chegou em cada posição e que parte das corridas dele isso representa.
+  function drawPositionStats(ctx, positions = []) {
+    const total = positions.reduce((sum, count) => sum + count, 0);
+    if (!total) {
+      const message = 'SEM CORRIDAS NO HISTORICO AINDA';
+      ctxText(ctx, message, Math.round(VIEW.width / 2 - textWidth(message) / 2), STATS_TOP + 50, COLOR.text);
+      return;
+    }
+    const { place, count: countX, share, bar, barWidth } = POSITION_COLUMNS, most = Math.max(...positions);
+    [['POSICAO', place], ['VEZES', countX], ['% DAS CORRIDAS', share]].forEach(([label, x]) => ctxText(ctx, label, x, STATS_TOP + 4, COLOR.muted));
+    drawRule(ctx, place, STATS_TOP + 14, bar + barWidth - place);
+    positions.forEach((times, i) => {
+      const y = STATS_TOP + 22 + i * 17, color = times ? COLOR.text : COLOR.muted;
+      drawRowStripe(ctx, { x: place - 6, y: y - 5, width: bar + barWidth - place + 12, height: 17 }, i);
+      ctxText(ctx, `${i + 1}o`, place, y, MEDALS[i] ?? color);
+      ctxText(ctx, String(times), countX, y, color);
+      ctxText(ctx, `${(100 * times / total).toFixed(1)}%`, share, y, color);
+      ctx.fillStyle = MEDALS[i] ?? COLOR.rust;
+      ctx.fillRect(bar, y, Math.round(barWidth * times / most), 7);
+    });
+    const footer = `${total} ${total === 1 ? 'CORRIDA' : 'CORRIDAS'}   SO PARTIDAS RANKEADAS`;
     ctxText(ctx, footer, STATS_LEFT, RANKING_PANEL.y + RANKING_PANEL.height - 14, COLOR.muted);
   }
 

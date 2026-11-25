@@ -5,6 +5,7 @@ import { damageOpponent } from '../game/opponents.js';
 import { drawBotNames, seededRandom } from '../game/opponentProfiles.js';
 import { wakeOf } from '../game/carUpgrades.js';
 import { shakeCar } from '../game/shake.js';
+import { bulletHit } from '../game/weaponParts.js';
 import { hazardType } from '../game/trapTypes.js';
 import { BIOMES, pickMatchBiome, voteCandidates } from '../world/biomes/index.js';
 import { createHarpoonVisual } from '../world/harpoonVisual.js';
@@ -39,9 +40,10 @@ export function createOnlineMatch({ onRopeTripped = () => {}, onPlayerKilledBy =
     handle(net.id, data);
   }
 
-  function sendHit(target, amount, attacker, shake = 0) {
+  // `ammo`: tipo de munição; quem recebe aplica o efeito dela contra o escudo e a blindagem do próprio carro.
+  function sendHit(target, amount, attacker, shake = 0, ammo = null) {
     if (amount <= 0) return;
-    net.relay({ k: 'hit', t: target.netId, a: amount, by: attacker?.netId ?? null, ...(shake > 0 && { s: round(shake) }) }, ownerOf(target));
+    net.relay({ k: 'hit', t: target.netId, a: amount, by: attacker?.netId ?? null, ...(shake > 0 && { s: round(shake) }), ...(ammo && { m: ammo }) }, ownerOf(target));
   }
 
   function setUpRacers(room) {
@@ -62,7 +64,7 @@ export function createOnlineMatch({ onRopeTripped = () => {}, onPlayerKilledBy =
       op.remote = bot ? !isHost : true;
       op.bumper = null;                                // o dos humanos chega com a aparência deles (k: 'spec')
       op.name = bot ? botNames[i] : others[i - botCount].name;
-      op.onRemoteDamage = (amount, attacker, shake) => sendHit(op, amount, attacker, shake);
+      op.onRemoteDamage = (amount, attacker, shake, ammo) => sendHit(op, amount, attacker, shake, ammo);
       op.onRemoteIgnite = (seconds, attacker) => net.relay({ k: 'burn', t: op.netId, s: seconds, by: attacker?.netId ?? null }, ownerOf(op));
       byId.set(op.netId, op);
     });
@@ -300,13 +302,14 @@ export function createOnlineMatch({ onRopeTripped = () => {}, onPlayerKilledBy =
     }
   }
 
-  function receiveHit({ t, a, by, s = 0 }) {
+  function receiveHit({ t, a, by, s = 0, m = null }) {
     const target = byId.get(t), attacker = byId.get(by);
     if (!target || target.remote) return;
     let destroyed = false;
     if (target === me()) {
       const before = car.wrecked;
-      damagePlayer(car, a * car.parts.bullet / CAR_MAX_HP);
+      const hit = bulletHit(m, a, car.parts.bullet, car.effects.shield > 0);
+      damagePlayer(car, hit.amount / CAR_MAX_HP, hit.pierce);
       destroyed = car.health <= 0 && before <= 0;
       if (s > 0 && car.health > 0) shakeCar(car, s);
       if (destroyed) onPlayerKilledBy(attacker);
@@ -316,7 +319,7 @@ export function createOnlineMatch({ onRopeTripped = () => {}, onPlayerKilledBy =
         combat.hitAngle = bearingFrom(car, look, attacker.x, attacker.z);
       }
     } else {
-      destroyed = damageOpponent(target, a, attacker, s);
+      destroyed = damageOpponent(target, a, attacker, s, m);
     }
     if (destroyed && attacker) sendKill(target, attacker, 'shot');
   }

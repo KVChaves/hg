@@ -2,6 +2,7 @@ import { DEFAULT_PARTS, isPartId, PART_KEYS } from './carUpgrades.js';
 import { fitsBudget, maxUpgradeLevel, NO_UPGRADES, UPGRADES } from './shop.js';
 import { TRAP_TYPES } from './trapTypes.js';
 import { WEAPON_TYPES } from './weaponTypes.js';
+import { DEFAULT_WEAPON_PARTS, savedWeaponParts } from './weaponParts.js';
 
 // Arma, itens do bagageiro e melhorias comprados na garagem, salvos no navegador.
 // `trunk` é { idDoItem: quantidade } com todos os tipos de item (0 = não leva), cada um limitado ao seu `maxCharges`.
@@ -51,8 +52,10 @@ export function loadEquipment() {
     trunk: savedTrunk(saved),
     upgrades: savedLevels(saved.upgrades),
     parts: savedParts(saved.parts),
+    weaponParts: savedWeaponParts(saved.weaponParts),
   };
   // Se os preços mudaram e a compra salva não cabe mais, desfaz o que for preciso.
+  if (!fitsBudget(equipment)) equipment.weaponParts[equipment.weaponId] = { ...DEFAULT_WEAPON_PARTS };
   if (!fitsBudget(equipment)) equipment.parts = { ...DEFAULT_PARTS };
   if (!fitsBudget(equipment)) equipment.upgrades = { ...NO_UPGRADES };
   if (!fitsBudget(equipment)) Object.assign(equipment, { weaponId: DEFAULT.weaponId, trunk: savedTrunk({ trunk: DEFAULT.trunk }) });

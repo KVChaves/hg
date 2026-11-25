@@ -2,17 +2,26 @@ import { VIEW } from '../config.js';
 import { ctxText, textWidth } from '../art/font.js';
 import { accessoriesOf, saveWeaponCustoms, WEAPON_PATTERNS } from '../game/weaponCustomization.js';
 import { familyOf, fireInterval, stepSpin, WEAPON_TYPES } from '../game/weaponTypes.js';
+import { saveEquipment } from '../game/equipment.js';
+import { BUDGET, fitsBudget, loadoutCost } from '../game/shop.js';
+import { buildWeapon, partSummary, variantsFor, WEAPON_PART_KEYS, WEAPON_PARTS } from '../game/weaponParts.js';
 import { createGunAnimator } from './guns/gunAnimator.js';
 import { createGunEffects } from './guns/gunEffects.js';
 import { createGunRig } from './guns/gunRig.js';
+import { partIcon } from './guns/partIcons.js';
 import { createOptionStrip } from './optionStrip.js';
 import { COLOR, drawButton, drawSlotTile, drawTooltip, inside, panelBox, pointerOnStage } from './panelKit.js';
 
 // Oficina: a arma fica no centro, atirando e recarregando em demonstração, e cada parte é personalizável.
+// À direita, em cima, as peças visuais (grátis); embaixo, as de combate (weaponParts.js), pagas com o saldo da garagem.
+// À esquerda, embaixo, a ficha da arma montada, com o que as peças mudaram em destaque.
 
 const TILE = { width: 46, height: 42, gapX: 48, gapY: 44 };
 const LEFT = { x: 6, y: 40, width: 106, height: 16 + Math.ceil(Object.keys(WEAPON_TYPES).length / 2) * 44 + 4, columns: 2 };
 const RIGHT = { x: 528, y: 40, width: 106, height: 156, columns: 2 };
+const COMBAT = { x: 528, y: 200, width: 106, height: 16 + 2 * 44 + 4, columns: 2 };
+const STATS = { x: 6, y: LEFT.y + LEFT.height + 4, width: 106, height: 72 };
+const NO_FUNDS_TIME = 1.2;
 const BACK_BUTTON = { x: 240, y: 6, width: 160, height: 26 };
 const PREVIEW = { x: 320, y: 150, maxWidth: 400, maxScale: 3 };
 const DEMO = { pause: 0.9, shotsPerRound: 3, minInterval: 0.55, burstInterval: 0.09, burstShots: 8, spinShots: 36 };
@@ -29,7 +38,8 @@ const SLOT_DEFS = [
 ];
 const ORIGINAL_SWATCH = { metal: 0x7c7e82, grip: 0x5a3a26, pattern: 0x4a5a30, flash: 0xffd060 };
 
-export function createWeaponWorkshop({ stage, customs, onChange, onClose }) {
+// `equipment` é o mesmo objeto da garagem: as peças de combate saem do saldo dela. `onPurchase` toca o som da compra.
+export function createWeaponWorkshop({ stage, customs, equipment, onChange, onPurchase = () => {}, onClose }) {
   const weaponIds = Object.keys(WEAPON_TYPES);
   let weaponId = weaponIds[0], rig = null, animator = null, effects = null, demo = null;
   let pointer = { x: -1, y: -1 };
@@ -50,29 +60,62 @@ export function createWeaponWorkshop({ stage, customs, onChange, onClose }) {
     y: RIGHT.y + 16 + Math.floor(i / RIGHT.columns) * TILE.gapY,
     width: TILE.width, height: TILE.height,
   }));
-  let active = slots[0];
+  const combatSlots = WEAPON_PART_KEYS.map((key, i) => ({
+    key, combat: true, short: WEAPON_PARTS[key].short, label: WEAPON_PARTS[key].label, hasColor: false, options: null, thumbs: null,
+    x: COMBAT.x + 6 + (i % COMBAT.columns) * TILE.gapX,
+    y: COMBAT.y + 16 + Math.floor(i / COMBAT.columns) * TILE.gapY,
+    width: TILE.width, height: TILE.height,
+  }));
+  const allSlots = [...slots, ...combatSlots];
+  let active = slots[0], noFunds = 0;
+
+  // Peças de combate da arma na tela. O saldo é conferido como se ela fosse a equipada: a garagem só deixa
+  // equipar uma arma se ela couber com as peças dela.
+  const combatParts = (id = weaponId) => equipment.weaponParts[id];
+  const builtType = () => buildWeapon(weaponId, combatParts());
+  const withCombatPart = (key, id) => ({ ...equipment, weaponId, weaponParts: { ...equipment.weaponParts, [weaponId]: { ...combatParts(), [key]: id } } });
+  const isEquipped = () => equipment.weaponId === weaponId;
+
+  function refreshCombatSlots() {
+    for (const slot of combatSlots) {
+      const variants = variantsFor(slot.key, weaponId);
+      slot.options = Object.fromEntries(variants.map(([id, variant]) => [id, { name: `${variant.name.toUpperCase()}${variant.price ? `  R$ ${variant.price}` : ''}`, detail: partSummary(variant, weaponId) }]));
+      slot.thumbs = Object.fromEntries(variants.map(([id]) => [id, partIcon(slot.key, id)]));
+    }
+  }
+
+  function chooseCombatPart(slot, id) {
+    const next = withCombatPart(slot.key, id);
+    if (!fitsBudget(next)) { noFunds = NO_FUNDS_TIME; return; }
+    if (loadoutCost(next) > loadoutCost({ ...equipment, weaponId })) onPurchase();
+    equipment.weaponParts = next.weaponParts;
+    saveEquipment(equipment);
+    rebuild();                                       // as peças de combate também mudam o desenho
+    resetDemo();
+  }
 
   const optionsFor = slot => (slot.optionGroup === 'pattern' ? WEAPON_PATTERNS : accessoriesOf(weaponId));
   const withOption = (group, id) => ({ colors: custom().colors, options: { ...custom().options, [group]: id } });
 
   function refreshThumbs() {
-    for (const tile of weaponTiles) tile.image = createGunRig(tile.id, customs[tile.id]).snapshot();
+    refreshCombatSlots();
+    for (const tile of weaponTiles) tile.image = createGunRig(tile.id, customs[tile.id], combatParts(tile.id)).snapshot();
     for (const slot of slots) {
       if (!slot.optionGroup) continue;
       slot.options = optionsFor(slot);
-      slot.thumbs = Object.fromEntries(Object.keys(slot.options).map(id => [id, createGunRig(weaponId, withOption(slot.optionGroup, id)).snapshot()]));
+      slot.thumbs = Object.fromEntries(Object.keys(slot.options).map(id => [id, createGunRig(weaponId, withOption(slot.optionGroup, id), combatParts()).snapshot()]));
     }
   }
 
   function resetDemo() {
-    const type = WEAPON_TYPES[weaponId];
+    const type = builtType();                        // a demonstração atira e recarrega no ritmo das peças escolhidas
     animator = createGunAnimator(weaponId);
     effects = createGunEffects(58);
     demo = { type, ammo: type.magazine, timer: DEMO.pause, shotsLeft: burstOf(type), spin: 0, reloading: false, progress: 0, carrying: false, toLoad: 0, recoil: 0, velocity: 0, flash: 0, seed: 0 };
   }
 
   function rebuild() {
-    rig = createGunRig(weaponId, custom());
+    rig = createGunRig(weaponId, custom(), combatParts());
     refreshThumbs();
     onChange(weaponId);
     saveWeaponCustoms(customs);
@@ -80,20 +123,26 @@ export function createWeaponWorkshop({ stage, customs, onChange, onClose }) {
 
   function selectWeapon(id) {
     weaponId = id;
-    rig = createGunRig(id, custom());
+    rig = createGunRig(id, custom(), combatParts(id));
     refreshThumbs();
     resetDemo();
   }
 
-  const currentId = slot => custom().options[slot.optionGroup];
+  const currentId = slot => (slot.combat ? combatParts()[slot.key] : custom().options[slot.optionGroup]);
   const currentColor = slot => custom().colors[slot.key];
 
   const strip = createOptionStrip({
     x: 118, width: 404, top: 36, bottom: 356,
     placement: () => 'bottom',
     getSlot: () => active, currentId, currentColor,
+    priceOf: (slot, id) => (slot.combat ? WEAPON_PARTS[slot.key].variants[id].price : null),
+    isLocked: (slot, id) => slot.combat && !fitsBudget(withCombatPart(slot.key, id)),
     originalSwatch: slot => ORIGINAL_SWATCH[slot.key],
-    onChoose: (slot, id) => { custom().options[slot.optionGroup] = id; rebuild(); },
+    onChoose: (slot, id) => {
+      if (slot.combat) { chooseCombatPart(slot, id); return; }
+      custom().options[slot.optionGroup] = id;
+      rebuild();
+    },
     onColor: (slot, color) => { custom().colors[slot.key] = color; rebuild(); },
   });
 
@@ -114,7 +163,7 @@ export function createWeaponWorkshop({ stage, customs, onChange, onClose }) {
     if (inside(BACK_BUTTON, x, y)) { screen.isOpen = false; onClose(); return; }
     const tile = weaponTiles.find(candidate => inside(candidate, x, y));
     if (tile) { selectWeapon(tile.id); return; }
-    const slot = slots.find(candidate => inside(candidate, x, y));
+    const slot = allSlots.find(candidate => inside(candidate, x, y));
     if (slot) { active = slot; return; }
     strip.click(x, y);
   });
@@ -200,9 +249,33 @@ export function createWeaponWorkshop({ stage, customs, onChange, onClose }) {
     if (fromStrip) return fromStrip;
     const tile = weaponTiles.find(candidate => inside(candidate, pointer.x, pointer.y));
     if (tile) return { title: WEAPON_TYPES[tile.id].label, detail: 'Trocar de arma' };
-    const slot = slots.find(candidate => inside(candidate, pointer.x, pointer.y));
+    const slot = allSlots.find(candidate => inside(candidate, pointer.x, pointer.y));
     if (!slot) return null;
+    if (slot.combat) {
+      const option = slot.options[currentId(slot)];
+      return { title: `${labelOf(slot)}: ${option.name}`, detail: option.detail };
+    }
     return { title: slot.optionGroup ? slot.options[currentId(slot)].name : labelOf(slot), detail: labelOf(slot) };
+  }
+
+  // Ficha da arma montada; o que as peças mudaram aparece em destaque.
+  function drawStats(ctx) {
+    const base = WEAPON_TYPES[weaponId], type = builtType();
+    const rows = [
+      ['DANO', Math.round(type.damage), Math.round(base.damage)],
+      ['TIROS/S', (1 / type.interval).toFixed(1), (1 / base.interval).toFixed(1)],
+      ['RECUO', `${Math.round(type.kick.up / base.kick.up * 100)}%`, '100%'],
+      ['MIRA VOLTA', `${Math.round(type.kick.recover / base.kick.recover * 100)}%`, '100%'],
+      ['RECARGA', `${type.roundTime.toFixed(2)}S`, `${base.roundTime.toFixed(2)}S`],
+      ['PENTE/RES', `${type.magazine}/${type.reserve}`, `${base.magazine}/${base.reserve}`],
+    ];
+    panelBox(ctx, STATS);
+    ctxText(ctx, 'FICHA', STATS.x + 6, STATS.y + 4, COLOR.selected);
+    rows.forEach(([label, value, original], i) => {
+      const y = STATS.y + 14 + i * 9, text = String(value);
+      ctxText(ctx, label, STATS.x + 6, y, COLOR.muted);
+      ctxText(ctx, text, STATS.x + STATS.width - 6 - textWidth(text), y, text === String(original) ? COLOR.text : COLOR.selected);
+    });
   }
 
   screen.draw = ctx => {
@@ -212,7 +285,9 @@ export function createWeaponWorkshop({ stage, customs, onChange, onClose }) {
     drawPreview(ctx);
 
     panelBox(ctx, { x: 6, y: 6, width: 106, height: 26 });
-    ctxText(ctx, 'OFICINA', 6 + Math.floor((106 - textWidth('OFICINA')) / 2), 15, COLOR.text);
+    ctxText(ctx, 'OFICINA', 6 + Math.floor((106 - textWidth('OFICINA')) / 2), 10, COLOR.text);
+    const funds = noFunds > 0 ? 'SEM SALDO' : `SALDO R$ ${BUDGET - loadoutCost(equipment)}`;
+    ctxText(ctx, funds, 6 + Math.floor((106 - textWidth(funds)) / 2), 20, noFunds > 0 ? COLOR.danger : COLOR.selected);
     drawButton(ctx, BACK_BUTTON, '< VOLTAR', inside(BACK_BUTTON, pointer.x, pointer.y));
 
     panelBox(ctx, LEFT);
@@ -230,8 +305,19 @@ export function createWeaponWorkshop({ stage, customs, onChange, onClose }) {
       });
     }
 
+    panelBox(ctx, COMBAT);
+    ctxText(ctx, 'COMBATE', COMBAT.x + 6, COMBAT.y + 5, COLOR.selected);
+    for (const slot of combatSlots) {
+      drawSlotTile(ctx, slot, { image: slot.thumbs[currentId(slot)], chipColor: null, active: slot === active, hovered: inside(slot, pointer.x, pointer.y) });
+    }
+    drawStats(ctx);
+
     const label = WEAPON_TYPES[weaponId].label;
     ctxText(ctx, label, Math.round(VIEW.width / 2 - textWidth(label) / 2), 46, COLOR.selected);
+    if (!isEquipped()) {
+      const note = 'NAO EQUIPADA: AS PECAS DE COMBATE SO CONTAM AO EQUIPAR';
+      ctxText(ctx, note, Math.round(VIEW.width / 2 - textWidth(note) / 2), 56, COLOR.muted);
+    }
 
     strip.draw(ctx, pointer);
     const info = hoveredInfo();
@@ -240,6 +326,7 @@ export function createWeaponWorkshop({ stage, customs, onChange, onClose }) {
 
   screen.update = dt => {
     if (!screen.isOpen) return;
+    noFunds = Math.max(0, noFunds - dt);
     strip.applyPending();
     updateDemo(dt);
   };
@@ -248,6 +335,6 @@ export function createWeaponWorkshop({ stage, customs, onChange, onClose }) {
     active = slots[0];
     selectWeapon(id);
   };
-  screen.selectSlot = key => { active = slots.find(slot => slot.key === key); };
+  screen.selectSlot = key => { active = slots.find(slot => slot.key === key); };   // só as peças visuais
   return screen;
 }

@@ -1,6 +1,7 @@
 import { partsCost } from './carUpgrades.js';
 import { TRAP_TYPES } from './trapTypes.js';
 import { WEAPON_TYPES } from './weaponTypes.js';
+import { weaponPartsCost } from './weaponParts.js';
 
 // Orçamento de cada piloto. Arma e itens têm o preço em weaponTypes e trapTypes; aqui ficam as melhorias.
 // O preço de um nível é o total até ele, então descer um nível devolve a diferença.
@@ -19,14 +20,16 @@ export const maxUpgradeLevel = id => UPGRADES[id].levels.length - 1;
 export const upgradeFactor = (id, level) => UPGRADES[id].levels[level].factor;
 export const upgradePrice = (id, level) => UPGRADES[id].levels[level].price;
 
-// `loadout` é { weaponId, trunk, upgrades, parts }; `trunk` é { idDoItem: quantidade } e itens ausentes valem 0.
+// `loadout` é { weaponId, trunk, upgrades, parts, weaponParts }; `trunk` é { idDoItem: quantidade } e itens ausentes valem 0.
+// `weaponParts` guarda as peças de combate de cada arma ({ idDaArma: { barrel, grip, magazine, ammo } }); só as da
+// arma equipada entram na conta.
 export const trunkCost = trunk => Object.entries(trunk).reduce((sum, [id, count]) => sum + (TRAP_TYPES[id] ? TRAP_TYPES[id].price * count : 0), 0);
 export const trunkUnits = trunk => Object.values(trunk).reduce((sum, count) => sum + count, 0);
 
-export function loadoutCost({ weaponId, trunk, upgrades, parts: carParts }) {
+export function loadoutCost({ weaponId, trunk, upgrades, parts: carParts, weaponParts }) {
   const items = trunkCost(trunk);
   const upgradesCost = Object.keys(UPGRADES).reduce((sum, id) => sum + upgradePrice(id, upgrades[id]), 0);
-  return WEAPON_TYPES[weaponId].price + items + upgradesCost + partsCost(carParts);
+  return WEAPON_TYPES[weaponId].price + weaponPartsCost(weaponId, weaponParts?.[weaponId]) + items + upgradesCost + partsCost(carParts);
 }
 
 export const fitsBudget = loadout => loadoutCost(loadout) <= BUDGET;

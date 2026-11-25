@@ -143,7 +143,7 @@ export function createCabin({ camera, car, loadout }) {
     if (car.wrecked > 0) poseFlippingCar(body, car.flip, car.wrecked);
     else if (car.rig.active) poseRig(body, car.rig);
     alignToTwist(body, car);
-    head.rotation.set(look.pitch, look.yaw, 0);
+    head.rotation.set(look.pitch + weapon.kick.pitch, look.yaw + weapon.kick.yaw, 0);   // o recuo da arma empurra a mira
     scene.updateMatrixWorld(true);
 
     mounted.wheel.rotation = -car.visualSteer * STEER_VISUAL;

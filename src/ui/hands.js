@@ -40,7 +40,8 @@ export function createHands({ weapon, traps, look, cabin, customs, isAiming, wan
   let styleClock = 0;
 
   const rigs = {};
-  const rigFor = id => (rigs[id] ??= createGunRig(id, customs[id]));
+  // Uma montagem por arma e conjunto de peças de combate (weapon.type.parts), que mudam o desenho.
+  const rigFor = id => (rigs[`${id}${JSON.stringify(weapon.type.parts ?? null)}`] ??= createGunRig(id, customs[id], weapon.type.parts));
   let casingSoundWait = 0;
   const effects = createGunEffects(CASING_FLOOR_Y, () => {
     if (casingSoundWait > 0) return;
@@ -289,7 +290,7 @@ export function createHands({ weapon, traps, look, cabin, customs, isAiming, wan
   }
 
   // Refaz a arma depois de uma mudança na oficina.
-  function rebuildGun(id) { delete rigs[id]; }
+  function rebuildGun(id) { for (const key of Object.keys(rigs)) if (key.startsWith(`${id}{`) || key === `${id}null`) delete rigs[key]; }
 
   return { update, draw, isHoldingGun, isGunReady, isNitroReady, requestFire, requestTrap, rebuildGun };
 }

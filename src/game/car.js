@@ -60,9 +60,10 @@ export function crashDamage(car, amount) {
 }
 
 // `amount` de 0 a 1, em relação à vida padrão; `armor` é a melhoria comprada. Logo depois de voltar à pista o carro não sofre dano.
-export function damagePlayer(car, amount) {
+// `pierce`: fração do dano que passa direto pelo escudo (weaponParts.bulletHit).
+export function damagePlayer(car, amount, pierce = 0) {
   if (car.invulnerable > 0) return;
-  car.health = Math.max(0, car.health - absorbShield(car, amount) / car.armor);
+  car.health = Math.max(0, car.health - absorbShield(car, amount, pierce) / car.armor);
 }
 
 const AIR_DRAG = 0.02, WATER_DRAG = 3;             // por segundo

@@ -23,7 +23,11 @@ export const MAX_RACERS = 8;                         // a partida pode ter de 2 
 export const EYE = { x: -0.38, y: 1.12, z: 0.1 };
 
 // Até onde a cabeça gira. Os limites escondem a parte vazia do carro (bancos, piso e traseira).
-export const CAR_MAX_HP = 250;                       // vida inicial de qualquer carro
+export const CAR_MAX_HP = 250;                       // escala do dano: tiros, batidas e itens são medidos contra este valor
+// Resistência de qualquer carro, por cima da escala: a vida de verdade sem melhoria é CAR_MAX_HP × CAR_TOUGHNESS (287,5).
+// Divide todo dano, inclusive o que é medido em fração da vida (obstáculos, raio, mina). O jogador recebe isso em
+// `car.armor` (main.js) e os bots no `maxHp` (opponents.js).
+export const CAR_TOUGHNESS = 1.15;
 export const LOOK = { maxYaw: 1.3, maxPitchUp: 0.16, maxPitchDown: 0.1 };
 // Visão pela janela (olhar demais para a esquerda): a cabeça sai pela janela do motorista (deslocamento em metros a partir do olho, `head`)
 // e pode virar até olhar para trás por cima do ombro esquerdo (yaw positivo é para a esquerda) e um pouco além, para pegar

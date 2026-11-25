@@ -10,11 +10,11 @@ export function raiseShield(racer, unit) {
   pools.set(racer.effects, SHIELD_ABSORB * unit);
 }
 
-// Devolve o dano que sobrou depois do escudo.
-export function absorbShield(racer, amount) {
+// Devolve o dano que sobrou depois do escudo. `pierce`: fração do dano que passa direto (munição perfurante).
+export function absorbShield(racer, amount, pierce = 0) {
   const left = pools.get(racer.effects) ?? 0;
   if (racer.effects.shield <= 0 || left <= 0) return amount;
-  const taken = Math.min(amount, left);
+  const taken = Math.min(amount * (1 - pierce), left);
   pools.set(racer.effects, left - taken);
   if (left - taken <= 0) racer.effects.shield = 0;
   return amount - taken;

@@ -38,7 +38,6 @@ MAX_COMBAT_COUNT = 5000                            # teto de qualquer contador n
 MIN_MAP_RACES = 2                                  # corridas num mapa para ele valer como melhor/pior; se nenhum tiver, vale qualquer um
 RIVALS_SHOWN = 6
 COMBAT_TOP = 3                                     # vítimas e carrascos mostrados
-HISTORY_LIMIT = 40                                  # corridas mais recentes que o ranking mostra
 MIN_RANKED_RACES = 5                                # corridas rankeadas para ganhar posição; antes disso o jogador aparece sem posição
 MEDAL_POINTS = {"gold": 3, "silver": 1.5, "bronze": 1}   # só o ranking antigo usa; mesmo peso do campeonato
 PUBLIC_ENTRIES = {"index.html", "css", "src", "vendor", "assets"}   # o resto do projeto não é servido
@@ -474,8 +473,8 @@ class Lobby:
                              "biome": clean_text(message.get("biome"), 20), "racers": sorted(racers, key=lambda racer: racer["position"])})
 
     @staticmethod
-    def recent_history(player=None, match=None):
-        recent = collections.deque(maxlen=MAX_RACES if match else HISTORY_LIMIT)
+    def find_history(player=None, match=None):
+        found = []
         wanted = player.casefold() if player else None
         try:
             with HISTORY_FILE.open(encoding="utf-8") as file:
@@ -488,10 +487,10 @@ class Lobby:
                         continue
                     if wanted and not any(racer.get("name", "").casefold() == wanted for racer in entry.get("racers", [])):
                         continue
-                    recent.append(entry)
+                    found.append(entry)
         except OSError:
             pass
-        return list(recent) if match else list(reversed(recent))   # a partida em ordem de corrida; o resto, a mais nova primeiro
+        return found if match else found[::-1]    # a partida em ordem de corrida; o resto, a mais nova primeiro
 
     @staticmethod
     def all_history():
@@ -506,6 +505,16 @@ class Lobby:
         except OSError:
             pass
         return races
+
+    @staticmethod
+    def history_players(races):
+        """Todo humano que aparece no histórico, para o seletor de filtro."""
+        names = {}
+        for race in races:
+            for racer in race.get("racers", []):
+                if racer.get("human") and racer.get("name"):
+                    names.setdefault(racer["name"].casefold(), racer["name"])
+        return [names[key] for key in sorted(names)]
 
     # Estatísticas em que ter o maior (1) ou o menor (-1) valor é ser o melhor; as outras não entram na comparação.
     BEST_DIRECTION = {"rating": 1, "races": 1, "wins": 1, "podiumRate": 1, "average": -1, "kills": 1, "killsPerRace": 1,
@@ -557,12 +566,15 @@ class Lobby:
         maps, rivals = {}, {}
         win_run = podium_run = best_wins = best_podiums = 0
         gaps, last = [], None
+        positions = [0] * MAX_RACERS             # quantas vezes chegou em 1º, 2º...
         for race in history:
             racers = race.get("racers") or []
             me = next((r for r in racers if r.get("human") and str(r.get("name", "")).casefold() == wanted), None)
             if me is None or len(racers) < 2:
                 continue
             position, count, last = me["position"], len(racers), race.get("at")
+            if 1 <= position <= MAX_RACERS:
+                positions[position - 1] += 1
             score = (count - position) / (count - 1)
             biome = race.get("biome") or "-"
             stat = maps.setdefault(biome, {"races": 0, "score": 0.0, "wins": 0})
@@ -591,7 +603,7 @@ class Lobby:
             "wins": entry["wins"] if entry else 0, "podiumRate": round(100 * entry["podiums"] / races) if races else None,
             "average": round(entry["positionSum"] / races, 2) if races else None,
             "kills": entry["kills"] if entry else 0,
-            "winStreak": best_wins, "podiumStreak": best_podiums,
+            "winStreak": best_wins, "podiumStreak": best_podiums, "positions": positions,
             "gap": round(sum(gaps) / len(gaps), 1) if gaps else None,
             "bestMap": max(rated, key=lambda row: row["rating"]) if rated else None,
             "worstMap": min(rated, key=lambda row: row["rating"]) if rated else None,
@@ -670,7 +682,9 @@ class Lobby:
 
     def on_history(self, client, message):
         player, match = clean_text(message.get("player"), NAME_LENGTH), clean_text(message.get("match"), 12)
-        reply = {"t": "history", "races": self.recent_history(player or None, match or None)}
+        reply = {"t": "history", "races": self.find_history(player or None, match or None)}
+        if not match:
+            reply["players"] = self.history_players(self.all_history())
         if player:
             reply["player"] = player
         if match:
