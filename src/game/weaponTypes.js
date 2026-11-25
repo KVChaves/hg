@@ -18,12 +18,12 @@ export const WEAPON_TYPES = {
     magazine: 2, reserve: 10, roundTime: 0.6, recoil: 1.5, kick: { up: 0.06, side: 0.015, recover: 4 },
   },
   smg: {
-    id: 'smg', family: 'smg', label: 'SUBMETRALHADORA', price: 240, summary: 'SEGURE O CLIQUE',
+    id: 'smg', family: 'smg', label: 'SUBMETRALHADORA', price: 280, summary: 'SEGURE O CLIQUE',
     damage: 13, interval: 0.09, range: 110, magazine: 30, reserve: 60, roundTime: 1.6, recoil: 0.35, kick: { up: 0.009, side: 0.006, recover: 5 },
     automatic: true, reloadsWholeMagazine: true, bloom: { perShot: 0.01, max: 0.05, decay: 0.12 },
   },
   rifle: {
-    id: 'rifle', family: 'rifle', label: 'RIFLE', price: 320, summary: 'LONGO ALCANCE E TIRO LENTO',
+    id: 'rifle', family: 'rifle', label: 'RIFLE', price: 360, summary: 'LONGO ALCANCE E TIRO LENTO',
     damage: 75, interval: 0.75, range: 230, magazine: 5, reserve: 13, roundTime: 0.55, recoil: 1.3, kick: { up: 0.045, side: 0.01, recover: 3.5 },
   },
   magnum: {
@@ -31,29 +31,29 @@ export const WEAPON_TYPES = {
     damage: 70, interval: 0.75, range: 150, magazine: 4, reserve: 10, roundTime: 0.5, recoil: 1.8, kick: { up: 0.055, side: 0.015, recover: 3.5 },
   },
   sniper: {
-    id: 'sniper', family: 'rifle', style: 'bolt', label: 'SNIPER', price: 340, summary: 'UM TIRO, ALCANCE ENORME',
+    id: 'sniper', family: 'rifle', style: 'bolt', label: 'SNIPER', price: 280, summary: 'UM TIRO, ALCANCE ENORME',
     damage: 105, interval: 1.6, range: 320, magazine: 1, reserve: 7, roundTime: 0.9, recoil: 2.2, kick: { up: 0.08, side: 0.01, recover: 3 },
   },
   autoshotgun: {
-    id: 'autoshotgun', family: 'shotgun', style: 'autoshotgun', label: 'ESCOPETA AUTO', price: 320, summary: 'ESCOPETA QUE ATIRA SEGURANDO',
+    id: 'autoshotgun', family: 'shotgun', style: 'autoshotgun', label: 'ESCOPETA AUTO', price: 290, summary: 'ESCOPETA QUE ATIRA SEGURANDO',
     damage: 48, falloff: { full: 30, zero: 42, min: 4 }, shake: 0.8, interval: 0.28, range: 50, magazine: 6, reserve: 18, roundTime: 0.45, recoil: 1.2, kick: { up: 0.035, side: 0.012, recover: 4 },
     automatic: true, bloom: { perShot: 0.016, max: 0.06, decay: 0.15 },
   },
   // `burn`: segundos em chamas para o carro atingido; errando, a flecha deixa o chão queimando (game/burning.js).
   crossbow: {
-    id: 'crossbow', family: 'rifle', style: 'crossbow', label: 'BESTA INCENDIARIA', price: 300, summary: 'FLECHA QUE INCENDEIA CARRO E CHAO',
+    id: 'crossbow', family: 'rifle', style: 'crossbow', label: 'BESTA INCENDIARIA', price: 250, summary: 'FLECHA QUE INCENDEIA CARRO E CHAO',
     damage: 70, burn: 9, tracer: 0xff7a20, interval: 1.25, range: 140, magazine: 1, reserve: 8, roundTime: 1, recoil: 1.4, kick: { up: 0.03, side: 0.008, recover: 4 },
   },
   // `splash`: explode onde acerta (ou no chão, se errar) e machuca quem estiver em volta, menos quanto mais longe.
   grenade: {
-    id: 'grenade', family: 'shotgun', style: 'pump', label: 'LANCA-GRANADAS', price: 380, summary: 'GRANADA QUE EXPLODE EM AREA',
+    id: 'grenade', family: 'shotgun', style: 'pump', label: 'LANCA-GRANADAS', price: 300, summary: 'GRANADA QUE EXPLODE EM AREA',
     damage: 85, splash: { radius: 7, min: 0.35 }, tracer: 0xb0b070, interval: 1.1, range: 120, magazine: 3, reserve: 8, roundTime: 0.75, recoil: 1.7, kick: { up: 0.05, side: 0.012, recover: 4 },
   },
   // `spinUp`: os canos aceleram enquanto o gatilho está apertado. O intervalo vai de `startInterval` (parado) até
   // `interval` (girando no máximo) em `time` segundos, e solto os canos param em `spinDown` segundos.
   // `botBurst`: quantos tiros os bots dão por rajada (o padrão é curto demais para os canos chegarem a girar).
   heavymg: {
-    id: 'heavymg', family: 'smg', style: 'gatling', label: 'METRALHADORA', price: 260, summary: 'QUANTO MAIS SEGURA, MAIS RAPIDO',
+    id: 'heavymg', family: 'smg', style: 'gatling', label: 'METRALHADORA', price: 230, summary: 'QUANTO MAIS SEGURA, MAIS RAPIDO',
     damage: 10, interval: 0.06, spinUp: { startInterval: 0.16, time: 0.9, spinDown: 0.9 }, range: 100,
     magazine: 50, reserve: 50, roundTime: 2.4, recoil: 0.45, kick: { up: 0.006, side: 0.007, recover: 4.5 }, automatic: true, reloadsWholeMagazine: true, botBurst: [12, 24],
     bloom: { perShot: 0.004, max: 0.08, decay: 0.08 },

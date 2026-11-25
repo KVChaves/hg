@@ -37,36 +37,36 @@ export const WEAPON_PARTS = {
     label: 'Cano', short: 'CANO',
     variants: {
       stock: STOCK,
-      compensator: { name: 'Compensador', price: 50, summary: 'RECUO -40%, DANO -8%', stats: { kick: 0.6, damage: 0.92 }, only: RECOIL_MATTERS },
-      heavy: { name: 'Pesado', price: 70, summary: 'DANO +15%, ATIRA 20% MAIS DEVAGAR, RESERVA -15%', stats: { damage: 1.15, interval: 1.2, reserve: 0.85 }, only: ALL.filter(id => id !== 'grenade') },
+      compensator: { name: 'Compensador', price: 40, summary: 'RECUO -40%, DANO -8%', stats: { kick: 0.6, damage: 0.92 }, only: RECOIL_MATTERS },
+      heavy: { name: 'Pesado', price: 50, summary: 'DANO +15%, ATIRA 20% MAIS DEVAGAR, RESERVA -15%', stats: { damage: 1.15, interval: 1.2, reserve: 0.85 }, only: ALL.filter(id => id !== 'grenade') },
       short: { name: 'Curto', price: 60, summary: 'ATIRA 15% MAIS RAPIDO, RECUO +35%, RAJADA ABRE +25%', stats: { interval: 0.85, kick: 1.35, bloom: 1.25 }, only: RECOIL_MATTERS },
-      choke: { name: 'Choke', price: 60, summary: 'O DANO DURA 35% MAIS LONGE, DANO -12%', stats: { reach: 1.35, damage: 0.88 }, only: SHOTGUNS },
+      choke: { name: 'Choke', price: 45, summary: 'O DANO DURA 35% MAIS LONGE, DANO -12%', stats: { reach: 1.35, damage: 0.88 }, only: SHOTGUNS },
     },
   },
   grip: {
     label: 'Empunhadura', short: 'EMPUNH',
     variants: {
       stock: STOCK,
-      firm: { name: 'Firme', price: 45, summary: 'A MIRA VOLTA 60% MAIS RAPIDO, RECARGA +15%', stats: { recover: 1.6, roundTime: 1.15 }, only: RECOIL_MATTERS },
-      light: { name: 'Leve', price: 45, summary: 'RECARGA -15%, RECUO +25%', stats: { roundTime: 0.85, kick: 1.25 }, only: RECOIL_MATTERS },
+      firm: { name: 'Firme', price: 30, summary: 'A MIRA VOLTA 60% MAIS RAPIDO, RECARGA +15%', stats: { recover: 1.6, roundTime: 1.15 }, only: RECOIL_MATTERS },
+      light: { name: 'Leve', price: 35, summary: 'RECARGA -15%, RECUO +25%', stats: { roundTime: 0.85, kick: 1.25 }, only: RECOIL_MATTERS },
     },
   },
   magazine: {
     label: 'Carregador', short: 'PENTE',
     variants: {
       stock: STOCK,
-      extended: { name: 'Estendido', price: 60, summary: id => `+${EXTRA_ROUNDS[id]} BALAS NO PENTE, RECARGA +30%`, stats: { magazine: 1, roundTime: 1.3 }, only: Object.keys(EXTRA_ROUNDS) },
-      quick: { name: 'Rapido', price: 50, summary: 'RECARGA -25%, RESERVA -20%', stats: { roundTime: 0.75, reserve: 0.8 }, only: ALL },
-      belt: { name: 'Cinto', price: 60, summary: 'RESERVA +20%, RECARGA +25%', stats: { reserve: 1.2, roundTime: 1.25 }, only: ALL },
+      extended: { name: 'Estendido', price: 50, summary: id => `+${EXTRA_ROUNDS[id]} BALAS NO PENTE, RECARGA +30%`, stats: { magazine: 1, roundTime: 1.3 }, only: Object.keys(EXTRA_ROUNDS) },
+      quick: { name: 'Rapido', price: 40, summary: 'RECARGA -25%, RESERVA -20%', stats: { roundTime: 0.75, reserve: 0.8 }, only: ALL },
+      belt: { name: 'Cinto', price: 45, summary: 'RESERVA +20%, RECARGA +25%', stats: { reserve: 1.2, roundTime: 1.25 }, only: ALL },
     },
   },
   ammo: {
     label: 'Municao', short: 'MUNIC',
     variants: {
       stock: STOCK,
-      pierce: { name: 'Perfurante', price: 60, summary: 'ATRAVESSA METADE DO ESCUDO E DA BLINDAGEM, DANO -12%', stats: { damage: 0.88, ammo: 'pierce' }, only: BULLETS },
-      hollow: { name: 'Ponta oca', price: 60, summary: 'DANO +15%, MAS -40% NO ESCUDO E A BLINDAGEM SEGURA O DOBRO', stats: { damage: 1.15, ammo: 'hollow' }, only: BULLETS },
-      impact: { name: 'Impacto', price: 50, summary: 'BALANCA O CARRO ATINGIDO, DANO -12%', stats: { damage: 0.88, impact: IMPACT_SHAKE }, only: BULLETS },
+      pierce: { name: 'Perfurante', price: 45, summary: 'ATRAVESSA METADE DO ESCUDO E DA BLINDAGEM, DANO -12%', stats: { damage: 0.88, ammo: 'pierce' }, only: BULLETS },
+      hollow: { name: 'Ponta oca', price: 100, summary: 'DANO +15%, MAS -40% NO ESCUDO E A BLINDAGEM SEGURA O DOBRO', stats: { damage: 1.15, ammo: 'hollow' }, only: BULLETS },
+      impact: { name: 'Impacto', price: 35, summary: 'BALANCA O CARRO ATINGIDO, DANO -12%', stats: { damage: 0.88, impact: IMPACT_SHAKE }, only: BULLETS },
     },
   },
 };
