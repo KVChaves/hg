@@ -10,7 +10,7 @@ import { addCulledInstances } from '../instancing.js';
 
 // Estrada do Rei: estrada de pedra entre campos de grama, aldeias de telhado de palha e moinhos; uma mata fechada
 // longa, de curvas onduladas e pista estreita, onde cervos e javalis cruzam a pista; carruagens indo devagar pela estrada; e o castelo do rei, em que
-// se entra voando pela ponte levadiça (rápido demais, bate na muralha) e se corre por dentro, num pátio estreito de
+// se entra voando pela ponte levadiça (devagar demais, cai no fosso) e se corre por dentro, num pátio estreito de
 // quatro curvas de 90° (o traçado do castelo e da mata vem de trackShapes.js; a ponte e o portão, de mapLayout.js).
 
 const SHOULDER = 6, SIDE = EDGE + SHOULDER;
@@ -29,7 +29,7 @@ function inForest(d, margin = FOREST_MARGIN) {
 
 export const KINGS_ROAD = {
   id: 'kingsRoad', name: 'ESTRADA DO REI', music: 'kingsRoad',
-  challenge: ['PONTE LEVADICA: RAPIDO DEMAIS VOCE BATE NA MURALHA', 'TIRE O PE ANTES DA PONTE E VOE PELO PORTAO DO CASTELO'],
+  challenge: ['PONTE LEVADICA: VOE PELO PORTAO DO CASTELO', 'DEVAGAR DEMAIS VOCE CAI NO FOSSO'],
   sky: 0xb8d4e8, fog: [34, 320], cabinTint: 0xfff0d8,
   // Volta larga de campo aberto; o castelo e a mata ondulada entram por cima dela (trackShapes.js).
   shape: {

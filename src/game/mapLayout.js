@@ -169,14 +169,13 @@ const JUMP_BOOST_RUNUP = 40, JUMP_BOOST_AT = 26, JUMP_BOOST_HALF = 3.5;
 // Castelo da Estrada do Rei (track.castle, que o traçado já trouxe): a ponte levadiça meio erguida é a rampa sobre o
 // fosso, o carro voa pelo portão e cai no pátio, que fica no alto (a mesma altura do bico) e é um carro mais estreito
 // que a estrada; lá dentro são duas curvas de 90°, e do outro lado do portão de saída uma descida de pedra.
-// O portão é baixo de propósito: com o bico a 0,3 (6 m acima do chão) e o fosso de 24 m, só alcança o pátio quem sai
-// do bico a mais de ~75 km/h; acima de ~105 km/h o carro passa alto demais e bate na muralha sobre o portão (vão de
-// 5,2 m, CASTLE_GATE), volta e cai no fosso. Na velocidade máxima sem nitro (120 km/h) bate: é preciso tirar o pé
-// antes da ponte. (Faixa medida com a física do jogo, flight.js, em várias pistas.)
+// O salto funciona como os outros: basta velocidade para vencer o fosso (~75 km/h), sem limite máximo. Para o carro
+// rápido não bater no portão nem voar até as curvas, o arco é achatado (`reach`, ver capJumpArc em flight.js).
 export const CASTLE_HALF = TRACK_WIDTH / 2 - 1.8, CASTLE_WALL = CASTLE_HALF - 0.4;
 // `height`: vão livre do portão acima do pátio; `depth`: espessura da muralha (o túnel do portão).
 export const CASTLE_GATE = { height: 5.2, depth: 5 };
 export const CASTLE_JUMP = { ramp: 40, lip: 0.3, gap: 24, descent: 80, depth: 12, bank: 3 };
+const CASTLE_LANDING = 20;                           // metros portão adentro em que o salto mais longo pousa
 const CASTLE_RUNUP = 110;                            // reta livre antes da ponte, sem nada no caminho
 function placeCastle(plan, placer, layout) {
   const castle = track.castle;
@@ -206,7 +205,7 @@ function placeCastle(plan, placer, layout) {
   const section = {
     type: 'castle', start, length, river, gaps: [span], blocks: [[start, span[0]], [span[1], start + length]], respawn: start - RESPAWN_BACK,
     water: 0, floor: 0, depth: bedDepth, below: plan.below ?? WATER_BELOW, fallLabel: plan.fallLabel ?? 'CAIU NO FOSSO', volcano: false,
-    gate: { at: span[1], ...CASTLE_GATE }, castle,   // a muralha fica onde o chão do pátio começa de verdade (na amostra)
+    reach: gap + CASTLE_LANDING, gate: { at: span[1], ...CASTLE_GATE }, castle,   // a muralha fica onde o chão do pátio começa de verdade (na amostra)
   };
   layout.epics.push(section);
   track.jumps.push(section);

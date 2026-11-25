@@ -6,6 +6,7 @@ import { absorbShield } from './shield.js';
 import { surface } from './surface.js';
 
 const OFFROAD_LIMIT = TRACK_WIDTH / 2 + 1.4;
+const OFFROAD_MIN_SPEED = 80 / 3.6;                  // m/s
 const WRECK_BRAKING = 2.2, DRIFT_MIN_SPEED = 8, SPIN_DECAY = 3.5;
 const PUNCTURE_SPEED_FACTOR = 0.875, PUNCTURE_PULL = 0.16, OIL_WOBBLE = 0.5, OIL_GRIP = 0.6;
 const ENCLOSED_GRIP = 1.5, ENCLOSED_SIDE_GRIP = 13, ENCLOSED_CURVE_ASSIST = 0.8;   // em túnel e tubo o carro cola na pista e acompanha a curva
@@ -121,7 +122,9 @@ export function updateCar(car, dt, keys, canAccelerate, nitroHandReady) {
   if (forward > top) forward = Math.max(top, forward - 10 * dt);
   if (handbrake) forward -= Math.sign(forward) * Math.min(Math.abs(forward), 10 * dt * parts.driftKeep);
   if (surface.drag) forward -= forward * surface.drag * dt;
-  if (car.offTrack > OFFROAD_LIMIT) forward -= forward * 1.4 * parts.offroad * surface.offroad * dt;
+  if (car.offTrack > OFFROAD_LIMIT) {                  // o acostamento freia, mas nunca abaixo de OFFROAD_MIN_SPEED
+    forward = Math.max(Math.min(forward, OFFROAD_MIN_SPEED), forward - forward * 1.4 * parts.offroad * surface.offroad * dt);
+  }
   if (car.wrecked > 0) forward *= Math.exp(-WRECK_BRAKING * dt);
 
   side *= Math.exp(-(oil > 0 ? OIL_GRIP * parts.slick : handbrake ? 1.2 : car.icy ? ICE_SIDE_GRIP * parts.slick : car.enclosed ? ENCLOSED_SIDE_GRIP : 7 * parts.grip * (useNitro ? parts.nitroGrip : 1) * surface.side * wet) * dt);

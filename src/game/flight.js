@@ -1,4 +1,4 @@
-import { trackAt, wrapDistance } from '../world/track.js';
+import { trackAt } from '../world/track.js';
 
 // Voo de verdade nas rampas com física (track.jumps): o carro segue o chão enquanto o chão o segura e sai voando
 // quando o chão cai mais rápido que a gravidade o puxaria. No ar ninguém controla nada: a trajetória é uma
@@ -63,11 +63,10 @@ export function sinkStep(state, water, dt) {
   return false;
 }
 
-// Portão do castelo (trecho com `gate`): cruzou o plano do portão (de `from` para `to`, distâncias na pista) alto
-// demais para o vão livre dele? Então bateu na muralha acima do portão. `CAR_ROOF`: altura do teto do carro.
-export const CAR_ROOF = 1.45;
-export function hitsGate(section, from, to, y) {
-  const gate = section?.gate;
-  if (!gate || wrapDistance(to - gate.at) < 0 || wrapDistance(from - gate.at) >= 0) return false;
-  return y + CAR_ROOF > trackAt(gate.at).y + gate.height;
+// Salto com `reach` (a ponte levadiça): por mais rápido que o carro saia do bico, o arco é achatado para ele pousar no
+// máximo `reach` metros depois, passando por baixo do portão e antes das curvas do pátio. Quem sai devagar voa a
+// parábola normal. Chamar só sobre o vão; `speed`: velocidade ao longo da pista, m/s.
+export function capJumpArc(state, section, speed) {
+  if (!section?.reach || !state.airborne || speed <= 0) return;
+  state.vy = Math.min(state.vy, GRAVITY * section.reach / (2 * speed));
 }

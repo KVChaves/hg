@@ -814,7 +814,7 @@ const NORMAL_LOOK = { minYaw: -LOOK.maxYaw, maxYaw: LOOK.maxYaw + 0.1, maxPitchU
 function toggleLookBack() {
   if (inMenus() || spectator.active || outOfAction()) return;
   if (windowView.active || look.yaw > WINDOW_OPEN_YAW) { look.yaw = 0; look.pitch = 0; return; }
-  look.yaw = WINDOW_VIEW.maxYaw;
+  look.yaw = WINDOW_VIEW.backYaw;
   look.pitch = 0;
 }
 

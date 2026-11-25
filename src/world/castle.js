@@ -8,7 +8,7 @@ import { CASTLE_RADIUS, track, trackAt, turnAt } from './track.js';
 // O castelo da Estrada do Rei (trecho `castle` de mapLayout.js): ponte levadiça de tábuas meio erguida (a rampa),
 // portaria com o vão baixo por onde o carro voa, pátio estreito de muralhas altas com piso de mármore e tapete,
 // torres nas duas curvas de 90°, torre de menagem, portão de saída e a descida de pedra.
-// O vão do portão é o mesmo que a física usa (section.gate): a viga de cima fica exatamente em `gate.height`.
+// A viga de cima do portão fica em `gate.height`; o arco do salto passa sempre por baixo dela (flight.js).
 
 const INNER = CASTLE_HALF + 0.65;                    // face de dentro das muralhas (o carro para a meia largura dela)
 const WALL_THICK = 2.6, WALL_HIGH = 9, MERLON = { width: 1.4, height: 1.3, every: 3 };

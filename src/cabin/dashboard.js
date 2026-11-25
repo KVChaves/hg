@@ -112,14 +112,17 @@ function createNitro(parent) {
   const updateFlame = createNitroFlame(parent, LAYOUT.nitroNozzle);
   let base = r.snapshot(), last = '';
 
-  function update(level, open, dt, blue = false) {
-    updateFlame(open, dt, blue);
+  // `blueLevel`: quanto resta do nitro azul (0 a 1). A barra dele cobre a amarela e vai baixando com o uso.
+  function update(level, open, dt, blueLevel = 0) {
+    updateFlame(open, dt, blueLevel > 0);
     const filled = Math.round(NITRO_BAR.height * level);
-    const key = `${filled}|${open}`;
+    const blueFilled = Math.ceil(NITRO_BAR.height * Math.min(1, blueLevel));   // ceil: some só quando o azul acaba
+    const key = `${filled}|${blueFilled}|${open}`;
     if (key === last) return;
     last = key;
     r.restore(base);
     r.rect(NITRO_BAR.x, NITRO_BAR.top + NITRO_BAR.height - filled, 5, filled, 0xffff00);
+    r.rect(NITRO_BAR.x, NITRO_BAR.top + NITRO_BAR.height - blueFilled, 5, blueFilled, 0x2f7bff);
     plotValveLever(r, open);
     r.commit();
     sprite.refresh();
@@ -150,11 +153,11 @@ export function createDashboard(parent) {
   const nitro = createNitro(parent);
   const ammoRack = createAmmoRack(parent);
 
-  function update({ gear, nitroLevel, nitroOpen, nitroBlue, reserveAmmo, trapSlot, trapReady, dt }) {
+  function update({ gear, nitroLevel, nitroOpen, nitroBlueLevel, reserveAmmo, trapSlot, trapReady, dt }) {
     instruments(gear.kmh, gear.rpm);
     updateTrapDisplay(trapSlot);
     trapButton.setLit(trapReady);
-    nitro.update(nitroLevel, nitroOpen, dt, nitroBlue);
+    nitro.update(nitroLevel, nitroOpen, dt, nitroBlueLevel);
     ammoRack.update(reserveAmmo);
   }
 

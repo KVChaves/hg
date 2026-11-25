@@ -3,7 +3,7 @@ import { poseRig } from '../game/carRoll.js';
 import * as THREE from 'three';
 import { gradientMap } from '../art/recolor.js';
 import { colorRamp } from '../art/shade.js';
-import { EYE, VIEW, WINDOW_VIEW } from '../config.js';
+import { BLUE_NITRO, EYE, VIEW, WINDOW_VIEW } from '../config.js';
 import { createCharmPendulum } from './charmPendulum.js';
 import { createDashboard } from './dashboard.js';
 import { createHandoff } from './handoff.js';
@@ -161,7 +161,7 @@ export function createCabin({ camera, car, loadout }) {
       mounted.health.draw(car.health);
     }
 
-    dashboard.update({ gear, nitroLevel: car.nitro, nitroOpen: car.nitroActive, nitroBlue: car.blueNitro > 0, reserveAmmo: weapon.reserve, trapSlot: traps.current, trapReady: traps.isReady(), dt });
+    dashboard.update({ gear, nitroLevel: car.nitro, nitroOpen: car.nitroActive, nitroBlueLevel: car.blueNitro / BLUE_NITRO.time, reserveAmmo: weapon.reserve, trapSlot: traps.current, trapReady: traps.isReady(), dt });
     updateWindshield(car.effects, dt);
     updateCracks(Math.round(car.capsizes * car.parts.crack));   // vidro blindado racha menos
     swingCharm(dt, frameTime);

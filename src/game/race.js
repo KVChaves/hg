@@ -7,7 +7,7 @@ import { createCollisions } from './collisions.js';
 import { placeOpponent, resetOpponent, updateOpponent, updateRemoteRacer } from './opponents.js';
 import { slipstreamStrength } from './slipstream.js';
 import { cloakLevel } from './cloak.js';
-import { FALL_TIME, fallIsCertain, GRAVITY, hitsGate, sinkStep, stepFlight } from './flight.js';
+import { capJumpArc, FALL_TIME, fallIsCertain, GRAVITY, sinkStep, stepFlight } from './flight.js';
 import { LEDGE_REACH } from './mapLayout.js';
 
 const CRASH_MIN_IMPACT = 4, CRASH_FULL_IMPACT = 25, CRASH_MIN_STRENGTH = 0.25;
@@ -28,7 +28,6 @@ const HARD_LANDING = 11, LANDING_DAMAGE = 3;         // a partir de 11 m/s de de
 const AIR_PITCH_RATE = 3, BANK_RATE = 8;             // no ar o bico acompanha a trajetória aos poucos
 const BOOST_MIN_SPEED = 3;                           // de ré ou parado a placa de turbo não faz nada
 const FACE_BOUNCE = 0.2;                             // quem bate na face da outra margem volta com isso da velocidade
-const GATE_SPIN = 1.2;                               // a batida na muralha do castelo desalinha o carro
 
 const GRID_ROW_GAP = 16, GRID_STAGGER = 7;           // metros entre as filas e entre os dois carros de uma fila
 const gridDistance = slot => track.length - 8 - (slot >> 1) * GRID_ROW_GAP - (slot & 1) * GRID_STAGGER;
@@ -217,20 +216,6 @@ export function createRace(car, opponents, { onCrash, onDestroyed, onBlast, onCo
     crashDamage(car, Math.abs(along) * IMPACT_DAMAGE / CAR_MAX_HP);
   }
 
-  // Voou alto demais pelo portão do castelo: bate na muralha acima dele, volta para cima do fosso e cai.
-  function bounceOffGate(t) {
-    const overshoot = wrapDistance(race.playerDist - car.jump.gate.at) + 0.4;
-    const along = car.vx * t.tx + car.vz * t.tz;
-    car.x -= t.tx * overshoot;
-    car.z -= t.tz * overshoot;
-    car.vx -= t.tx * along * (1 + FACE_BOUNCE);
-    car.vz -= t.tz * along * (1 + FACE_BOUNCE);
-    car.vy = Math.min(car.vy, 0);
-    car.spin += (Math.random() < 0.5 ? -1 : 1) * GATE_SPIN;
-    reportWallCrash(Math.max(CRASH_FULL_IMPACT, Math.abs(along)));
-    crashDamage(car, Math.abs(along) * IMPACT_DAMAGE / CAR_MAX_HP);
-  }
-
   // Altura do carro: colado no chão, voando sobre o rio ou boiando nele.
   function updateHeight(t, offset, bank, dt) {
     const ground = groundUnder(t, offset);
@@ -248,7 +233,7 @@ export function createRace(car, opponents, { onCrash, onDestroyed, onBlast, onCo
     }
     const result = stepFlight(car, ground, groundRate, dt);
     if (result === 'blocked' && car.jump) bounceOffBank(t);
-    if (car.airborne && hitsGate(car.jump, race.prevDist ?? race.playerDist, race.playerDist, car.y)) bounceOffGate(t);
+    if (ground === null) capJumpArc(car, car.jump, car.vx * t.tx + car.vz * t.tz);
     if (result === 'landed') {
       if (car.impact >= SOFT_LANDING) onCrash('land', car.x, car.z, Math.min(1, car.impact / HARD_LANDING));
       reportWallCrash(car.impact);

@@ -26,5 +26,6 @@ export const EYE = { x: -0.38, y: 1.12, z: 0.1 };
 export const CAR_MAX_HP = 250;                       // vida inicial de qualquer carro
 export const LOOK = { maxYaw: 1.3, maxPitchUp: 0.16, maxPitchDown: 0.1 };
 // Visão pela janela (olhar demais para a esquerda): a cabeça sai pela janela do motorista (deslocamento em metros a partir do olho, `head`)
-// e pode virar até olhar para trás por cima do ombro esquerdo (yaw positivo é para a esquerda).
-export const WINDOW_VIEW = { head: { x: -0.92, y: 0.2, z: 0.15 }, minYaw: -0.45, maxYaw: 3.05, maxPitchUp: 0.45, maxPitchDown: 0.35 };
+// e pode virar até olhar para trás por cima do ombro esquerdo (yaw positivo é para a esquerda) e um pouco além, para pegar
+// quem vem atrás pelo outro lado. `backYaw`: para onde a tecla de olhar para trás aponta.
+export const WINDOW_VIEW = { head: { x: -0.92, y: 0.2, z: 0.15 }, minYaw: -0.45, maxYaw: 3.35, backYaw: 3.05, maxPitchUp: 0.45, maxPitchDown: 0.35 };
