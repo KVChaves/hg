@@ -45,6 +45,7 @@ const HELP_TEXT = [
   { text: 'SO GANHA POSICAO NO RANKING QUEM TEM 5 CORRIDAS OU MAIS. ANTES DISSO O JOGADOR APARECE EM CINZA COM O CONTADOR (EX: 3/5), SEM CLASSIFICACAO.' },
   { text: 'A ORDEM E PELO DESEMP. EM EMPATE, GANHA QUEM TEM MAIS VITORIAS E DEPOIS MAIS CORRIDAS.' },
   { text: 'SO CONTAM PARTIDAS ONLINE SEM BOTS E COM PELO MENOS 3 JOGADORES. PODIOS, POS MEDIA, ABATES E PARTIDAS SO INFORMAM, NAO ENTRAM NA NOTA.' },
+  { text: 'NO FILTRO POR SEMANA VALEM AS MESMAS REGRAS, SO COM AS CORRIDAS DE SEGUNDA A DOMINGO. OS ABATES NAO SAO GUARDADOS POR SEMANA.' },
 ];
 const RANKING_COLUMNS = [
   { label: 'JOGADOR', x: 40 }, { label: 'DESEMP.', x: 140, color: '#f0c840' }, { label: 'CORRIDAS', x: 196 }, { label: 'VITORIAS', x: 258 },
@@ -101,17 +102,24 @@ function drawPerson(ctx, x, y, color) {
   PERSON_ICON.forEach((row, j) => [...row].forEach((cell, i) => { if (cell === '#') ctx.fillRect(x + i, y + j, 1, 1); }));
 }
 
+// "AAAA-MM-DD" da segunda-feira -> "23/11 A 29/11". As contas são em UTC para o fuso de quem olha não mudar o dia.
+function weekLabel(monday) {
+  const format = date => `${String(date.getUTCDate()).padStart(2, '0')}/${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+  const start = new Date(`${monday}T00:00:00Z`), end = new Date(start.getTime() + 6 * 86400000);
+  return `${format(start)} A ${format(end)}`;
+}
+
 const formatTime = seconds => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
 
 export function createMainMenu({ stage, settings, net, getName = () => '', onSingleplayer, onMultiplayer, onGarage, onSettingChange, onEffectsPreview, onQuit }) {
-  let page = 'main', helpOpen = false, notesScroll = 0, pointer = { x: -1, y: -1 }, dragging = null, rebinding = null, swallowClick = false, queued = null, view = 'ranking', selectedRace = null, viewingMatch = null, historyFilter = null, historyScroll = 0, statsPlayer = null, statsPage = 'general';
+  let page = 'main', helpOpen = false, notesScroll = 0, pointer = { x: -1, y: -1 }, dragging = null, rebinding = null, swallowClick = false, queued = null, view = 'ranking', selectedRace = null, viewingMatch = null, historyFilter = null, historyScroll = 0, rankingWeek = null, statsPlayer = null, statsPage = 'general';
 
   const screen = { isOpen: true, isRebinding: () => rebinding !== null };
 
   function setPage(next) {
     if (next === 'ranking') {
       view = 'ranking';
-      selectedRace = viewingMatch = historyFilter = null;
+      selectedRace = viewingMatch = historyFilter = rankingWeek = null;
       historyScroll = 0;
       net.requestRanking();
       net.requestHistory();
@@ -232,10 +240,25 @@ export function createMainMenu({ stage, settings, net, getName = () => '', onSin
     } else if (page === 'ranking' && view === 'history') clickHistory(x, y);
     else if (page === 'ranking' && view === 'stats') clickStats(x, y);
     else if (page === 'ranking' && view === 'ranking' && !helpOpen) {
+      if (clickRankingFilter(x, y)) return;
       const row = (net.ranking ?? []).slice(0, RANKING_ROWS).find((_, i) => inside(historyRowBox(i), x, y));
       if (row) { view = 'stats'; showStats(row.name); }              // clicar num jogador abre as estatísticas dele
     }
   });
+
+  function setRankingWeek(week) {
+    rankingWeek = week;
+    net.requestRanking(week ?? '');
+  }
+
+  // As setas percorrem GERAL e as semanas com corrida (< volta no tempo), dando a volta; clicar no nome volta para GERAL.
+  function clickRankingFilter(x, y) {
+    if (rankingWeek && inside(FILTER_NAME, x, y)) { setRankingWeek(null); return true; }
+    const step = inside(FILTER_PREV, x, y) ? -1 : inside(FILTER_NEXT, x, y) ? 1 : 0;
+    const options = [null, ...net.rankingWeeks];
+    if (step && options.length > 1) setRankingWeek(options[(Math.max(0, options.indexOf(rankingWeek)) + step + options.length) % options.length]);
+    return step !== 0;
+  }
 
   function showStats(name) {
     statsPlayer = name;
@@ -486,18 +509,30 @@ export function createMainMenu({ stage, settings, net, getName = () => '', onSin
     }
   }
 
-  function drawHistoryFilter(ctx) {
+  // Seletor com setas e nome; `clickable` diz se clicar no nome limpa o filtro. Devolve se o mouse está sobre o nome clicável.
+  function drawFilter(ctx, label, clickable) {
     drawButton(ctx, FILTER_PREV, '<', inside(FILTER_PREV, pointer.x, pointer.y), { style: 'arrow' });
     drawButton(ctx, FILTER_NEXT, '>', inside(FILTER_NEXT, pointer.x, pointer.y), { style: 'arrow' });
-    const hovered = Boolean(historyFilter) && inside(FILTER_NAME, pointer.x, pointer.y);
-    if (historyFilter) markClickable(FILTER_NAME);
+    const hovered = clickable && !helpOpen && inside(FILTER_NAME, pointer.x, pointer.y);
+    if (clickable) markClickable(FILTER_NAME);
     drawRowStripe(ctx, FILTER_NAME, 0, hovered);
-    const shown = fit(historyFilter?.toUpperCase() ?? 'TODOS', FILTER_NAME.width - 8);
+    const shown = fit(label, FILTER_NAME.width - 8);
     ctxText(ctx, shown, Math.round(FILTER_NAME.x + FILTER_NAME.width / 2 - textWidth(shown) / 2), FILTER_NAME.y + 3, COLOR.selected);
+    return hovered;
+  }
+
+  const drawFilterHint = (ctx, hint) => ctxText(ctx, hint, FILTER_NEXT.x + FILTER_NEXT.width + 10, FILTER_NAME.y + 3, COLOR.muted);
+
+  function drawRankingFilter(ctx) {
+    const hovered = drawFilter(ctx, rankingWeek ? weekLabel(rankingWeek) : 'GERAL', Boolean(rankingWeek));
+    drawFilterHint(ctx, hovered ? 'CLIQUE PARA VER O GERAL' : rankingWeek ? 'SEMANA DE SEGUNDA A DOMINGO' : 'SETAS FILTRAM POR SEMANA');
+  }
+
+  function drawHistoryFilter(ctx) {
+    const hovered = drawFilter(ctx, historyFilter?.toUpperCase() ?? 'TODOS', Boolean(historyFilter));
     const total = net.history?.length ?? 0;
     const count = !total ? '' : historyMax() ? `${historyScroll + 1}-${historyScroll + visibleRaces().length} DE ${total}   RODA DO MOUSE ROLA` : `${total} ${total === 1 ? 'CORRIDA' : 'CORRIDAS'}`;
-    const hint = hovered ? 'CLIQUE PARA VER TODOS' : count;
-    ctxText(ctx, hint, FILTER_NEXT.x + FILTER_NEXT.width + 10, FILTER_NAME.y + 3, COLOR.muted);
+    drawFilterHint(ctx, hovered ? 'CLIQUE PARA VER TODOS' : count);
   }
 
   // Estatísticas de um jogador (só partidas rankeadas), com setas para ver as dos outros.
@@ -668,7 +703,8 @@ export function createMainMenu({ stage, settings, net, getName = () => '', onSin
     else if (view === 'stats') drawStats(ctx);
     else {
       panelBox(ctx, RANKING_PANEL);
-      drawPlayerTable(ctx, RANKING_COLUMNS, net.ranking, row => [row.rating.toFixed(1), row.races, row.wins, `${row.podiumRate}%`, row.average.toFixed(1), row.kills, row.matches], 'NENHUMA CORRIDA RANKEADA AINDA');
+      drawPlayerTable(ctx, RANKING_COLUMNS, net.ranking, row => [row.rating.toFixed(1), row.races, row.wins, `${row.podiumRate}%`, row.average.toFixed(1), row.kills ?? '-', row.matches], 'NENHUMA CORRIDA RANKEADA AINDA');
+      drawRankingFilter(ctx);
     }
     drawHeading(ctx, view === 'history' ? (viewingMatch ? 'PARTIDA' : selectedRace ? 'CORRIDA' : 'HISTORICO') : RANKING_TITLES[view], RANKING_PANEL.x + 22, RANKING_PANEL.y + 12, { align: 'left' });
     for (const tab of RANKING_TABS) drawButton(ctx, tab, tab.label, inside(tab, pointer.x, pointer.y), { style: 'tab', active: tab.view === view });

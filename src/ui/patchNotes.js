@@ -4,6 +4,13 @@
 
 export const PATCH_NOTES = [
   {
+    title: 'RANKING: FILTRO POR SEMANA',
+    items: [
+      'As setas no topo do ranking mostram a classificação de cada semana (segunda a domingo); clicar nas datas volta para o GERAL.',
+      'Na semana valem as mesmas regras, inclusive o mínimo de 5 corridas para ter posição. Os abates aparecem só no GERAL.',
+    ],
+  },
+  {
     title: 'CARROS MAIS RESISTENTES',
     items: [
       'Todos os carros aguentam 15% mais: sem melhoria, a vida vai de 250 para 287,5. Vale contra tudo (tiro, batida, obstáculo, raio, mina e fogo) e para os bots também.',

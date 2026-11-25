@@ -8,6 +8,8 @@ Uso: python3 server/server.py [porta] [--host ENDERECO]
 """
 import asyncio
 import collections
+import calendar
+import datetime
 import math
 import base64
 import hashlib
@@ -111,6 +113,29 @@ def merged(players):
     return result
 
 
+def week_of(at):
+    """Segunda-feira ("AAAA-MM-DD", fuso do servidor) da semana de uma data do histórico (UTC); None se a data não presta."""
+    try:
+        day = datetime.date.fromtimestamp(calendar.timegm(time.strptime(at, "%Y-%m-%dT%H:%M:%SZ")))
+    except (TypeError, ValueError, OverflowError, OSError):
+        return None
+    return (day - datetime.timedelta(days=day.weekday())).isoformat()
+
+
+def week_table(races, week):
+    """Ranking só com as corridas de uma semana, refeito a partir do histórico. O histórico não guarda abates (vão como None)."""
+    ranking, matches = Ranking(), {}
+    for race in races:
+        racers = race.get("racers") or []
+        if week_of(race.get("at")) != week or len(racers) < 2:
+            continue
+        for racer in racers:
+            if racer.get("human") and racer.get("name"):
+                ranking.record_race(racer["name"], racer["position"], len(racers))
+                matches.setdefault(racer["name"].casefold(), set()).add(race.get("match"))
+    return [{**row, "kills": None, "matches": len(matches[row["name"].casefold()])} for row in ranking.table()]
+
+
 def legacy_table(players):
     """Ranking antigo: soma de pontos de medalha. Só leitura, o arquivo não é mais gravado."""
     rows = [{"name": name, **{key: value for key, value in entry.items() if key not in ("positionSum", "races")}, "average": round(entry["positionSum"] / entry["matches"], 2)}
@@ -125,9 +150,9 @@ class Ranking:
     """Desempenho por corrida de quem jogou de verdade. Cada corrida rende uma nota de 0 (último) a 1 (primeiro),
     igual para qualquer tamanho de grupo; o desempenho do jogador é a média das notas; sem as corridas mínimas ele fica sem classificação."""
 
-    def __init__(self, path):
+    def __init__(self, path=None):          # sem arquivo: ranking só em memória (o de uma semana)
         self.path = path
-        self.players = merged(load_players(path))
+        self.players = merged(load_players(path)) if path else {}
 
     def entry(self, name):
         known = next((key for key in self.players if key.casefold() == name.casefold()), name)
@@ -705,8 +730,12 @@ class Lobby:
     def on_legacy(self, client, _message):
         client.send({"t": "legacy", "players": self.legacy_rows})
 
-    def on_ranking(self, client, _message):
-        client.send({"t": "ranking", "players": self.ranking.table()})
+    def on_ranking(self, client, message):
+        """Sem `week`, o ranking geral; com a segunda-feira de uma semana, só as corridas dela."""
+        history = self.all_history()
+        weeks = sorted({week_of(race.get("at")) for race in history} - {None})
+        week = message.get("week") if message.get("week") in weeks else None
+        client.send({"t": "ranking", "players": week_table(history, week) if week else self.ranking.table(), "weeks": weeks, "week": week})
 
     def on_end_match(self, client, message):
         room = self.admin_room(client)

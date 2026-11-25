@@ -25,7 +25,7 @@ export function createRoomClient() {
   const waiting = [];                                // pedidos à espera da conexão (rodam no `welcome`)
 
   const client = {
-    status: 'offline', id: null, rooms: [], room: null, notice: '', ranking: null, history: null, historyPlayers: [], matchRaces: null, stats: null, statsPlayers: null, token: null, chat: [],
+    status: 'offline', id: null, rooms: [], room: null, notice: '', ranking: null, rankingWeeks: [], history: null, historyPlayers: [], matchRaces: null, stats: null, statsPlayers: null, token: null, chat: [],
     online: null,                                    // jogadores conectados ao servidor (contando este); nulo sem conexão
     onStarted: () => {}, onEnded: () => {}, onGame: () => {}, onRoomChange: () => {}, onLeft: () => {},
     connect, setName, create, join, leave, kick, configure, start, endRace, endMatch, requestRanking, requestHistory, requestMatch, requestStats, sendCombat, sendChat, relay,
@@ -45,7 +45,7 @@ export function createRoomClient() {
     },
     rooms(message) { client.rooms = message.rooms; },
     online(message) { client.online = message.count; },
-    ranking(message) { client.ranking = message.players; },
+    ranking(message) { client.ranking = message.players; client.rankingWeeks = message.weeks ?? []; },
     history(message) {
       if (message.match) client.matchRaces = message.races;
       else { client.history = message.races; client.historyPlayers = message.players ?? []; }
@@ -148,7 +148,8 @@ export function createRoomClient() {
   function endRace(biome, results) { send({ t: 'race', biome, results }); }
   // `results` traz o que cada jogador humano fez na partida, para o histórico do servidor.
   function endMatch(results) { send({ t: 'end', results }); }
-  function requestRanking() { connect(() => send({ t: 'ranking' })); }
+  // `week` é a segunda-feira ("AAAA-MM-DD") de uma semana; vazio pede o ranking geral.
+  function requestRanking(week = '') { client.ranking = null; connect(() => send({ t: 'ranking', week })); }
   function sendCombat(stats) { send({ t: 'combat', stats }); }
   function requestStats(player = '') { client.stats = null; connect(() => send({ t: 'stats', player })); }
   function requestHistory(player = '') { client.history = null; connect(() => send({ t: 'history', player })); }
