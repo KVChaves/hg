@@ -9,7 +9,7 @@ export const PATCH_NOTES = [
       'Armas que subiram: RIFLE R$ 360 (antes 320) e SUBMETRALHADORA R$ 280 (antes 240).',
       'Armas que baixaram: SNIPER R$ 280 (antes 340), ESCOPETA AUTO R$ 290 (antes 320), BESTA R$ 250 (antes 300), LANÇA-GRANADAS R$ 300 (antes 380) e METRALHADORA R$ 230 (antes 260).',
       'A munição PONTA OCA subiu para R$ 100 (antes 60). As outras peças de armas ficaram mais baratas ou iguais: de R$ 30 a R$ 60.',
-      'O orçamento continua R$ 1000. Itens, peças do carro e melhorias não mudaram.',
+      'O orçamento subiu de R$ 1000 para R$ 1150. Os preços dos itens, das peças do carro e das melhorias não mudaram.',
     ],
   },
   {
