@@ -157,7 +157,7 @@ function shortBarrel(art, m) {
   art.muzzle = [mx + cut, my];
 }
 
-// Choke da escopeta; `flare` abre mais a boca (a boca larga do lança-granadas).
+// Choke da escopeta; `flare` abre mais a boca (o calibre maior do lança-granadas).
 function choke(art, m, flare = 0) {
   const [mx, my] = art.muzzle, layer = layerAt(art, mx + 2, my);
   paintOn(layer, (ctx, canvas) => {

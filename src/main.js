@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { CAR_TOUGHNESS, LOOK, MAX_RACERS, VIEW, WINDOW_VIEW } from './config.js';
 import { createAudioSystem } from './audio/audioSystem.js';
 import { createRenderer, createWorldPass } from './core/renderer.js';
-import { clampLook, isLocked, keys, look, setupInput } from './core/input.js';
+import { clampLook, isLocked, keys, look, pushLook, setupInput } from './core/input.js';
 import { createCabin } from './cabin/cabin.js';
 import { loadLoadout } from './cabin/loadout.js';
 import { bearingFrom, createCar, updateCar } from './game/car.js';
@@ -212,7 +212,7 @@ const burning = createBurning({
   },
   onRemoteIgnite: (racer, seconds, attacker) => racer.onRemoteIgnite?.(seconds, attacker),
 });
-const weapon = createWeapon({ scene: world, camera, targets: opponents, shooter: race.field[0], canReload: () => race.started, onFired: (id, from, end) => online.sendShot(id, from, end), onHit: target => { featFeed.addCount(target, 'Acerto'); feats.hit(); }, onKill: creditKill, extraTargets: () => obstacles.active, onObstacleHit: (ob, damage) => obstacles.shoot(ob, damage), onSplash: point => { combat.explodeAt(point.x, point.y, point.z); playAt('dynamite', point.x, point.z); },
+const weapon = createWeapon({ onRecoil: pushLook, scene: world, camera, targets: opponents, shooter: race.field[0], canReload: () => race.started, onFired: (id, from, end) => online.sendShot(id, from, end), onHit: target => { featFeed.addCount(target, 'Acerto'); feats.hit(); }, onKill: creditKill, extraTargets: () => obstacles.active, onObstacleHit: (ob, damage) => obstacles.shoot(ob, damage), onSplash: point => { combat.explodeAt(point.x, point.y, point.z); playAt('dynamite', point.x, point.z); },
   onIgnite: (target, seconds) => burning.ignite(target, race.field[0], seconds),
   onGroundFire: ground => traps.burnGround(ground.dist, ground.lane, null, race.field[0]) });   // só recarrega depois do GO
 const combatStats = createCombatStats({ weapon, car });
@@ -429,6 +429,7 @@ const workshop = createWeaponWorkshop({
   stage,
   customs,
   equipment,
+  settings,
   onPurchase: () => audio.playBuy(),
   onChange: id => {
     hands.rebuildGun(id);

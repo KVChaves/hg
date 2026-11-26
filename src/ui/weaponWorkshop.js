@@ -3,8 +3,10 @@ import { ctxText, textWidth } from '../art/font.js';
 import { accessoriesOf, saveWeaponCustoms, WEAPON_PATTERNS } from '../game/weaponCustomization.js';
 import { familyOf, fireInterval, stepSpin, WEAPON_TYPES } from '../game/weaponTypes.js';
 import { saveEquipment } from '../game/equipment.js';
+import { saveSettings } from '../game/settings.js';
 import { BUDGET, fitsBudget, loadoutCost } from '../game/shop.js';
 import { buildWeapon, partSummary, variantsFor, WEAPON_PART_KEYS, WEAPON_PARTS } from '../game/weaponParts.js';
+import { CROSSHAIR_STYLES, crosshairThumb, drawCrosshair, ORIGINAL_CROSSHAIR_COLOR, paintCrosshairBackdrop } from './crosshair.js';
 import { createGunAnimator } from './guns/gunAnimator.js';
 import { createGunEffects } from './guns/gunEffects.js';
 import { createGunRig } from './guns/gunRig.js';
@@ -15,6 +17,8 @@ import { COLOR, drawButton, drawSlotTile, drawTooltip, inside, panelBox, pointer
 // Oficina: a arma fica no centro, atirando e recarregando em demonstração, e cada parte é personalizável.
 // À direita, em cima, as peças visuais (grátis); embaixo, as de combate (weaponParts.js), pagas com o saldo da garagem.
 // À esquerda, embaixo, a ficha da arma montada, com o que as peças mudaram em destaque.
+// A aba MIRA (em cima, à direita) troca as peças pela mira (ui/crosshair.js), que vale para todas as armas: as opções
+// aparecem na mesma faixa de miniaturas, e o modelo tem a mesma barra de cor das peças.
 
 const TILE = { width: 46, height: 42, gapX: 48, gapY: 44 };
 const LEFT = { x: 6, y: 40, width: 106, height: 16 + Math.ceil(Object.keys(WEAPON_TYPES).length / 2) * 44 + 4, columns: 2 };
@@ -38,8 +42,24 @@ const SLOT_DEFS = [
 ];
 const ORIGINAL_SWATCH = { metal: 0x7c7e82, grip: 0x5a3a26, pattern: 0x4a5a30, flash: 0xffd060 };
 
+const MODE_TABS = { weapon: { x: 530, y: 8, width: 50, height: 22, label: 'ARMA' }, crosshair: { x: 582, y: 8, width: 50, height: 22, label: 'MIRA' } };
+const CROSS_PANEL = { x: 528, y: 40, width: 106, height: 16 + 3 * 44 + 4, columns: 2 };
+const CROSS_PREVIEW = { x: 224, y: 60, width: 64, height: 44, scale: 3, flashEvery: 2.5, flashTime: 0.25 };
+const CROSS_SLOT_TILE = 26;                          // miniatura do botão da peça, em tamanho real
+const pixels = value => (value ? `${value} PIXELS` : 'FECHADA');
+// Cada ajuste da mira é uma "peça": `field` é o campo em settings.crosshair e `values` as escolhas, uma miniatura cada.
+const CROSS_SLOT_DEFS = [
+  { field: 'style', short: 'MODELO', label: 'Modelo da mira', hasColor: true, thumb: 28, values: CROSSHAIR_STYLES.map(style => style.id), name: id => CROSSHAIR_STYLES.find(style => style.id === id).label, detail: 'Vale para todas as armas' },
+  { field: 'size', short: 'TAMANHO', label: 'Tamanho', thumb: 36, values: [2, 3, 5, 7, 10], name: pixels, detail: 'Comprimento de cada braco' },
+  { field: 'thickness', short: 'LINHA', label: 'Espessura', thumb: 36, values: [1, 2, 3], name: value => ['FINA', 'MEDIA', 'GROSSA'][value - 1], detail: 'Grossura das linhas' },
+  { field: 'gap', short: 'CENTRO', label: 'Centro', thumb: 36, values: [0, 1, 2, 4, 6, 8], name: pixels, detail: 'Espaco livre no meio da mira' },
+  { field: 'outline', short: 'BORDA', label: 'Contorno', thumb: 36, values: [false, true], name: on => (on ? 'COM CONTORNO' : 'SEM CONTORNO'), detail: 'Borda preta: le melhor na neve e no ceu' },
+  { field: 'dynamic', short: 'RAJADA', label: 'Mira dinamica', thumb: 36, values: [false, true], name: on => (on ? 'ABRE NA RAJADA' : 'FIXA'), detail: 'Abre ate onde as balas podem ir' },
+];
+
 // `equipment` é o mesmo objeto da garagem: as peças de combate saem do saldo dela. `onPurchase` toca o som da compra.
-export function createWeaponWorkshop({ stage, customs, equipment, onChange, onPurchase = () => {}, onClose }) {
+// `settings` são as configurações do jogador: a mira fica em settings.crosshair.
+export function createWeaponWorkshop({ stage, customs, equipment, settings, onChange, onPurchase = () => {}, onClose }) {
   const weaponIds = Object.keys(WEAPON_TYPES);
   let weaponId = weaponIds[0], rig = null, animator = null, effects = null, demo = null;
   let pointer = { x: -1, y: -1 };
@@ -67,7 +87,34 @@ export function createWeaponWorkshop({ stage, customs, equipment, onChange, onPu
     width: TILE.width, height: TILE.height,
   }));
   const allSlots = [...slots, ...combatSlots];
-  let active = slots[0], noFunds = 0;
+  const crossSlots = CROSS_SLOT_DEFS.map((def, i) => ({
+    ...def, key: `cross.${def.field}`, cross: true, hasColor: Boolean(def.hasColor), options: null, thumbs: null,
+    x: CROSS_PANEL.x + 6 + (i % CROSS_PANEL.columns) * TILE.gapX,
+    y: CROSS_PANEL.y + 16 + Math.floor(i / CROSS_PANEL.columns) * TILE.gapY,
+    width: TILE.width, height: TILE.height,
+  }));
+  let active = slots[0], noFunds = 0, mode = 'weapon', crossTile = null;
+  const visibleSlots = () => (mode === 'weapon' ? allSlots : crossSlots);
+
+  // As miniaturas da mira mostram a mira atual com só aquele ajuste trocado, em tamanho real.
+  const crosshair = () => settings.crosshair;
+  const valueOf = (slot, id) => slot.values.find(value => String(value) === id);
+  function refreshCrossSlots() {
+    for (const slot of crossSlots) {
+      slot.options = Object.fromEntries(slot.values.map(value => [String(value), { name: slot.name(value), detail: slot.detail }]));
+      slot.thumbs = Object.fromEntries(slot.values.map(value => [String(value), crosshairThumb({ ...crosshair(), [slot.field]: value }, slot.thumb, { spread: slot.field === 'dynamic' && value ? 0.02 : 0 })]));
+    }
+    crossTile = crosshairThumb(crosshair(), CROSS_SLOT_TILE);
+  }
+  function saveCrosshair() {
+    saveSettings(settings);
+    refreshCrossSlots();
+  }
+  function setMode(next) {
+    mode = next;
+    active = mode === 'weapon' ? slots[0] : crossSlots[0];
+    if (mode === 'crosshair') refreshCrossSlots();
+  }
 
   // Peças de combate da arma na tela. O saldo é conferido como se ela fosse a equipada: a garagem só deixa
   // equipar uma arma se ela couber com as peças dela.
@@ -128,8 +175,8 @@ export function createWeaponWorkshop({ stage, customs, equipment, onChange, onPu
     resetDemo();
   }
 
-  const currentId = slot => (slot.combat ? combatParts()[slot.key] : custom().options[slot.optionGroup]);
-  const currentColor = slot => custom().colors[slot.key];
+  const currentId = slot => (slot.cross ? String(crosshair()[slot.field]) : slot.combat ? combatParts()[slot.key] : custom().options[slot.optionGroup]);
+  const currentColor = slot => (slot.cross ? crosshair().color : custom().colors[slot.key]);
 
   const strip = createOptionStrip({
     x: 118, width: 404, top: 36, bottom: 356,
@@ -137,13 +184,18 @@ export function createWeaponWorkshop({ stage, customs, equipment, onChange, onPu
     getSlot: () => active, currentId, currentColor,
     priceOf: (slot, id) => (slot.combat ? WEAPON_PARTS[slot.key].variants[id].price : null),
     isLocked: (slot, id) => slot.combat && !fitsBudget(withCombatPart(slot.key, id)),
-    originalSwatch: slot => ORIGINAL_SWATCH[slot.key],
+    originalSwatch: slot => (slot.cross ? ORIGINAL_CROSSHAIR_COLOR : ORIGINAL_SWATCH[slot.key]),
     onChoose: (slot, id) => {
+      if (slot.cross) { crosshair()[slot.field] = valueOf(slot, id); saveCrosshair(); return; }
       if (slot.combat) { chooseCombatPart(slot, id); return; }
       custom().options[slot.optionGroup] = id;
       rebuild();
     },
-    onColor: (slot, color) => { custom().colors[slot.key] = color; rebuild(); },
+    onColor: (slot, color) => {
+      if (slot.cross) { crosshair().color = color; saveCrosshair(); return; }
+      custom().colors[slot.key] = color;
+      rebuild();
+    },
   });
 
   addEventListener('mousemove', e => {
@@ -161,9 +213,11 @@ export function createWeaponWorkshop({ stage, customs, equipment, onChange, onPu
     if (!screen.isOpen) return;
     const { x, y } = pointerOnStage(e, stage);
     if (inside(BACK_BUTTON, x, y)) { screen.isOpen = false; onClose(); return; }
+    const tab = Object.keys(MODE_TABS).find(key => inside(MODE_TABS[key], x, y));
+    if (tab) { if (tab !== mode) setMode(tab); return; }
     const tile = weaponTiles.find(candidate => inside(candidate, x, y));
-    if (tile) { selectWeapon(tile.id); return; }
-    const slot = allSlots.find(candidate => inside(candidate, x, y));
+    if (tile) { if (mode !== 'weapon') setMode('weapon'); selectWeapon(tile.id); return; }
+    const slot = visibleSlots().find(candidate => inside(candidate, x, y));
     if (slot) { active = slot; return; }
     strip.click(x, y);
   });
@@ -242,16 +296,39 @@ export function createWeaponWorkshop({ stage, customs, equipment, onChange, onPu
     ctx.restore();
   }
 
+  // Prévia da mira, ampliada, sobre um pedaço de pista. Com a mira dinâmica ela abre e fecha como numa rajada;
+  // de tempos em tempos pisca a cor de acerto.
+  const crossCanvas = document.createElement('canvas');
+  crossCanvas.width = CROSS_PREVIEW.width;
+  crossCanvas.height = CROSS_PREVIEW.height;
+  function drawCrosshairPreview(ctx) {
+    const p = crossCanvas.getContext('2d'), { width, height, scale } = CROSS_PREVIEW, t = performance.now() / 1000;
+    paintCrosshairBackdrop(p, width, height);
+    drawCrosshair(p, width / 2, height / 2, crosshair(), { hit: t % CROSS_PREVIEW.flashEvery < CROSS_PREVIEW.flashTime, spread: 0.025 * (0.5 + 0.5 * Math.sin(t * 2.4)) });
+    const box = { x: CROSS_PREVIEW.x, y: CROSS_PREVIEW.y, width: width * scale, height: height * scale };
+    ctx.fillStyle = COLOR.ink;
+    ctx.fillRect(box.x - 2, box.y - 2, box.width + 4, box.height + 4);
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(crossCanvas, box.x, box.y, box.width, box.height);
+    ctx.restore();
+    const hint = crosshair().dynamic ? 'ABRE NA RAJADA E PISCA NO ACERTO' : 'FIXA, PISCA NO ACERTO';
+    ctxText(ctx, hint, Math.round(VIEW.width / 2 - textWidth(hint) / 2), box.y + box.height + 6, COLOR.muted);
+    ctx.drawImage(crossTile, Math.round(VIEW.width / 2 - CROSS_SLOT_TILE / 2), box.y + box.height + 16);   // em tamanho real
+  }
+
   const labelOf = slot => slot.label;
 
   function hoveredInfo() {
     const fromStrip = strip.hoverInfo(pointer, labelOf(active));
     if (fromStrip) return fromStrip;
+    if (inside(MODE_TABS.crosshair, pointer.x, pointer.y)) return { title: 'Mira', detail: 'Personalizar a mira de todas as armas' };
+    if (inside(MODE_TABS.weapon, pointer.x, pointer.y)) return { title: 'Arma', detail: 'Pecas visuais e de combate' };
     const tile = weaponTiles.find(candidate => inside(candidate, pointer.x, pointer.y));
     if (tile) return { title: WEAPON_TYPES[tile.id].label, detail: 'Trocar de arma' };
-    const slot = allSlots.find(candidate => inside(candidate, pointer.x, pointer.y));
+    const slot = visibleSlots().find(candidate => inside(candidate, pointer.x, pointer.y));
     if (!slot) return null;
-    if (slot.combat) {
+    if (slot.combat || slot.cross) {
       const option = slot.options[currentId(slot)];
       return { title: `${labelOf(slot)}: ${option.name}`, detail: option.detail };
     }
@@ -282,39 +359,51 @@ export function createWeaponWorkshop({ stage, customs, equipment, onChange, onPu
     ctx.fillStyle = COLOR.backdrop;
     ctx.fillRect(0, 0, VIEW.width, VIEW.height);
 
-    drawPreview(ctx);
+    if (mode === 'weapon') drawPreview(ctx);
+    else drawCrosshairPreview(ctx);
 
     panelBox(ctx, { x: 6, y: 6, width: 106, height: 26 });
     ctxText(ctx, 'OFICINA', 6 + Math.floor((106 - textWidth('OFICINA')) / 2), 10, COLOR.text);
     const funds = noFunds > 0 ? 'SEM SALDO' : `SALDO R$ ${BUDGET - loadoutCost(equipment)}`;
     ctxText(ctx, funds, 6 + Math.floor((106 - textWidth(funds)) / 2), 20, noFunds > 0 ? COLOR.danger : COLOR.selected);
     drawButton(ctx, BACK_BUTTON, '< VOLTAR', inside(BACK_BUTTON, pointer.x, pointer.y));
+    panelBox(ctx, { x: 528, y: 6, width: 106, height: 26 });
+    for (const [key, tab] of Object.entries(MODE_TABS)) drawButton(ctx, tab, tab.label, inside(tab, pointer.x, pointer.y), { style: 'tab', active: mode === key });
 
     panelBox(ctx, LEFT);
     ctxText(ctx, 'ARMA', LEFT.x + 6, LEFT.y + 5, COLOR.selected);
     for (const tile of weaponTiles) drawSlotTile(ctx, tile, { image: tile.image, active: tile.id === weaponId, hovered: inside(tile, pointer.x, pointer.y) });
 
-    panelBox(ctx, RIGHT);
-    ctxText(ctx, 'PECAS', RIGHT.x + 6, RIGHT.y + 5, COLOR.selected);
-    for (const slot of slots) {
-      const color = slot.hasColor ? currentColor(slot) : null;
-      drawSlotTile(ctx, slot, {
-        image: slot.optionGroup ? slot.thumbs[currentId(slot)] : null,
-        color: color ?? ORIGINAL_SWATCH[slot.key], chipColor: color,
-        active: slot === active, hovered: inside(slot, pointer.x, pointer.y),
-      });
+    if (mode === 'crosshair') {
+      panelBox(ctx, CROSS_PANEL);
+      ctxText(ctx, 'MIRA', CROSS_PANEL.x + 6, CROSS_PANEL.y + 5, COLOR.selected);
+      for (const slot of crossSlots) {
+        drawSlotTile(ctx, slot, { image: crossTile, chipColor: slot.hasColor ? crosshair().color : null, active: slot === active, hovered: inside(slot, pointer.x, pointer.y) });
+      }
     }
+    if (mode === 'weapon') {
+      panelBox(ctx, RIGHT);
+      ctxText(ctx, 'PECAS', RIGHT.x + 6, RIGHT.y + 5, COLOR.selected);
+      for (const slot of slots) {
+        const color = slot.hasColor ? currentColor(slot) : null;
+        drawSlotTile(ctx, slot, {
+          image: slot.optionGroup ? slot.thumbs[currentId(slot)] : null,
+          color: color ?? ORIGINAL_SWATCH[slot.key], chipColor: color,
+          active: slot === active, hovered: inside(slot, pointer.x, pointer.y),
+        });
+      }
 
-    panelBox(ctx, COMBAT);
-    ctxText(ctx, 'COMBATE', COMBAT.x + 6, COMBAT.y + 5, COLOR.selected);
-    for (const slot of combatSlots) {
-      drawSlotTile(ctx, slot, { image: slot.thumbs[currentId(slot)], chipColor: null, active: slot === active, hovered: inside(slot, pointer.x, pointer.y) });
+      panelBox(ctx, COMBAT);
+      ctxText(ctx, 'COMBATE', COMBAT.x + 6, COMBAT.y + 5, COLOR.selected);
+      for (const slot of combatSlots) {
+        drawSlotTile(ctx, slot, { image: slot.thumbs[currentId(slot)], chipColor: null, active: slot === active, hovered: inside(slot, pointer.x, pointer.y) });
+      }
     }
     drawStats(ctx);
 
-    const label = WEAPON_TYPES[weaponId].label;
+    const label = mode === 'weapon' ? WEAPON_TYPES[weaponId].label : 'MIRA: VALE PARA TODAS AS ARMAS';
     ctxText(ctx, label, Math.round(VIEW.width / 2 - textWidth(label) / 2), 46, COLOR.selected);
-    if (!isEquipped()) {
+    if (mode === 'weapon' && !isEquipped()) {
       const note = 'NAO EQUIPADA: AS PECAS DE COMBATE SO CONTAM AO EQUIPAR';
       ctxText(ctx, note, Math.round(VIEW.width / 2 - textWidth(note) / 2), 56, COLOR.muted);
     }
@@ -332,6 +421,7 @@ export function createWeaponWorkshop({ stage, customs, equipment, onChange, onPu
   };
   screen.open = id => {
     screen.isOpen = true;
+    mode = 'weapon';
     active = slots[0];
     selectWeapon(id);
   };

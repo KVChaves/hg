@@ -4,11 +4,32 @@
 
 export const PATCH_NOTES = [
   {
+    title: 'MIRA PERSONALIZADA',
+    items: [
+      'Nova aba MIRA na OFICINA, ao lado de ARMA: a mira vale para todas as armas e cada ajuste tem miniaturas, como as peças.',
+      '11 modelos: cruz, cruz com ponto, ponto, T, X, seta, aro com ponto, aro, aro com cruz, quadrado e cantos.',
+      'Cor livre na mesma barra de cor das peças, mais tamanho, espessura, centro e contorno preto.',
+      'MIRA DINÂMICA: a mira abre junto com a rajada das armas automáticas e mostra até onde as balas podem ir. Dá para desligar.',
+      'A mira continua piscando em vermelho no acerto (em branco, se a mira for vermelha). O padrão é igual à mira de antes.',
+    ],
+  },
+  {
+    title: 'ARMAS: RECUO E RAJADA',
+    items: [
+      'A mira não volta mais sozinha por inteiro: 60% do salto volta, e o resto você corrige com o mouse.',
+      'Cada arma tem um recuo de acordo com o que ela é. Os maiores coices: ESCOPETA, REVÓLVER PESADO e SNIPER (que sobe quase reto). A BESTA quase não tem recuo, e a METRALHADORA treme para os lados mais do que sobe.',
+      'A abertura da rajada da SUBMETRALHADORA, da ESCOPETA AUTO e da METRALHADORA voltou a funcionar: cresce enquanto você atira e fecha quando solta o gatilho. Rajadas curtas acertam mais.',
+    ],
+  },
+  {
     title: 'ARMAS: PEÇAS PARA TODAS',
     items: [
       'Toda arma tem agora pelo menos uma opção de CANO, EMPUNHADURA, CARREGADOR e MUNIÇÃO.',
-      'EMPUNHADURA APOIO (R$ 40) para RIFLE, REVÓLVER PESADO, SNIPER, BESTA e LANÇA-GRANADAS: atira 12% mais rápido, dano -8%.',
-      'CANO BOCA LARGA (R$ 40) no LANÇA-GRANADAS: explosão 35% maior, dano -15%.',
+      'EMPUNHADURA APOIO (R$ 40) para RIFLE, REVÓLVER PESADO, SNIPER, BESTA e LANÇA-GRANADAS: firma a arma, atira 10% mais rápido, recarga 12% mais lenta.',
+      'CANO CALIBRE MAIOR (R$ 40) no LANÇA-GRANADAS: granada maior, com explosão 35% maior; atira 25% mais devagar e leva 25% menos granadas.',
+      'CANO PESADO (agora R$ 60): dano +12% e atira 20% mais devagar. Não tira mais reserva.',
+      'PONTA OCA no RIFLE: o bônus de dano caiu de +15% para +8% (nas outras armas continua +15%).',
+      'CANO CURTO (agora R$ 50): mais leve, atira 15% mais rápido, mas a bala sai mais fraca (dano -8%) e o recuo sobe 35%.',
       'FLECHA DE PICHE (R$ 50) na BESTA: o fogo dura 50% mais, dano do impacto -25%.',
       'A munição de IMPACTO agora vale no LANÇA-GRANADAS, e a explosão balança todos os carros que ela pega.',
     ],
@@ -19,7 +40,7 @@ export const PATCH_NOTES = [
       'Armas que subiram: RIFLE R$ 360 (antes 320) e SUBMETRALHADORA R$ 280 (antes 240).',
       'Armas que baixaram: SNIPER R$ 280 (antes 340), ESCOPETA AUTO R$ 290 (antes 320), BESTA R$ 250 (antes 300), LANÇA-GRANADAS R$ 300 (antes 380) e METRALHADORA R$ 230 (antes 260).',
       'A munição PONTA OCA subiu para R$ 100 (antes 60). As outras peças de armas ficaram mais baratas ou iguais: de R$ 30 a R$ 60.',
-      'O orçamento subiu de R$ 1000 para R$ 1150. Os preços dos itens, das peças do carro e das melhorias não mudaram.',
+      'O orçamento subiu de R$ 1000 para R$ 1250. Os preços dos itens, das peças do carro e das melhorias não mudaram.',
     ],
   },
   {
@@ -55,9 +76,8 @@ export const PATCH_NOTES = [
   {
     title: 'ARMAS: RECUO',
     items: [
-      'As armas agora têm recuo de verdade: cada tiro levanta a mira um pouco e ela volta sozinha. O tiro vai para onde a mira foi.',
-      'Nas armas lentas a mira já voltou quando sai o próximo tiro. Nas automáticas o recuo se acumula: segurando o gatilho, puxe o mouse para baixo.',
-      'A abertura da rajada da SUBMETRALHADORA, da ESCOPETA AUTO e da METRALHADORA diminuiu, para compensar o recuo.',
+      'As armas agora têm recuo de verdade: cada tiro levanta a mira. O tiro vai para onde a mira foi.',
+      'Nas automáticas o recuo se acumula: segurando o gatilho, puxe o mouse para baixo.',
       'Os bots também sofrem o recuo: atirando sem parar, eles erram mais.',
     ],
   },

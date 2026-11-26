@@ -1,4 +1,4 @@
-import { LOOK } from '../config.js';
+import { LOOK, WINDOW_VIEW } from '../config.js';
 
 // Teclado e mouse. `keys` guarda as teclas pressionadas; `look` a direção da cabeça do piloto.
 
@@ -9,6 +9,17 @@ export const look = { yaw: 0, pitch: 0 };
 export function clampLook() {
   look.yaw = clamp(look.yaw, -LOOK.maxYaw, LOOK.maxYaw);
   look.pitch = clamp(look.pitch, -LOOK.maxPitchDown, LOOK.maxPitchUp);
+}
+
+// Anda o olhar sem passar do limite; quem já está além dele não é puxado de volta.
+const nudge = (value, delta, min, max) => (delta > 0 ? Math.max(value, Math.min(value + delta, max)) : Math.min(value, Math.max(value + delta, min)));
+
+// Parte do recuo que não volta sozinha (game/weapon.js): move o próprio olhar, e o piloto corrige com o mouse.
+// Dentro da cabine o desvio para o lado nunca passa de LOOK.maxYaw, para o tiro não abrir a janela sozinho.
+export function pushLook(pitch, yaw) {
+  const outside = look.yaw > LOOK.maxYaw + 0.02;
+  look.pitch = nudge(look.pitch, pitch, -(outside ? WINDOW_VIEW.maxPitchDown : LOOK.maxPitchDown), outside ? WINDOW_VIEW.maxPitchUp : LOOK.maxPitchUp);
+  look.yaw = nudge(look.yaw, yaw, outside ? WINDOW_VIEW.minYaw : -LOOK.maxYaw, outside ? WINDOW_VIEW.maxYaw : LOOK.maxYaw);
 }
 
 const LOOK_SPEED = 0.0024, WHEEL_MIN_INTERVAL = 90;

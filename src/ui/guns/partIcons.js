@@ -50,7 +50,7 @@ const BARREL = {
     barrelBase(r, 3, 25);
     for (let x = 3; x < 15; x += 4) r.rect(x, 13, 2, 1, 0xe0601c);        // o pedaço que saiu
   },
-  wide(r) {                                          // boca larga: um sino bem aberto
+  wide(r) {                                          // calibre maior: um sino bem aberto
     tube(r, 16, 10, 12, 7);
     r.poly([[2, 3], [17, 9], [17, 18], [2, 24]], STEEL[2]);
     r.line(2, 3, 16, 9, STEEL[4]);

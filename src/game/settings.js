@@ -1,6 +1,7 @@
 // Configurações do jogador, guardadas no navegador.
 
 import { DEFAULT_QUALITY, QUALITY_LEVELS } from './quality.js';
+import { sanitizeCrosshair } from '../ui/crosshair.js';
 
 // Limites de cada ajuste. `music` é a música da corrida, `menuMusic` a de fora dela e `effects` multiplica todos os efeitos sonoros.
 export const SETTINGS_RANGE = { music: [0, 1], menuMusic: [0, 1], effects: [0, 1], sensitivity: [0.25, 3] };
@@ -42,6 +43,7 @@ export function loadSettings() {
     return [key, Math.max(low, Math.min(high, value))];
   }));
   settings.quality = QUALITY_LEVELS.includes(saved.quality) ? saved.quality : DEFAULT_QUALITY;   // qualidade gráfica (game/quality.js)
+  settings.crosshair = sanitizeCrosshair(saved.crosshair);                                       // mira da arma (ui/crosshair.js)
   const savedBindings = saved.bindings ?? {};
   settings.bindings = Object.fromEntries(ACTIONS.map(({ id, keys }) => {
     const slots = savedBindings[id];

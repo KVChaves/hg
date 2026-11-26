@@ -1,4 +1,5 @@
 import { SLIPSTREAM_KMH, VIEW } from '../config.js';
+import { drawCrosshair } from './crosshair.js';
 import { ctxText, textWidth } from '../art/font.js';
 import { bayer, hash } from '../art/shade.js';
 import { clearClickable } from './panelKit.js';
@@ -159,13 +160,8 @@ export function createHud(canvas, { chat, matchTable, isTableHeld, killFeed, pau
     if (Math.floor(performance.now() / 250) % 2 === 0) centered(ctx, 'PEGANDO FOGO', 290, '#ffb040', 2);
   }
 
-  function drawCrosshair() {
-    ctx.fillStyle = weapon.hitMarker > 0 ? '#ff3030' : '#ffffff';
-    ctx.fillRect(CENTER_X - 7, CENTER_Y - 1, 5, 2);
-    ctx.fillRect(CENTER_X + 2, CENTER_Y - 1, 5, 2);
-    ctx.fillRect(CENTER_X - 1, CENTER_Y - 7, 2, 5);
-    ctx.fillRect(CENTER_X - 1, CENTER_Y + 2, 2, 5);
-  }
+  // Mira escolhida na oficina (ui/crosshair.js): pisca em vermelho no acerto e abre com a rajada.
+  const drawGunCrosshair = () => drawCrosshair(ctx, CENTER_X, CENTER_Y, settings.crosshair, { hit: weapon.hitMarker > 0, spread: weapon.spread });
 
   // Mira de arremesso (arpão, mina e rede): anel com cantos, bem diferente da mira da arma.
   // Fecha os cantos e fica verde quando há um carro na área de mira; sem ninguém, avisa e o clique não gasta a carga.
@@ -288,7 +284,7 @@ export function createHud(canvas, { chat, matchTable, isTableHeld, killFeed, pau
     if (!spectator.active && !scoped) {
       hands.draw(ctx, { outside: windowView.active });
       if (traps.aiming) drawThrowReticle();
-      else if (hands.isHoldingGun()) drawCrosshair();
+      else if (hands.isHoldingGun()) drawGunCrosshair();
     }
     if (race.started) drawRacerNames(ctx, activeCamera(), opponents, (x, y, z) => isInSmoke(x, z) || (!windowView.active && !scoped && isBehindCabin(x, y, z)));
     if (scoped) scope.draw(ctx);

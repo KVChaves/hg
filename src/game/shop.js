@@ -7,7 +7,7 @@ import { weaponPartsCost } from './weaponParts.js';
 // O preço de um nível é o total até ele, então descer um nível devolve a diferença.
 // Personalização visual é de graça.
 
-export const BUDGET = 1150;
+export const BUDGET = 1250;
 
 export const UPGRADES = {
   life: { label: 'VIDA', levels: [{ price: 0, factor: 1 }, { price: 140, factor: 1.2 }, { price: 290, factor: 1.4 }, { price: 480, factor: 1.65 }] },

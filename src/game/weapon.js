@@ -7,14 +7,17 @@ import { groundHit } from '../world/track.js';
 const DEFAULT_TRACER = 0xffe9a0;
 const HIT_PART_TIME = 0.7;
 const ROUND_PICKUP_AT = 0.5, OUT_OF_AMMO_NOTICE = 1, TRACER_LENGTH = 120, DRY_FIRE_INTERVAL = 0.35;
-// Recuo (type.kick): a mira sobe um pouco a cada tiro e volta sozinha. `weapon.kick` é somado à direção da cabeça
-// (cabin.js), separado de `look`, para não esbarrar no limite de quanto a cabeça levanta. O tiro sai da câmera,
-// então vai para onde a mira foi empurrada.
-const KICK_VARIATION = 0.3, MAX_KICK_PITCH = 0.2, MAX_KICK_YAW = 0.08;
+// Recuo (type.kick): a cada tiro a mira salta, e só RECOIL_RETURN do salto volta sozinho. Essa parte fica em
+// `weapon.kick`, somada à direção da cabeça (cabin.js). O resto vai para o próprio olhar (`onRecoil`), e o piloto
+// corrige com o mouse. O tiro sai da câmera, então vai para onde a mira foi empurrada.
+const RECOIL_RETURN = 0.6, KICK_VARIATION = 0.3, MAX_KICK_PITCH = 0.2, MAX_KICK_YAW = 0.08;
+// Abertura da rajada (type.bloom): cada tiro soma `perShot` até `max`, e ela só fecha (`decay` por segundo) quando o
+// piloto para de atirar, ou seja, passado o intervalo da arma mais esta folga. Assim não depende dos quadros por segundo.
+const BLOOM_GRACE = 0.05;
 
 // `onIgnite(alvo, segundos)`: a flecha incendiária acertou um carro. `onGroundFire(ponto)`: caiu no asfalto
 // (ponto de world/track.js groundHit). A granada que erra explode onde bate no chão.
-export function createWeapon({ scene, camera, targets, extraTargets = () => [], shooter, canReload, onFired, onHit, onKill, onObstacleHit, onSplash = () => {}, onIgnite = () => {}, onGroundFire = () => {} }) {
+export function createWeapon({ scene, camera, targets, extraTargets = () => [], shooter, canReload, onFired, onHit, onKill, onObstacleHit, onSplash = () => {}, onRecoil = () => {}, onIgnite = () => {}, onGroundFire = () => {} }) {
   const raycaster = new THREE.Raycaster();
   const aimOffset = new THREE.Vector2();
   const right = new THREE.Vector3();
@@ -22,13 +25,14 @@ export function createWeapon({ scene, camera, targets, extraTargets = () => [], 
   const tracer = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 1), new THREE.MeshBasicMaterial({ color: DEFAULT_TRACER, fog: false }));
   tracer.visible = false;
   scene.add(tracer);
-  let tracerTime = 0, bloom = 0;
+  let tracerTime = 0, bloom = 0, bloomHold = 0;
 
   const weapon = {
     type: WEAPON_TYPES.revolver, ammo: 0, capacity: 0, reserve: 0, outOfAmmo: 0, cooldown: 0,
     isReloading: false, roundsToLoad: 0, roundProgress: 0, carryingRound: false,
     flash: 0, hitMarker: 0, hitPart: null, hitPartTime: 0, kills: 0, sinceShot: Infinity, spin: 0, shots: 0, landed: 0, dryFires: 0,   // `landed`: disparos que machucaram algum carro (mira)
     kick: { pitch: 0, yaw: 0 },
+    spread: 0,                                       // abertura da rajada agora, para a mira dinâmica (ui/crosshair.js)
   };
 
   // `type` é a arma já montada com as peças (weaponParts.buildWeapon); `reserveFactor` é a melhoria de munição comprada.
@@ -38,7 +42,7 @@ export function createWeapon({ scene, camera, targets, extraTargets = () => [], 
     Object.assign(weapon, { type, ammo: 0, capacity: type.magazine, maxReserve: Math.ceil(type.reserve * reserveFactor), reserve: Math.ceil(type.reserve * reserveFactor), isReloading: false, carryingRound: false, roundProgress: 0, roundsToLoad: 0, cooldown: 0, flash: 0, hitMarker: 0, outOfAmmo: 0, kills: 0, sinceShot: Infinity, spin: 0 });
     raycaster.far = type.range;
     tracer.material.color.setHex(type.tracer ?? DEFAULT_TRACER);
-    bloom = 0;
+    bloom = weapon.spread = 0;
   };
 
   weapon.setTracerColor = color => tracer.material.color.setHex(color ?? weapon.type.tracer ?? DEFAULT_TRACER);
@@ -96,12 +100,14 @@ export function createWeapon({ scene, camera, targets, extraTargets = () => [], 
     const { type } = weapon;
     weapon.ammo--;
     weapon.cooldown = fireInterval(type, weapon.spin);
+    bloomHold = weapon.cooldown + BLOOM_GRACE;
     weapon.flash = 0.07;
     weapon.shots++;
     weapon.sinceShot = 0;
 
     aimOffset.set((Math.random() - 0.5) * 2 * bloom, (Math.random() - 0.5) * 2 * bloom);
     if (type.bloom) bloom = Math.min(type.bloom.max, bloom + type.bloom.perShot);
+    weapon.spread = bloom;
 
     camera.updateMatrixWorld();
     raycaster.setFromCamera(aimOffset, camera);
@@ -143,8 +149,10 @@ export function createWeapon({ scene, camera, targets, extraTargets = () => [], 
   // O recuo vale para o próximo tiro: este já saiu.
   function addKick({ up, side }) {
     const { kick } = weapon;
-    kick.pitch = Math.min(MAX_KICK_PITCH, kick.pitch + up * (1 + (Math.random() - 0.5) * 2 * KICK_VARIATION));
-    kick.yaw = Math.max(-MAX_KICK_YAW, Math.min(MAX_KICK_YAW, kick.yaw + (Math.random() - 0.5) * 2 * side));
+    const rise = up * (1 + (Math.random() - 0.5) * 2 * KICK_VARIATION), drift = (Math.random() - 0.5) * 2 * side;
+    kick.pitch = Math.min(MAX_KICK_PITCH, kick.pitch + rise * RECOIL_RETURN);
+    kick.yaw = Math.max(-MAX_KICK_YAW, Math.min(MAX_KICK_YAW, kick.yaw + drift * RECOIL_RETURN));
+    onRecoil(rise * (1 - RECOIL_RETURN), drift * (1 - RECOIL_RETURN));
   }
 
   // Ciclo de recarga: a mão pega no meio do ciclo e coloca na arma no fim.
@@ -174,7 +182,8 @@ export function createWeapon({ scene, camera, targets, extraTargets = () => [], 
     weapon.hitMarker -= dt;
     weapon.hitPartTime -= dt;
     weapon.outOfAmmo -= dt;
-    if (weapon.type.bloom) bloom = Math.max(0, bloom - weapon.type.bloom.decay * dt);
+    if (weapon.type.bloom && weapon.sinceShot > bloomHold) bloom = Math.max(0, bloom - weapon.type.bloom.decay * dt);
+    weapon.spread = bloom;
     const settle = Math.exp(-weapon.type.kick.recover * dt);
     weapon.kick.pitch *= settle;
     weapon.kick.yaw *= settle;
