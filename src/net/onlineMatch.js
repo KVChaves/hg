@@ -260,6 +260,7 @@ export function createOnlineMatch({ onRopeTripped = () => {}, onPlayerKilledBy =
       (isMe ? car.effects : racer.effects).shield > 0 ? 1 : 0,
       round((isMe ? car.effects : racer.effects).cloak),
       isMe ? round(race.ownFinishTime) : 0,           // repetido em todo retrato: um pacote perdido ou um admin novo não o perdem
+      round(isMe ? CAR_MAX_HP * car.armor : racer.maxHp),   // vida máxima, para a tabela do TAB: só quem simula sabe as melhorias do carro
     ];
   }
 
@@ -273,8 +274,9 @@ export function createOnlineMatch({ onRopeTripped = () => {}, onPlayerKilledBy =
   function receiveSnapshot(values) {
     const racer = byId.get(values[0]);
     if (!racer || !racer.remote) return;
-    const [, dist, lane, x, y, z, yaw, pitch, v, vx, vz, health, dead, protectedFor, overturned, nitro, rigActive, rigAngle, rigY, tip, burningNow, shieldNow, cloakNow = 0, finishedAt = 0] = values;
+    const [, dist, lane, x, y, z, yaw, pitch, v, vx, vz, health, dead, protectedFor, overturned, nitro, rigActive, rigAngle, rigY, tip, burningNow, shieldNow, cloakNow = 0, finishedAt = 0, lifeMax = 0] = values;
     if (finishedAt > 0 && racer.reportsFinish) race.reportFinish(racer, finishedAt);
+    racer.lifeMax = lifeMax;
     racer.snapshot = {
       dist, lane, x, y, z, yaw, pitch, v, vx, vz, health, dead, protectedFor, age: 0,
       overturned: Boolean(overturned), nitro: Boolean(nitro), rigActive: Boolean(rigActive), rigAngle, rigY, tip: tip || null,
@@ -623,6 +625,7 @@ export function createOnlineMatch({ onRopeTripped = () => {}, onPlayerKilledBy =
       op.remote = false;
       op.reportsFinish = false;
       op.snapshot = null;
+      op.lifeMax = 0;
       op.name = op.profile.name;
       op.model.apply(op.livery);
     }

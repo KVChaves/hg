@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CAR_TOUGHNESS, LOOK, MAX_RACERS, VIEW, WINDOW_VIEW } from './config.js';
+import { CAR_MAX_HP, CAR_TOUGHNESS, LOOK, MAX_RACERS, VIEW, WINDOW_VIEW } from './config.js';
 import { createAudioSystem } from './audio/audioSystem.js';
 import { createRenderer, createWorldPass } from './core/renderer.js';
 import { clampLook, isLocked, keys, look, pushLook, setupInput } from './core/input.js';
@@ -493,6 +493,12 @@ const pause = createPauseMenu({
 });
 const matchTable = createMatchTable({
   getMatch: () => match, race, localName: () => race.field[0].name, getMatchKills: matchKillsOf,
+  // O jogador guarda a vida em fração (car.health); os bots, em pontos. Quem é de outro navegador manda a vida máxima.
+  lifeOf: racer => {
+    if (racer.isPlayer) { const max = CAR_MAX_HP * car.armor; return { hp: car.health * max, max }; }
+    const max = (racer.remote && racer.lifeMax) || racer.maxHp;
+    return { hp: racer.hp / racer.maxHp * max, max };
+  },
   isBlocked: () => mainMenu.isOpen || multiplayer.isOpen || matchSetup.isOpen || podium.isOpen,   // ainda montando a partida ou já acabou
 });
 const chat = createChatBox({

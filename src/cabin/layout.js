@@ -9,7 +9,7 @@ export const LAYOUT = {
   trapButton: { x: 356, y: 258 },       // botão que solta a armadilha, logo abaixo do indicador
   trapButtonSize: 16,
   ammo: { x: 503, y: 252 },
-  magazine: { x: 386, y: 237 },         // mostrador das balas no pente, à direita do mostrador da armadilha
+  magazine: { x: 386, y: 240 },         // mostrador das balas no pente, à direita do mostrador da armadilha
   nitro: { x: 468, y: 280 },
   nitroNozzle: { x: 490, y: 280 },      // saída do fogo
   nitroValve: { x: 520, y: 298 },       // onde a mão abre o registro

@@ -4,13 +4,15 @@ import { COLOR, drawHeading, drawRule, panelBox } from './panelKit.js';
 import { drawCount, drawMedal, drawPlaceBadge, drawSkull, drawStandingRow, formatPoints, nameColor, PLAYER_COLOR } from './standingsKit.js';
 
 // Tabela da partida (segure TAB): classificação da competição, abates de cada piloto na partida e, durante a corrida,
-// a posição de cada um agora. Aparece em qualquer tela depois que a partida começou, menos nos menus que ainda montam a partida.
+// a posição e a vida (atual/máxima) de cada um agora. Aparece em qualquer tela depois que a partida começou, menos nos menus que ainda montam a partida.
 
-const WIDTH = 440, ROW = 16, HEAD_Y = 36, FIRST_ROW_Y = 52;
+const WIDTH = 500, ROW = 16, HEAD_Y = 36, FIRST_ROW_Y = 52;
 // Centro de cada coluna (o nome começa em `name`).
-const COLUMNS = { place: 18, name: 32, gold: 206, silver: 234, bronze: 262, kills: 302, points: 352, live: 404 };
+const COLUMNS = { place: 18, name: 32, gold: 206, silver: 234, bronze: 262, kills: 302, points: 352, live: 400, life: 457 };
+const LOW_LIFE = 0.3;                                // abaixo desta fração a vida fica vermelha
 
-export function createMatchTable({ getMatch, race, localName, isBlocked, getMatchKills = () => 0 }) {
+// `lifeOf(carro)`: { hp, max } de um carro de `race.field`, na mesma escala do dano.
+export function createMatchTable({ getMatch, race, localName, isBlocked, getMatchKills = () => 0, lifeOf }) {
   const table = { visible: () => false };
 
   table.draw = ctx => {
@@ -19,6 +21,7 @@ export function createMatchTable({ getMatch, race, localName, isBlocked, getMatc
     const standings = match.standings();
     const liveRank = new Map((race.order ?? []).map((entry, i) => [entry.name, i + 1]));
     const showLive = race.started && !race.finished;
+    const racers = new Map((race.field ?? []).map(racer => [racer.name, racer]));
 
     const height = FIRST_ROW_Y + standings.length * ROW + 24;
     const box = { x: Math.round((VIEW.width - WIDTH) / 2), y: Math.round((VIEW.height - height) / 2), width: WIDTH, height };
@@ -33,7 +36,7 @@ export function createMatchTable({ getMatch, race, localName, isBlocked, getMatc
     [at('gold'), at('silver'), at('bronze')].forEach((x, place) => drawMedal(ctx, x, headY + 3, place));
     drawSkull(ctx, at('kills') - 3, headY, COLOR.text);
     ctxText(ctx, 'PTS', at('points') - Math.floor(textWidth('PTS') / 2) + 1, headY, COLOR.selected);
-    if (showLive) ctxText(ctx, 'PISTA', at('live') - Math.floor(textWidth('PISTA') / 2) + 1, headY, COLOR.muted);
+    if (showLive) for (const [title, column] of [['PISTA', 'live'], ['VIDA', 'life']]) ctxText(ctx, title, at(column) - Math.floor(textWidth(title) / 2) + 1, headY, COLOR.muted);
     drawRule(ctx, box.x + 8, headY + 11, WIDTH - 16);
 
     standings.forEach((entry, i) => {
@@ -49,6 +52,11 @@ export function createMatchTable({ getMatch, race, localName, isBlocked, getMatc
       if (showLive && liveRank.has(entry.name)) {
         const label = `${liveRank.get(entry.name)}o`;
         ctxText(ctx, label, at('live') - Math.floor(textWidth(label) / 2) + 1, y, mine ? PLAYER_COLOR : COLOR.text);
+      }
+      if (showLive && racers.has(entry.name)) {
+        const { hp, max } = lifeOf(racers.get(entry.name));
+        const label = `${Math.ceil(Math.max(0, hp))}/${Math.round(max)}`;   // arredonda para cima: carro vivo nunca mostra 0
+        ctxText(ctx, label, at('life') - Math.floor(textWidth(label) / 2) + 1, y, hp < max * LOW_LIFE ? PLAYER_COLOR : COLOR.text);
       }
     });
 

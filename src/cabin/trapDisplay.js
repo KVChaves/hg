@@ -35,12 +35,12 @@ export function createTrapDisplay(parent) {
 
 // Mostrador das balas no pente, ao lado da munição de reserva: mesma caixa do mostrador da armadilha, com os
 // números em âmbar (vermelhos com o pente vazio), alinhados à direita para não pular quando o número encolhe.
-const MAG_W = 30, MAG_H = 19;
+const MAG_W = 24, MAG_H = 13;
 
 export function createMagazineDisplay(parent) {
   const r = new Raster(MAG_W, MAG_H);
-  r.poly([[2, 1], [26, 0], [29, 4], [29, 16], [3, 18], [0, 15]], 0x4a463c);
-  r.poly([[3, 3], [25, 2], [27, 5], [27, 15], [4, 16], [2, 14]], 0x000000);
+  r.poly([[2, 1], [21, 0], [23, 3], [23, 11], [3, 12], [0, 10]], 0x4a463c);
+  r.poly([[3, 2], [20, 1], [22, 3], [22, 10], [3, 11], [1, 9]], 0x000000);
   const base = r.snapshot();
   const sprite = new Sprite(parent, r.commit(), { ...LAYOUT.magazine, depth: DEPTH.gauges });
 
@@ -49,13 +49,8 @@ export function createMagazineDisplay(parent) {
     if (ammo === last) return;
     last = ammo;
     r.restore(base);
-    // Negrito (cada dígito desenhado duas vezes, 6 pixels de largura) com 1 pixel de folga entre os dígitos.
-    const text = String(Math.max(0, Math.min(999, ammo))), left = 26 - text.length * 7;
-    const color = ammo > 0 ? 0xf0a020 : 0xf01810;
-    [...text].forEach((digit, i) => {
-      rasterText(r, digit, left + i * 7, 4, color, 1, 2);
-      rasterText(r, digit, left + i * 7 + 1, 4, color, 1, 2);
-    });
+    const text = String(Math.max(0, Math.min(999, ammo))), left = 21 - (text.length * 6 - 1);
+    rasterText(r, text, left, 3, ammo > 0 ? 0xf0a020 : 0xf01810);
     r.commit();
     sprite.refresh();
   };
