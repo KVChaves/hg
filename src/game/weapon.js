@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { damageOpponent } from './opponents.js';
-import { damageAtDistance, fireInterval, shakeAtDistance, stepSpin, WEAPON_TYPES } from './weaponTypes.js';
+import { damageAtDistance, DEFAULT_WEAPON, fireInterval, shakeAtDistance, stepSpin, WEAPON_TYPES } from './weaponTypes.js';
 import { partHit } from './carParts.js';
 import { groundHit } from '../world/track.js';
 
@@ -28,7 +28,7 @@ export function createWeapon({ scene, camera, targets, extraTargets = () => [], 
   let tracerTime = 0, bloom = 0, bloomHold = 0;
 
   const weapon = {
-    type: WEAPON_TYPES.revolver, ammo: 0, capacity: 0, reserve: 0, outOfAmmo: 0, cooldown: 0,
+    type: WEAPON_TYPES[DEFAULT_WEAPON], ammo: 0, capacity: 0, reserve: 0, outOfAmmo: 0, cooldown: 0,
     isReloading: false, roundsToLoad: 0, roundProgress: 0, carryingRound: false,
     flash: 0, hitMarker: 0, hitPart: null, hitPartTime: 0, kills: 0, sinceShot: Infinity, spin: 0, shots: 0, landed: 0, dryFires: 0,   // `landed`: disparos que machucaram algum carro (mira)
     kick: { pitch: 0, yaw: 0 },
@@ -111,9 +111,11 @@ export function createWeapon({ scene, camera, targets, extraTargets = () => [], 
 
     camera.updateMatrixWorld();
     raycaster.setFromCamera(aimOffset, camera);
-    const hits = raycaster.intersectObjects([...targets.filter(t => !t.dead), ...extraTargets()].map(t => t.group), true);
     const { origin, direction } = raycaster.ray;
-    let end = origin.clone().addScaledVector(direction, Math.min(type.range, TRACER_LENGTH)), landed = false;
+    // Chão e estruturas seguram a bala (world/shotBlock.js): o que estiver atrás deles não é atingido.
+    const blocked = scene.shotBlock?.(origin, direction, type.range) ?? Infinity;
+    const hits = raycaster.intersectObjects([...targets.filter(t => !t.dead), ...extraTargets()].map(t => t.group), true).filter(hit => hit.distance < blocked);
+    let end = origin.clone().addScaledVector(direction, Math.min(type.range, TRACER_LENGTH, blocked)), landed = false;
 
     if (hits.length) {
       end = hits[0].point;
@@ -133,6 +135,10 @@ export function createWeapon({ scene, camera, targets, extraTargets = () => [], 
       }
       if (type.burn && !target.isObstacle) onIgnite(target, type.burn);
       if (type.splash && explodeAt(end, target)) landed = true;
+    } else if (blocked < Infinity) {
+      // Bateu no chão ou numa parede: a granada explode ali e a flecha deixa fogo só se caiu no asfalto.
+      if (type.splash && explodeAt(end, null)) landed = true;
+      if (type.burn) { const ground = groundHit(origin, direction, blocked + 1); if (ground) onGroundFire(ground); }
     } else if (type.splash || type.burn) {
       const ground = groundHit(origin, direction, type.range);
       if (ground) {

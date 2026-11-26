@@ -21,6 +21,7 @@ export function createMatch({ racerNames, raceCount }) {
     lastOrder: null,                                 // nomes na ordem de chegada da última corrida
     biomesPlayed: [],                                // ids dos biomas já sorteados, em ordem (pickMatchBiome)
     upcomingBiome: null,                             // id do bioma da próxima corrida, já sorteado para avisar os pilotos entre as corridas
+    weaponCycle: { seen: [], last: [] },             // sorteio de armas (game/weaponDraft.js): já mostradas no ciclo e a mesa anterior
     // Quem chegou na frente larga na frente. Sem corrida anterior, não define.
     get nextGrid() { return match.lastOrder && [...match.lastOrder]; },
     get currentRace() { return Math.min(match.racesDone + 1, raceCount); },
@@ -63,12 +64,13 @@ export function createMatch({ racerNames, raceCount }) {
     // Para quem entra no meio da partida: o placar atual vai para ele e os nomes da lista nova assumem a tabela.
     // Quem é novo começa como se tivesse chegado em último em todas as corridas já feitas.
     snapshot() {
-      return { racesDone: match.racesDone, lastOrder: match.lastOrder, biomesPlayed: match.biomesPlayed, upcomingBiome: match.upcomingBiome, entries: [...table.values()] };
+      return { racesDone: match.racesDone, lastOrder: match.lastOrder, biomesPlayed: match.biomesPlayed, upcomingBiome: match.upcomingBiome, weaponCycle: match.weaponCycle, entries: [...table.values()] };
     },
     restore(data, names) {
       match.racesDone = data.racesDone;
       match.biomesPlayed = [...(data.biomesPlayed ?? [])];
       match.upcomingBiome = data.upcomingBiome ?? null;
+      match.weaponCycle = { seen: [...(data.weaponCycle?.seen ?? [])], last: [...(data.weaponCycle?.last ?? [])] };
       match.lastOrder = data.lastOrder ? data.lastOrder.filter(name => names.includes(name)) : null;
       const old = new Map(data.entries.map(entry => [entry.name, entry]));
       table.clear();

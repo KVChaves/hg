@@ -4,6 +4,46 @@
 
 export const PATCH_NOTES = [
   {
+    title: 'ARSENAL NOVO',
+    items: [
+      'As armas foram trocadas por 11 novas: CZ75-AUTO, DESERT EAGLE, R8 REVOLVER, NOVA, MAG-7, M249, P90, AK-47, M4A4, AUG e AWP.',
+      'A AWP e a AUG têm luneta no botão direito (a da AUG aproxima menos).',
+      'As balas não atravessam mais o chão, morros, muros, túneis, rampas e as outras estruturas do mapa. Os bots também esperam ter a linha livre para atirar.',
+      'Quem tinha uma arma antiga equipada ou salva num carro recebe a parecida: revólver vira R8, revólver pesado vira Desert Eagle, submetralhadora vira P90, metralhadora vira M249, escopeta e lança-granadas viram Nova, escopeta automática vira MAG-7, rifle vira AK-47, sniper e besta viram AWP.',
+    ],
+  },
+  {
+    title: 'MULTIPLAYER: SORTEIO DAS ARMAS',
+    items: [
+      'O admin liga ou desliga na sala, no botão SORTEIO DE ARMAS (vem desligado). Desligado, cada um escolhe a arma na garagem, como antes.',
+      'A ordem é: escolha do mapa, escolha das armas e garagem. A mesa só aparece depois que todos os jogadores derem OK.',
+      'Na mesa há uma arma para cada jogador. Cada um vê a mão de todos, com o nome, andando junto com o mouse do dono. Clique na arma que você quer (ou use as teclas 1 a 8) para a sua mão parar nela.',
+      'Quem aponta sozinho leva a arma. Se dois ou mais quiserem a mesma, decidem num mata-mata de pedra, papel e tesoura (com número ímpar, passa direto primeiro o líder da última corrida e depois o líder de abates), e quem perde escolhe de novo entre as que sobraram. Ninguém recebe arma sem escolher e não há tempo limite (depois de um tempo o admin pode tirar quem não escolhe).',
+      'As armas mudam a cada corrida: uma arma só volta à mesa depois que todas já apareceram.',
+      'Na garagem a arma sorteada fica travada. Se ela não couber no saldo, a garagem tira itens do bagageiro (os mais caros primeiro) até caber. No fim da partida, a sua arma de sempre volta.',
+    ],
+  },
+  {
+    title: 'ONLINE: MENOS VANTAGEM DO ADMIN',
+    items: [
+      'Chegada: cada jogador mede o próprio tempo desde a sua largada. O atraso da rede não conta mais contra quem não é o admin.',
+      'Raios: todos são mirados com a mesma frequência. Em partidas com bots, o admin não recebe mais menos raios que os outros.',
+    ],
+  },
+  {
+    title: 'GARAGEM: FICHA DO CARRO',
+    items: [
+      'Novo botão FICHA DO CARRO na garagem: mostra vida, defesas, dano físico, nitro e os principais números da arma, já com as melhorias e peças compradas.',
+    ],
+  },
+  {
+    title: 'RANKEADA: ABANDONO',
+    items: [
+      'Sair no meio de uma corrida rankeada agora conta: quem sai fica em último naquela corrida. Se vários saírem, o primeiro a sair fica atrás.',
+      'Vale também para quem fecha o jogo ou está desconectado quando a corrida termina, e para quem sai depois de cruzar a linha, antes de a corrida encerrar. Quem é expulso pelo admin não é punido.',
+    ],
+  },
+  {
     title: 'MIRA PERSONALIZADA',
     items: [
       'Nova aba MIRA na OFICINA, ao lado de ARMA: a mira vale para todas as armas e cada ajuste tem miniaturas, como as peças.',

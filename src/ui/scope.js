@@ -1,11 +1,12 @@
 import { VIEW } from '../config.js';
 import { bayer, smooth } from '../art/shade.js';
 
-// Luneta da sniper: segurando o botão direito com a sniper na mão, a câmera fecha o campo de visão e a tela
+// Luneta (armas com `scope`, a AWP e a AUG): segurando o botão direito com ela na mão, a câmera fecha o campo de visão
+// até o `fov` da arma e a tela
 // vira a luneta. A mira balança com a respiração e muito mais com o carro andando, e o mouse fica mais lento.
 // Tinta no para-brisa impede de mirar (não dá para ver através dela).
 
-const SCOPE_FOV = 20, ZOOM_SPEED = 14, SHOWN_FROM = 0.55;
+const ZOOM_SPEED = 14, SHOWN_FROM = 0.55;
 const SWAY_STILL = 0.0035, SWAY_MOVING = 0.012, SWAY_FULL_SPEED = 40;     // radianos; m/s em que o balanço é máximo
 const RADIUS = 168, EDGE = 10;                                            // pixels da tela
 const CX = VIEW.width / 2, CY = VIEW.height / 2;
@@ -45,17 +46,18 @@ function paintScope() {
 
 export function createScope({ camera, weapon, hands, car, isAiming, canAim }) {
   const overlay = paintScope();
-  let amount = 0, clock = 0, lastFov = VIEW.fov;
+  let amount = 0, clock = 0, lastFov = VIEW.fov, scopeFov = VIEW.fov;
 
   const scope = {
     get active() { return amount >= SHOWN_FROM; },
     // fator da sensibilidade do mouse: com zoom, o mesmo movimento gira menos
-    sensitivity: () => 1 + (SCOPE_FOV / VIEW.fov - 1) * smooth(amount),
+    sensitivity: () => 1 + (scopeFov / VIEW.fov - 1) * smooth(amount),
     update(dt) {
-      const wants = weapon.type.id === 'sniper' && isAiming() && hands.isHoldingGun() && !weapon.isReloading && car.effects.paint <= 0 && canAim();
+      if (weapon.type.scope) scopeFov = weapon.type.scope.fov;   // guardado: a troca de arma não pula o zoom que está fechando
+      const wants = Boolean(weapon.type.scope) && isAiming() && hands.isHoldingGun() && !weapon.isReloading && car.effects.paint <= 0 && canAim();
       amount += ((wants ? 1 : 0) - amount) * (1 - Math.exp(-ZOOM_SPEED * dt));
       if (!wants && amount < 0.01) amount = 0;
-      const fov = VIEW.fov + (SCOPE_FOV - VIEW.fov) * smooth(amount);
+      const fov = VIEW.fov + (scopeFov - VIEW.fov) * smooth(amount);
       if (Math.abs(fov - lastFov) > 0.01) {
         camera.fov = lastFov = fov;
         camera.updateProjectionMatrix();

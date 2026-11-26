@@ -2,7 +2,8 @@ import { CLEAR } from '../../art/raster.js';
 import { dither, hash, mix } from '../../art/shade.js';
 import { ctxBox, ctxDisc, ctxLine, DARK_STEEL, layerOf } from './gunPaint.js';
 
-// Desenho das armas com desenho próprio: revólver pesado, sniper, escopeta automática, besta, lança-granadas e metralhadora.
+// Desenhos de arma: revólver pesado, sniper, escopeta de tambor, besta, arma de bomba e metralhadora.
+// O terceiro argumento é a arma (game/weaponTypes.js), para os desenhos que mudam de uma arma para outra.
 // Mesmas convenções de gunArt.js: o cano aponta para a esquerda, e os pontos são pixels da imagem.
 // Cada uma tem um mecanismo que só ela tem, para se mover diferente das armas da mesma família.
 
@@ -449,16 +450,19 @@ export function paintBurningTip(ctx, x, y, t) {
   if (hash(frame, 20) > 0.6) ctxBox(ctx, 0xffd060, x + 6 + Math.floor(hash(frame, 21) * 6), y - 11 - Math.floor(hash(frame, 22) * 3), 1, 1);
 }
 
-// Lança-granadas de bomba: cano grosso, mira de escada e tubo com janela mostrando as granadas.
+// Arma de bomba: cano grosso, mira de escada e tubo com janela mostrando a munição.
 // Depois de cada tiro a mão larga o cabo, puxa a bomba (cospe o estojo) e volta.
-export function buildGrenadeLauncher(custom, m) {
-  const W = 120, H = 56, accessory = custom.options.accessory;
+// Como escopeta (`type.falloff`, a Nova) o tubo leva cartuchos vermelhos, a mira é uma massa simples e o clarão é de chumbo.
+export function buildGrenadeLauncher(custom, m, type) {
+  const W = 120, H = 56, accessory = custom.options.accessory, shells = Boolean(type?.falloff);
   const PUMP_TRAVEL = 12, PUMP_GRIP = [42, 28];
   const pumpShift = p => p.pump * PUMP_TRAVEL;
-  const GRENADE = [0x2a3018, 0x4a5428, 0x6a7638, 0x8a9a4a];
+  const GRENADE = shells ? [0x641410, 0xa02418, 0xc83a28, 0xe06048] : [0x2a3018, 0x4a5428, 0x6a7638, 0x8a9a4a];
+  const CAP = shells ? 0xc09a4a : 0xd8b040;
   return {
     size: [W, H], pivot: [84, 22], muzzle: [0, 14], hand: [92, 32], load: [60, 30], eject: [68, 10],
-    carry: 'grenade', casing: 'grenade', flashSize: 1.3, smoke: 2.4,
+    carry: shells ? 'shell' : 'grenade', casing: shells ? 'shell' : 'grenade', flashSize: shells ? 1.6 : 1.3, smoke: shells ? 1.6 : 2.4,
+    ...(shells && { flashStyle: 'scatter' }),
     recoil: { back: 9, up: 11, tilt: 0.34, stiffness: 170, damping: 12 },
     reload: { x: 498, y: 200, angle: -0.35 },
     handPath: p => ({ point: [PUMP_GRIP[0] + pumpShift(p), PUMP_GRIP[1]], weight: p.actionHand }),
@@ -473,27 +477,39 @@ export function buildGrenadeLauncher(custom, m) {
         for (let i = 0; i < 4; i++) r.line(87 + i * 2, 25 + i, 92 + i * 2, 42 + i, m.grip[0]);
         if (accessory === 'bandolier') {
           r.line(96, 11, 108, 24, 0x3a2a18, 4);
-          for (let i = 0; i < 3; i++) { const x = 98 + i * 4, y = 13 + i * 4.5; r.disc(x, y, 2.4, GRENADE[2]); r.put(x - 1, y - 1, GRENADE[3]); r.rect(x - 2, y + 1, 4, 1, 0xd8b040); }
+          for (let i = 0; i < 3; i++) { const x = 98 + i * 4, y = 13 + i * 4.5; r.disc(x, y, 2.4, GRENADE[2]); r.put(x - 1, y - 1, GRENADE[3]); r.rect(x - 2, y + 1, 4, 1, CAP); }
         }
       }) },
       { image: layerOf(W, H, r => {
         r.ring(80, 30, 6, 4.6, m.metal[2]);
         r.line(81, 27, 79, 32, m.metal[1], 2);
-        // cano grosso com boca larga
-        r.rect(4, 8, 54, 12, m.steel(0.75));
-        r.rect(4, 8, 54, 1, m.metal[4]);
-        r.rect(4, 19, 54, 1, m.metal[0]);
-        r.rect(0, 6, 5, 16, m.steel(0.5));
-        r.rect(0, 6, 5, 1, m.metal[4]);
-        r.rect(0, 10, 2, 8, 0x050506);
-        for (let x = 10; x < 54; x += 9) r.rect(x, 9, 1, 10, m.metal[1]);
-        r.rect(7, 2, 3, 6, m.metal[2]);
-        r.rect(7, 2, 3, 1, 0xf0c040);
-        // mira de escada
-        r.rect(44, 0, 2, 8, m.metal[1]);
-        r.rect(51, 0, 2, 8, m.metal[1]);
-        for (let y = 1; y < 8; y += 2) r.rect(44, y, 9, 1, m.metal[3]);
-        r.rect(46, 0, 5, 1, 0xf0c040);
+        if (shells) {
+          // cano de escopeta com nervura e massa de mira na ponta
+          r.rect(0, 10, 58, 8, m.steel(0.75));
+          r.rect(0, 10, 58, 1, m.metal[4]);
+          r.rect(0, 17, 58, 1, m.metal[0]);
+          r.rect(0, 8, 58, 2, m.metal[2]);
+          for (let x = 6; x < 56; x += 5) r.rect(x, 8, 2, 1, m.metal[0]);
+          r.rect(0, 9, 2, 10, m.metal[1]);
+          r.rect(0, 12, 1, 4, 0x050506);
+          r.rect(3, 6, 2, 2, 0xe8e0c8);
+        } else {
+          // cano grosso com boca larga
+          r.rect(4, 8, 54, 12, m.steel(0.75));
+          r.rect(4, 8, 54, 1, m.metal[4]);
+          r.rect(4, 19, 54, 1, m.metal[0]);
+          r.rect(0, 6, 5, 16, m.steel(0.5));
+          r.rect(0, 6, 5, 1, m.metal[4]);
+          r.rect(0, 10, 2, 8, 0x050506);
+          for (let x = 10; x < 54; x += 9) r.rect(x, 9, 1, 10, m.metal[1]);
+          r.rect(7, 2, 3, 6, m.metal[2]);
+          r.rect(7, 2, 3, 1, 0xf0c040);
+          // mira de escada
+          r.rect(44, 0, 2, 8, m.metal[1]);
+          r.rect(51, 0, 2, 8, m.metal[1]);
+          for (let y = 1; y < 8; y += 2) r.rect(44, y, 9, 1, m.metal[3]);
+          r.rect(46, 0, 5, 1, 0xf0c040);
+        }
         // tubo das granadas com janela
         r.rect(8, 21, 50, 8, m.steel(0.45));
         r.rect(8, 21, 50, 1, m.metal[3]);
@@ -505,17 +521,18 @@ export function buildGrenadeLauncher(custom, m) {
         r.rect(56, 27, 10, 2, m.metal[0]);
         r.disc(88, 22, 1.3, m.metal[4]);
         // faixa de alerta na boca
-        for (let x = 0; x < 5; x += 2) r.rect(x, 20, 1, 2, 0xf0c040);
+        if (!shells) for (let x = 0; x < 5; x += 2) r.rect(x, 20, 1, 2, 0xf0c040);
       }) },
-      // granadas no tubo: uma por munição, vistas pela janela
+      // munição no tubo: uma por bala, vistas pela janela (os cartuchos são mais curtos e cabem mais)
       {
         paint: (ctx, p) => {
-          for (let i = 0; i < Math.min(3, p.ammo); i++) {
-            const x = 23 - i * 7;
-            ctxBox(ctx, GRENADE[2], x, 23, 6, 4);
-            ctxBox(ctx, GRENADE[3], x, 23, 6, 1);
-            ctxBox(ctx, 0xd8b040, x + 4, 23, 2, 4);
-            ctxBox(ctx, GRENADE[0], x, 26, 6, 1);
+          const step = shells ? 5 : 7, size = shells ? 4 : 6, shown = shells ? 4 : 3;
+          for (let i = 0; i < Math.min(shown, p.ammo); i++) {
+            const x = 25 - size - i * step;
+            ctxBox(ctx, GRENADE[2], x, 23, size, 4);
+            ctxBox(ctx, GRENADE[3], x, 23, size, 1);
+            ctxBox(ctx, CAP, x + size - 2, 23, 2, 4);
+            ctxBox(ctx, GRENADE[0], x, 26, size, 1);
           }
         },
       },
@@ -547,9 +564,10 @@ export function buildGrenadeLauncher(custom, m) {
 // Metralhadora de canos giratórios: seis canos em volta do eixo, redesenhados a cada quadro conforme giram
 // (os de trás mais escuros), caixa de munição pendurada embaixo com a cinta subindo para a culatra,
 // capa de alimentação que abre na recarga e alavanca de armar puxada no fim dela. Os canos esquentam na rajada.
-export function buildGatling(custom, m) {
-  const W = 128, H = 66, accessory = custom.options.accessory;
-  const AXIS = 18, SPREAD = 4.5, BARRELS = 6, BARREL_END = 64, COVER_HINGE = [88, 8];
+// Sem canos giratórios (`type.spinUp` ausente, a M249) fica um cano só, grosso, com capa furada e sem o motor.
+export function buildGatling(custom, m, type) {
+  const W = 128, H = 66, accessory = custom.options.accessory, single = Boolean(type) && !type.spinUp;
+  const AXIS = 18, SPREAD = single ? 0 : 4.5, BARRELS = single ? 1 : 6, BARREL_END = 64, COVER_HINGE = [88, 8];
   const BOX = { x: 64, y: 36, w: 24, h: 22 }, BOX_DROP = 34;
   const OLIVE = [0x1e2216, 0x343a24, 0x4c5434, 0x667048, 0x828c5c];
   const heatColor = (base, h) => (h < 0.2 ? base : h < 0.6 ? mix(base, 0xa82810, (h - 0.2) / 0.4) : mix(0xa82810, 0xffa040, (h - 0.6) / 0.4));
@@ -585,6 +603,17 @@ export function buildGatling(custom, m) {
           }
           barrels.sort((a, b) => a.depth - b.depth);
           const blur = clamp01((p.rotorSpeed - 8) / 10);       // girando muito rápido, os canos viram um borrão
+          if (single) {
+            ctxBox(ctx, m.metal[1], 3, AXIS - 2, BARREL_END - 3, 5);
+            ctxBox(ctx, m.metal[3], 3, AXIS - 2, BARREL_END - 3, 1);
+            ctxBox(ctx, heatColor(m.metal[1], p.heat), 3, AXIS - 2, 12, 5);
+            ctxBox(ctx, 0x050506, 0, AXIS - 1, 3, 3);
+            // capa furada por cima do cano
+            ctxBox(ctx, m.metal[2], 36, AXIS - 4, 22, 9);
+            ctxBox(ctx, m.metal[4], 36, AXIS - 4, 22, 1);
+            for (let x = 38; x < 56; x += 4) ctxBox(ctx, heatColor(0x08080a, p.heat), x, AXIS - 1, 2, 3);
+            return;
+          }
           for (const { y, depth } of barrels) {
             const tone = Math.round(clamp01(depth * 0.5 + 0.5) * 3), top = Math.round(y - 1);
             const body = m.metal[tone], light = m.metal[Math.min(4, tone + 1)];
@@ -598,7 +627,7 @@ export function buildGatling(custom, m) {
       },
       // braçadeiras, eixo, culatra, motor e alça
       { image: layerOf(W, H, r => {
-        for (const [x, w] of [[2, 4], [30, 4]]) {
+        for (const [x, w] of single ? [[6, 3]] : [[2, 4], [30, 4]]) {
           r.rect(x, AXIS - 7, w, 15, m.steel(0.65));
           r.rect(x, AXIS - 7, w, 1, m.metal[4]);
           r.rect(x, AXIS + 7, w, 1, m.metal[0]);
@@ -610,12 +639,15 @@ export function buildGatling(custom, m) {
         r.rect(64, 6, 44, 2, m.metal[3]);
         r.rect(64, 33, 44, 1, m.metal[0]);
         for (let x = 70; x < 104; x += 6) r.rect(x, 22, 3, 8, m.metal[1]);
-        // motor que gira os canos
-        r.rect(88, 14, 14, 8, m.steel(0.8));
-        r.rect(88, 14, 14, 1, m.metal[4]);
-        for (let x = 90; x < 102; x += 3) r.rect(x, 15, 1, 6, m.metal[1]);
-        r.disc(84, 18, 3, m.metal[2]);
-        r.disc(84, 18, 1.4, m.metal[4]);
+        // motor que gira os canos (no cano único, só a janela de ejeção)
+        if (single) r.rect(84, 14, 16, 5, 0x08080a);
+        else {
+          r.rect(88, 14, 14, 8, m.steel(0.8));
+          r.rect(88, 14, 14, 1, m.metal[4]);
+          for (let x = 90; x < 102; x += 3) r.rect(x, 15, 1, 6, m.metal[1]);
+          r.disc(84, 18, 3, m.metal[2]);
+          r.disc(84, 18, 1.4, m.metal[4]);
+        }
         // alça de carregar
         r.rect(72, 0, 26, 2, m.metal[2]);
         r.rect(72, 0, 26, 1, m.metal[4]);

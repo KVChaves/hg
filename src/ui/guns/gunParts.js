@@ -1,4 +1,5 @@
 import { hash } from '../../art/shade.js';
+import { artOf } from '../../game/weaponTypes.js';
 
 // Peças de combate (game/weaponParts.js) desenhadas por cima da arma já montada. Cada peça é pintada na camada onde
 // ela fica presa, então acompanha a animação: o compensador sobe com os canos da escopeta, a fita do carregador cai
@@ -12,7 +13,16 @@ import { hash } from '../../art/shade.js';
 //   heavy    reforço do cano pesado, quando a boca não é um cano (a besta)
 //   pad      soleira de borracha do apoio, quando a mão não segura um cabo (a do rifle fica na alavanca)
 //   extend   desenho próprio do pente estendido
+// Os lugares seguem o desenho (`art` da arma); uma arma com lugares próprios (as pistolas, que mudam de tamanho, e os
+// fuzis, que mudam de corpo) tem a entrada pelo id.
+const pistolSpots = k => ({ tag: [Math.round(36 * k), Math.round(19 * k)], quick: [Math.round(46 * k), Math.round(46 * k)], extend: extendMagazine });
 const SPOTS = {
+  cz75: pistolSpots(1),
+  deagle: pistolSpots(1.22),
+  ak47: { belt: { x: 102, y: 17, count: 6, on: [104, 20], kind: 'rounds' }, tag: [58, 13], quick: [57, 44], extend: extendMagazine },
+  m4a4: { belt: { x: 116, y: 21, count: 4, on: [118, 23], kind: 'rounds' }, tag: [58, 19], quick: [64, 42], extend: extendMagazine },
+  aug: { belt: { x: 108, y: 19, count: 6, on: [110, 22], kind: 'rounds' }, tag: [86, 14], quick: [90, 42], extend: extendMagazine },
+  nova: { belt: { x: 36, y: 30, count: 5, on: [36, 27], kind: 'shells' }, tag: [74, 22], quick: [60, 26] },
   revolver: { belt: { x: 9, y: 23, count: 5, on: [12, 21], kind: 'rounds' }, tag: [46, 15] },
   shotgun: { belt: { x: 30, y: 29, count: 6, on: [32, 25], kind: 'shells' }, tag: [64, 18] },
   smg: { belt: { x: 9, y: 21, count: 4, on: [12, 19], kind: 'rounds' }, tag: [41, 46], quick: [42, 54], extend: extendSmg },
@@ -21,8 +31,8 @@ const SPOTS = {
   sniper: { belt: { x: 144, y: 19, count: 6, on: [146, 22], kind: 'rounds' }, tag: [112, 26] },
   autoshotgun: { belt: { x: 12, y: 22, count: 6, on: [14, 19], kind: 'shells' }, tag: [60, 20] },
   crossbow: { belt: { x: 62, y: 37, count: 4, on: [66, 34], kind: 'bolts' }, tag: [62, 33], heavy: { x: 22, y: 31, w: 32, h: 4 } },
-  grenade: { belt: { x: 36, y: 30, count: 4, on: [36, 27], kind: 'grenades' }, tag: [74, 22], quick: [60, 26] },
-  heavymg: { belt: { x: 34, y: 24, count: 6, on: [36, 21], kind: 'rounds' }, tag: [103, 23], quick: [84, 30], extend: extendGatling },
+  pump: { belt: { x: 36, y: 30, count: 4, on: [36, 27], kind: 'grenades' }, tag: [74, 22], quick: [60, 26] },
+  gatling: { belt: { x: 34, y: 24, count: 6, on: [36, 21], kind: 'rounds' }, tag: [103, 23], quick: [84, 30], extend: extendGatling },
 };
 
 const BRASS = [0x6a4a18, 0xb08030, 0xe0b850];
@@ -231,6 +241,18 @@ function extendSmg(art, m) {
   art.load = [art.load[0], art.load[1] + 4];
 }
 
+// Pistolas e fuzis: um gomo a mais embaixo do pente, na camada dele (cai junto na recarga).
+function extendMagazine(art, m) {
+  const layer = art.layers.find(candidate => candidate.isMagazine), base = art.magazineBase;
+  if (!layer || !base) return;
+  paintOn(layer, ctx => {
+    fill(ctx, m.metal[2], base.x + 1, base.y + 2, base.w - 2, 5);
+    fill(ctx, m.metal[3], base.x + 1, base.y + 2, 2, 5);
+    fill(ctx, m.metal[1], base.x, base.y + 6, base.w, 2);
+  });
+  art.load = [art.load[0], art.load[1] + 5];
+}
+
 function extendRifle(art, m) {
   paintOn(layerAt(art, 30, 16), ctx => {
     fill(ctx, m.metal[2], 0, 15, 66, 4);                                       // tubo mais grosso e até a boca
@@ -316,7 +338,7 @@ function ammoTag(art, [x, y], ammo) {
 // `parts` como em weaponParts.sanitizeWeaponParts; o que estiver no original não desenha nada.
 export function applyCombatParts(art, id, parts, m) {
   if (!parts) return art;
-  const spot = SPOTS[id] ?? {};
+  const spot = SPOTS[id] ?? SPOTS[artOf(id)] ?? {};
   // O carregador e a munição primeiro: o cano curto apaga a ponta depois deles, e a empunhadura pinta por cima do cabo.
   if (parts.magazine === 'extended') spot.extend?.(art, m);
   if (parts.magazine === 'quick') quickMagazine(art, spot.quick);

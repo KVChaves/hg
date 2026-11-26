@@ -33,6 +33,34 @@ export function createTrapDisplay(parent) {
   };
 }
 
+// Mostrador das balas no pente, ao lado da munição de reserva: mesma caixa do mostrador da armadilha, com os
+// números em âmbar (vermelhos com o pente vazio), alinhados à direita para não pular quando o número encolhe.
+const MAG_W = 30, MAG_H = 19;
+
+export function createMagazineDisplay(parent) {
+  const r = new Raster(MAG_W, MAG_H);
+  r.poly([[2, 1], [26, 0], [29, 4], [29, 16], [3, 18], [0, 15]], 0x4a463c);
+  r.poly([[3, 3], [25, 2], [27, 5], [27, 15], [4, 16], [2, 14]], 0x000000);
+  const base = r.snapshot();
+  const sprite = new Sprite(parent, r.commit(), { ...LAYOUT.magazine, depth: DEPTH.gauges });
+
+  let last = -1;
+  return ammo => {
+    if (ammo === last) return;
+    last = ammo;
+    r.restore(base);
+    // Negrito (cada dígito desenhado duas vezes, 6 pixels de largura) com 1 pixel de folga entre os dígitos.
+    const text = String(Math.max(0, Math.min(999, ammo))), left = 26 - text.length * 7;
+    const color = ammo > 0 ? 0xf0a020 : 0xf01810;
+    [...text].forEach((digit, i) => {
+      rasterText(r, digit, left + i * 7, 4, color, 1, 2);
+      rasterText(r, digit, left + i * 7 + 1, 4, color, 1, 2);
+    });
+    r.commit();
+    sprite.refresh();
+  };
+}
+
 // Botão do painel que a mão aperta para soltar a armadilha.
 export function createTrapButton(parent) {
   const SIZE = LAYOUT.trapButtonSize, CENTER = SIZE / 2;

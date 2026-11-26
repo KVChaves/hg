@@ -12,25 +12,23 @@ import { WEAPON_TYPES } from './weaponTypes.js';
 //   roundTime  tempo de recarga (por bala ou pelo pente inteiro)
 //   reserve    balas de reserva (a arma começa descarregada, então é o total da corrida)
 //   reach      distância em que a escopeta perde o dano (falloff)
-//   splash     raio da explosão da granada     burn   segundos de fogo da flecha incendiária
 // Somas: `magazine` (balas a mais no pente, por arma em EXTRA_ROUNDS), `impact` (balanço por ponto de dano).
 // `ammo`: tipo de munição; muda o dano contra escudo e blindagem (ver bulletHit).
 //
-// O pente só muda de tamanho onde o desenho da arma não mostra as balas (submetralhadora, metralhadora e rifle).
+// O pente só muda de tamanho onde o desenho da arma não mostra as balas (pistolas, P90, M249 e fuzis).
 // Alcance não é vantagem vendida: quase todas as armas já alcançam além da distância em que os pilotos se enxergam.
 
-const BULLETS = ['revolver', 'magnum', 'smg', 'heavymg', 'rifle', 'sniper', 'shotgun', 'autoshotgun'];
-const SHOTGUNS = ['shotgun', 'autoshotgun'];
-// Armas em que o recuo pesa: atiram rápido o bastante para a mira ainda não ter voltado no tiro seguinte. Nas lentas
-// (rifle, revólver pesado, sniper, besta, granada) há tempo de sobra para corrigir antes do próximo tiro.
-const RECOIL_MATTERS = ['revolver', 'shotgun', 'smg', 'heavymg', 'autoshotgun'];
 const ALL = Object.keys(WEAPON_TYPES);
+const SHOTGUNS = ALL.filter(id => WEAPON_TYPES[id].falloff);
+// Armas em que o recuo pesa: atiram rápido o bastante para a mira ainda não ter voltado no tiro seguinte. Nas lentas
+// (R8, escopetas de bomba e AWP) há tempo de sobra para corrigir antes do próximo tiro.
+const RECOIL_MATTERS = ['cz75', 'deagle', 'p90', 'm249', 'ak47', 'm4a4', 'aug'];
 // As lentas: o recuo pesa menos nelas (um tiro de cada vez), então o apoio delas troca recarga por tiros seguidos mais rápidos.
 const SLOW = ALL.filter(id => !RECOIL_MATTERS.includes(id));
 // Toda arma tem pelo menos uma variante de cada peça; as que não fazem sentido numa arma ficam de fora dela.
 // Toda vantagem e desvantagem precisa de uma explicação física e pesar no combate (um cano não muda quanta munição
-// se carrega; uma empunhadura não muda o dano). A reserva só muda no carregador e no calibre da granada.
-export const EXTRA_ROUNDS = { smg: 10, heavymg: 25, rifle: 2 };
+// se carrega; uma empunhadura não muda o dano). A reserva só muda no carregador.
+export const EXTRA_ROUNDS = { cz75: 6, deagle: 2, p90: 10, m249: 25, ak47: 10, m4a4: 10, aug: 10 };
 const IMPACT_SHAKE = 0.007;                          // balanço da munição de impacto por ponto de dano do tiro
 
 export const WEAPON_PART_KEYS = ['barrel', 'grip', 'magazine', 'ammo'];
@@ -38,8 +36,8 @@ export const DEFAULT_WEAPON_PARTS = { barrel: 'stock', grip: 'stock', magazine: 
 
 const STOCK = { name: 'Original', price: 0, summary: 'SEM EFEITO', stats: {}, only: ALL };
 
-// Bônus da ponta oca. No rifle é menor: com +15% e o cano pesado ele passava a destruir um carro com um tiro a menos.
-const HOLLOW_DAMAGE = 1.15, HOLLOW_BY_WEAPON = { rifle: 1.08 };
+// Bônus da ponta oca. Na Desert Eagle é menor: com +15% e o cano pesado ela passava a destruir um carro com um tiro a menos.
+const HOLLOW_DAMAGE = 1.15, HOLLOW_BY_WEAPON = { deagle: 1.08 };
 const hollowDamage = id => HOLLOW_BY_WEAPON[id] ?? HOLLOW_DAMAGE;
 
 export const WEAPON_PARTS = {
@@ -48,10 +46,9 @@ export const WEAPON_PARTS = {
     variants: {
       stock: STOCK,
       compensator: { name: 'Compensador', price: 40, summary: 'RECUO -40%, DANO -8%', stats: { kick: 0.6, damage: 0.92 }, only: RECOIL_MATTERS },
-      heavy: { name: 'Pesado', price: 60, summary: 'DANO +12%, ATIRA 20% MAIS DEVAGAR', stats: { damage: 1.12, interval: 1.2 }, only: ALL.filter(id => id !== 'grenade') },
+      heavy: { name: 'Pesado', price: 60, summary: 'DANO +12%, ATIRA 20% MAIS DEVAGAR', stats: { damage: 1.12, interval: 1.2 }, only: ALL },
       short: { name: 'Curto', price: 50, summary: 'ATIRA 15% MAIS RAPIDO, DANO -8%, RECUO +35%', stats: { interval: 0.85, damage: 0.92, kick: 1.35 }, only: RECOIL_MATTERS },
       choke: { name: 'Choke', price: 45, summary: 'O DANO DURA 35% MAIS LONGE, DANO -12%', stats: { reach: 1.35, damage: 0.88 }, only: SHOTGUNS },
-      wide: { name: 'Calibre maior', price: 40, summary: 'GRANADA MAIOR: EXPLOSAO +35%, ATIRA 25% MAIS DEVAGAR, RESERVA -25%', stats: { splash: 1.35, interval: 1.25, reserve: 0.75 }, only: ['grenade'] },
     },
   },
   grip: {
@@ -76,10 +73,9 @@ export const WEAPON_PARTS = {
     label: 'Municao', short: 'MUNIC',
     variants: {
       stock: STOCK,
-      pierce: { name: 'Perfurante', price: 45, summary: 'ATRAVESSA METADE DO ESCUDO E DA BLINDAGEM, DANO -12%', stats: { damage: 0.88, ammo: 'pierce' }, only: BULLETS },
-      hollow: { name: 'Ponta oca', price: 100, summary: id => `DANO +${Math.round((hollowDamage(id) - 1) * 100)}%, MAS -40% NO ESCUDO E A BLINDAGEM SEGURA O DOBRO`, stats: { damage: hollowDamage, ammo: 'hollow' }, only: BULLETS },
-      impact: { name: 'Impacto', price: 35, summary: 'BALANCA O CARRO ATINGIDO, DANO -12%', stats: { damage: 0.88, impact: IMPACT_SHAKE }, only: [...BULLETS, 'grenade'] },
-      tar: { name: 'Flecha de piche', price: 50, summary: 'O FOGO DURA 50% MAIS, DANO DO IMPACTO -25%', stats: { burn: 1.5, damage: 0.75 }, only: ['crossbow'] },
+      pierce: { name: 'Perfurante', price: 45, summary: 'ATRAVESSA METADE DO ESCUDO E DA BLINDAGEM, DANO -12%', stats: { damage: 0.88, ammo: 'pierce' }, only: ALL },
+      hollow: { name: 'Ponta oca', price: 100, summary: id => `DANO +${Math.round((hollowDamage(id) - 1) * 100)}%, MAS -40% NO ESCUDO E A BLINDAGEM SEGURA O DOBRO`, stats: { damage: hollowDamage, ammo: 'hollow' }, only: ALL },
+      impact: { name: 'Impacto', price: 35, summary: 'BALANCA O CARRO ATINGIDO, DANO -12%', stats: { damage: 0.88, impact: IMPACT_SHAKE }, only: ALL },
     },
   },
 };

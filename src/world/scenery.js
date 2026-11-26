@@ -10,6 +10,7 @@ import { buildBeltSites, buildBoostSites, buildGustSites, buildHazardSites, buil
 import { createRandom, generateTrack, isOverChasm, surfaceAt, track, trackAt, valleyReach } from './track.js';
 import { noiseTexture, pixelTexture, surfaceTexture } from './textures.js';
 import { enableCulling } from './instancing.js';
+import { collectSolids, createShotBlock } from './shotBlock.js';
 import { flushProps } from './biomes/propKit.js';
 import { pngNow } from '../cabin/pngPixels.js';
 
@@ -73,6 +74,9 @@ function addGround(group, biome, bounds, groundMaterial) {
   geometry.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
   geometry.setIndex(index);
   group.add(new THREE.Mesh(geometry, groundMaterial));
+  const heights = new Float32Array((nx + 1) * (nz + 1));
+  for (let v = 0; v < heights.length; v++) heights[v] = pos[v * 3 + 1];
+  return { minX, minZ, cellX: width / nx, cellZ: depth / nz, nx, nz, heights };   // para o tiro bater no chão (shotBlock.js)
 }
 
 // `paint` só desenha quando não há imagem; `overlay` vai por cima de qualquer um dos dois (folhas, pedrinhas).
@@ -144,7 +148,12 @@ function addRoad(group, biome, groundMaterial) {
   group.add(new THREE.Mesh(stripGeometry(-half, half, 10, roadY, roadY, k => isGap(k) || track.split[k] > 0), roadMaterial));
   if (track.splits.length) addSplitLanes(group, roadMaterial, biome);
   if (track.valley) {                                // vale: sem zebra nem acostamento, a terra sobe direto da estrada
-    for (const side of [-1, 1]) group.add(new THREE.Mesh(valleyGeometry(side), groundMaterial));
+    // As encostas do vale são mais altas que a grade do chão perto da estrada: seguram bala como estrutura.
+    for (const side of [-1, 1]) {
+      const slope = new THREE.Mesh(valleyGeometry(side), groundMaterial);
+      slope.userData.stopsShots = true;
+      group.add(slope);
+    }
     return;
   }
   group.add(new THREE.Mesh(stripGeometry(-outer, -half, 4, kerbY, kerbY, isGap), kerbMaterial));
@@ -318,6 +327,7 @@ export function createWorldScene() {
   scene.fog = new THREE.Fog(0x000000, 15, 230);
   const atmosphere = createAtmosphere(scene);
   let content = null, time = 0, biomeAnimations = [], currentBiome = null;
+  const shotBlock = createShotBlock();
   const stormColor = new THREE.Color(), daySky = new THREE.Color(), black = new THREE.Color(0x000000);
 
   // Gera pista e cenário novos com o bioma pedido.
@@ -342,16 +352,20 @@ export function createWorldScene() {
     if (!biome.ground.image || !pngReady(biome.ground.image)) biome.ground.paint?.(texture.image.getContext('2d'));
     const groundMaterial = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide });
     const bounds = trackBounds();
-    addGround(content, biome, bounds, groundMaterial);
+    shotBlock.setGround(addGround(content, biome, bounds, groundMaterial));
+    shotBlock.setRoad(TRACK_WIDTH / 2 + KERB_WIDTH + (track.valley ? 0 : track.shoulder));
     addRoad(content, biome, groundMaterial);
     addStartLine(content, biome);
 
+    // Estruturas: tudo o que esses construtores põem no mapa segura bala (shotBlock.js).
+    const structuresFrom = content.children.length;
     buildTunnels(content, layout, biome.tunnel);
     biomeAnimations = [];
     buildEpicSections(content, layout, biome, animation => biomeAnimations.push(animation));
     buildCastle(content, layout, biome, animation => biomeAnimations.push(animation));
     buildLedges(content, layout, biome, animation => biomeAnimations.push(animation));
     buildWalls(content, layout, biome.wall);
+    shotBlock.setSolids(collectSolids([...content.children.slice(structuresFrom), ...content.children.filter(child => child.userData.stopsShots)]));
     buildHazardSites(content, layout, animation => biomeAnimations.push(animation));
     buildStormSites(content, layout, animation => biomeAnimations.push(animation));
     buildBeltSites(content, layout, animation => biomeAnimations.push(animation));
@@ -421,6 +435,10 @@ export function createWorldScene() {
 
   // Até onde vale desenhar: logo além do fim da neblina, porque depois dela tudo tem a cor do céu. No escuro e na
   // tempestade a neblina aperta, mas faróis e luzes (que ignoram a neblina) continuam visíveis até o alcance normal do bioma.
+  // Em quantos metros um tiro que sai de `origin` na direção `dir` (normalizada) bate no chão ou numa estrutura,
+  // até `far` metros; Infinity se passar livre.
+  scene.shotBlock = (origin, dir, far) => shotBlock.distance(origin, dir, far);
+
   scene.viewDistance = () => {
     const biomeFar = Math.min(currentBiome?.fog[1] ?? MAX_VIEW, viewLimit);
     return Math.min(MAX_VIEW, Math.max(scene.fog.far, biomeFar) + VIEW_MARGIN);

@@ -38,6 +38,7 @@ export function createRace(car, opponents, { onCrash, onDestroyed, onBlast, onCo
   const field = [playerProxy, ...opponents];
   const finishTimes = new Map();                     // nome -> tempo em que cruzou a linha final
   let playerStart = 0, wrongWayTime = 0;
+  let startedAt = 0;                                 // relógio real da minha largada (online)
   const allOpponents = [...opponents];               // `opponents` e `field` guardam só quem corre nesta partida
 
   const collisions = createCollisions({ car, field, onCrash, onDestroyed, onBlast, onContact });
@@ -47,6 +48,7 @@ export function createRace(car, opponents, { onCrash, onDestroyed, onBlast, onCo
     playerDist: 0, lastS: 0,
     finished: false, finalRank: 0, rank: 1, order: [], finishOrder: [], finishResults: [], wrongWay: false,
     online: false, crossed: false,                   // online: o admin é quem encerra a corrida de todos
+    ownFinishTime: 0,                                // online: meu tempo, que vai para os outros; 0 antes de cruzar a linha
     field,
     get lap() { return Math.min(Math.floor(this.playerDist / track.length), LAPS); },
   };
@@ -372,7 +374,15 @@ export function createRace(car, opponents, { onCrash, onDestroyed, onBlast, onCo
     race.rank = order.findIndex(entry => entry.isPlayer) + 1;
     if (race.finished) return;
     const line = (LAPS + 1) * track.length;
-    for (const racer of field) if (racer.dist >= line && !finishTimes.has(racer.name)) finishTimes.set(racer.name, race.time);
+    // Online o tempo de cada humano é medido no navegador dele (reportFinish): pela posição que chega pela rede, o atraso
+    // contaria contra ele. O meu é em tempo real desde a minha largada: `race.time` limita cada quadro (main.js), e um
+    // navegador travando ou com a aba escondida contaria menos tempo do que passou.
+    for (const racer of field) {
+      if (racer.dist < line || finishTimes.has(racer.name) || (race.online && racer.reportsFinish)) continue;
+      const ownClock = race.online && racer.isPlayer;
+      finishTimes.set(racer.name, ownClock ? (performance.now() - startedAt) / 1000 : race.time);
+      if (ownClock) race.ownFinishTime = finishTimes.get(racer.name);
+    }
     if (race.online) race.crossed = finishTimes.has(playerProxy.name);
     else if (race.playerDist >= line) closeRace(order, line);
   }
@@ -385,7 +395,7 @@ export function createRace(car, opponents, { onCrash, onDestroyed, onBlast, onCo
 
   // Prepara uma nova corrida. `finishNames` é a ordem de chegada da anterior; sem ela usa o grid inicial.
   race.reset = finishNames => {
-    Object.assign(race, { intro: INTRO_TIME, countdown: 3.8, started: false, goTimer: 0, time: 0, finished: false, crossed: false, finalRank: 0, finishOrder: [], finishResults: [] });
+    Object.assign(race, { intro: INTRO_TIME, countdown: 3.8, started: false, goTimer: 0, time: 0, finished: false, crossed: false, ownFinishTime: 0, finalRank: 0, finishOrder: [], finishResults: [] });
     finishTimes.clear();
     wrongWayTime = 0;
     race.wrongWay = false;
@@ -406,6 +416,10 @@ export function createRace(car, opponents, { onCrash, onDestroyed, onBlast, onCo
   };
   race.setOnline = value => { race.online = value; };
   race.hasFinished = racer => finishTimes.has(racer.name);
+  // Tempo que outro humano mediu no navegador dele. Vale o primeiro que chegar.
+  race.reportFinish = (racer, seconds) => {
+    if (!race.finished && !finishTimes.has(racer.name) && Number.isFinite(seconds) && seconds > 0) finishTimes.set(racer.name, seconds);
+  };
 
   // Quem simula a partida online encerra a corrida de todos; os outros recebem o resultado pronto.
   race.closeForAll = () => {
@@ -428,7 +442,7 @@ export function createRace(car, opponents, { onCrash, onDestroyed, onBlast, onCo
   race.update = (dt, activeTraps) => {
     if (!race.started) {
       if (race.intro > 0) race.intro -= dt;               // pop-up de ajuda antes da contagem
-      else if ((race.countdown -= dt) <= 0) { race.started = true; race.goTimer = 1.2; }
+      else if ((race.countdown -= dt) <= 0) { race.started = true; race.goTimer = 1.2; startedAt = performance.now(); }
     } else {
       race.goTimer -= dt;
       if (!race.finished) race.time += dt;

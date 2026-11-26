@@ -4,7 +4,7 @@ import { rasterText, rasterTiny } from '../art/font.js';
 import { DEPTH, LAYOUT } from './layout.js';
 import { createAmmoRack } from './ammoRack.js';
 import { createNitroFlame } from './nitroFlame.js';
-import { createTrapButton, createTrapDisplay } from './trapDisplay.js';
+import { createMagazineDisplay, createTrapButton, createTrapDisplay } from './trapDisplay.js';
 import { Sprite } from './sprite.js';
 
 // Mostradores do painel. Cada um guarda a arte fixa e só redesenha quando o valor muda.
@@ -152,13 +152,15 @@ export function createDashboard(parent) {
   const trapButton = createTrapButton(parent);
   const nitro = createNitro(parent);
   const ammoRack = createAmmoRack(parent);
+  const updateMagazine = createMagazineDisplay(parent);
 
-  function update({ gear, nitroLevel, nitroOpen, nitroBlueLevel, reserveAmmo, trapSlot, trapReady, dt }) {
+  function update({ gear, nitroLevel, nitroOpen, nitroBlueLevel, reserveAmmo, magazineAmmo, trapSlot, trapReady, dt }) {
     instruments(gear.kmh, gear.rpm);
     updateTrapDisplay(trapSlot);
     trapButton.setLit(trapReady);
     nitro.update(nitroLevel, nitroOpen, dt, nitroBlueLevel);
     ammoRack.update(reserveAmmo);
+    updateMagazine(magazineAmmo);
   }
 
   return { update, setWeapon: ammoRack.setWeapon, ammoSlot: ammoRack.slotFor, setNitroPalette: nitro.setPalette, setTrapButtonPressed: trapButton.setPressed };

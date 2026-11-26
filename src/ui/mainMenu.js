@@ -45,6 +45,7 @@ const HELP_TEXT = [
   { text: 'SO GANHA POSICAO NO RANKING QUEM TEM 5 CORRIDAS OU MAIS. ANTES DISSO O JOGADOR APARECE EM CINZA COM O CONTADOR (EX: 3/5), SEM CLASSIFICACAO.' },
   { text: 'A ORDEM E PELO DESEMP. EM EMPATE, GANHA QUEM TEM MAIS VITORIAS E DEPOIS MAIS CORRIDAS.' },
   { text: 'SO CONTAM PARTIDAS ONLINE SEM BOTS E COM PELO MENOS 3 JOGADORES. PODIOS, POS MEDIA, ABATES E PARTIDAS SO INFORMAM, NAO ENTRAM NA NOTA.' },
+  { text: 'QUEM SAI OU CAI NO MEIO DE UMA CORRIDA RANKEADA FICA EM ULTIMO NELA. SE VARIOS SAIREM, O PRIMEIRO A SAIR FICA ATRAS.' },
   { text: 'NO FILTRO POR SEMANA VALEM AS MESMAS REGRAS, SO COM AS CORRIDAS DE SEGUNDA A DOMINGO. OS ABATES NAO SAO GUARDADOS POR SEMANA.' },
 ];
 const RANKING_COLUMNS = [
@@ -444,7 +445,7 @@ export function createMainMenu({ stage, settings, net, getName = () => '', onSin
         if (inside(box, pointer.x, pointer.y)) drawRowStripe(ctx, box, i, true);
       }
       ctxText(ctx, `${racer.position}`, left, y, color);
-      ctxText(ctx, fit(racer.name + (racer.human ? '' : ' (SAIU)'), 140), left + 50, y, color);
+      ctxText(ctx, fit(racer.name + (racer.human && !racer.left ? '' : ' (SAIU)'), 140), left + 50, y, color);
       ctxText(ctx, racer.time == null ? '-' : formatTime(racer.time), left + 200, y, color);
     });
     ctxText(ctx, 'CLIQUE NO NOME PARA VER AS CORRIDAS DO JOGADOR', left, MATCH_BUTTON.y - 12, COLOR.muted);

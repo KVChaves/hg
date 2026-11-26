@@ -6,6 +6,7 @@ import { drawBotNames, seededRandom } from '../game/opponentProfiles.js';
 import { wakeOf } from '../game/carUpgrades.js';
 import { shakeCar } from '../game/shake.js';
 import { bulletHit } from '../game/weaponParts.js';
+import { drawOffer, draftResultTime, resolveDraft } from '../game/weaponDraft.js';
 import { hazardType } from '../game/trapTypes.js';
 import { BIOMES, pickMatchBiome, voteCandidates } from '../world/biomes/index.js';
 import { createHarpoonVisual } from '../world/harpoonVisual.js';
@@ -16,6 +17,7 @@ import { createHarpoonVisual } from '../world/harpoonVisual.js';
 
 const SNAPSHOT_INTERVAL = 1 / 15;
 const VOTE_TIME = 10, VOTE_RESULT_TIME = 1.8, VOTE_CHOICES = 3, VETO_TIME = 4;   // com alguém podendo excluir um mapa, a votação dura um pouco mais
+const DRAFT_SETTLE = 1.5, CURSOR_INTERVAL = 1 / 15;   // sorteio de armas: com todos apontando, espera antes de revelar; envio da mão
 const GARAGE_TIME = 45, GARAGE_GRACE = 1, RESULTS_TIME = 12, FINISH_GRACE = 30;
 const HIT_FLASH_TIME = 0.3, HARPOON_HEIGHT = 0.62, NOSE_FORWARD = 2.3;
 const BOT_PREFIX = 'bot';
@@ -23,14 +25,17 @@ const BOT_PREFIX = 'bot';
 const round = value => Math.round(value * 100) / 100;
 const isBotId = id => id.startsWith(BOT_PREFIX);
 
-export function createOnlineMatch({ onRopeTripped = () => {}, onPlayerKilledBy = () => {}, onPlayerShot = () => {}, net, scene, race, car, opponents, combat, traps, mines, nets, emp, burning, foam, harpoon, pulls, weapon, look, garage, results, podium, voteScreen, getSpec, setRacerCount, setMatch, getMatch, getMatchKills, combatStats, beginRace, getBiome, playAt, creditKill, rewardKillFor, announceTrapCatch, obstacles, raceKills: killTable, addRaceKill, onLateJoin }) {
+export function createOnlineMatch({ onRopeTripped = () => {}, onPlayerKilledBy = () => {}, onPlayerShot = () => {}, net, scene, race, car, opponents, combat, traps, mines, nets, emp, burning, foam, harpoon, pulls, weapon, look, garage, results, podium, voteScreen, draftScreen, getSpec, setRacerCount, setMatch, getMatch, getMatchKills, combatStats, beginRace, getBiome, playAt, creditKill, rewardKillFor, announceTrapCatch, obstacles, raceKills: killTable, addRaceKill, onLateJoin, closeWorkshop = () => {} }) {
   let lead = { leader: null, time: new Map(), lost: new Map() };   // liderança da corrida (só o admin usa)
   const byId = new Map(), harpoonVisuals = new Map(), ready = new Set(), pool = [...opponents], killsOf = new Map();
   let isHost = false, phase = 'idle', phaseTimer = 0, snapshotTimer = 0, finishGrace = 0;
   let vote = null;                                   // votação em andamento: { candidates, played, timeLeft, votes, veto, double, excluded }
+  let draft = null;                                  // sorteio de armas: { offer, players, priority, round, taken, picks, settle, result, resultTime }
+  let cursor = null, cursorTimer = 0;               // onde está a minha mão no sorteio, ainda não enviada
+  const draftOks = new Set();                        // quem já deu OK para começar o sorteio (todos guardam, para um admin novo continuar)
   let raceKills = new Map(), raceStartKills = 0;     // abates de cada humano na última corrida (só o admin junta) e o meu total na largada
 
-  const online = { active: false, start, update, markReady, castVote, castVeto, readyRoster, returnToLobby, onRoomChange, sendKill, sendCaught, sendShot, sendTrap, sendTrapBoom, sendExtinguisher, sendPull, sendMine, sendNet, sendTrip, sendEmp, sendPullEnd, sendObstacle, sendObstacleBreak };
+  const online = { active: false, start, update, markReady, castVote, castVeto, confirmDraft, pickWeapon, pointWeapon, readyRoster, returnToLobby, onRoomChange, sendKill, sendCaught, sendShot, sendTrap, sendTrapBoom, sendExtinguisher, sendPull, sendMine, sendNet, sendTrip, sendEmp, sendPullEnd, sendObstacle, sendObstacleBreak };
   const me = () => race.field[0];
   const humanIds = () => race.field.filter(racer => !isBotId(racer.netId)).map(racer => racer.netId);
   const ownerOf = racer => (isBotId(racer.netId) ? net.room.hostId : racer.netId);
@@ -62,6 +67,7 @@ export function createOnlineMatch({ onRopeTripped = () => {}, onPlayerKilledBy =
       const bot = i < botCount;
       op.netId = bot ? `${BOT_PREFIX}${i}` : others[i - botCount].id;
       op.remote = bot ? !isHost : true;
+      op.reportsFinish = !bot;                         // humano mede o próprio tempo de chegada (game/race.js)
       op.bumper = null;                                // o dos humanos chega com a aparência deles (k: 'spec')
       op.name = bot ? botNames[i] : others[i - botCount].name;
       op.onRemoteDamage = (amount, attacker, shake, ammo) => sendHit(op, amount, attacker, shake, ammo);
@@ -93,12 +99,20 @@ export function createOnlineMatch({ onRopeTripped = () => {}, onPlayerKilledBy =
   // vale o humano mais bem colocado.
   function votePrivileges(match, candidates) {
     if (match.racesDone === 0) return {};
+    const { leader, killer } = lastRaceLeaders(match);
+    const veto = candidates.length >= VOTE_CHOICES ? leader : null;
+    return { ...(veto && { x: veto }), ...(killer && { d: killer }) };
+  }
+
+  // Ids do humano mais bem colocado na última corrida e do que mais abateu nela (empate nos abates: ninguém). Nulos
+  // antes da primeira corrida. Só o admin sabe os abates de todos.
+  function lastRaceLeaders(match) {
+    if (match.racesDone === 0) return { leader: null, killer: null };
     const humans = new Map(race.field.filter(racer => !isBotId(racer.netId)).map(racer => [racer.name, racer.netId]));
     const ids = new Set(humans.values());
-    const veto = candidates.length >= VOTE_CHOICES ? (match.lastOrder ?? []).map(name => humans.get(name)).find(Boolean) ?? null : null;
+    const leader = (match.lastOrder ?? []).map(name => humans.get(name)).find(Boolean) ?? null;
     const [best, next] = [...raceKills].filter(([id, kills]) => ids.has(id) && kills > 0).sort((a, b) => b[1] - a[1]);
-    const double = best && !(next && next[1] === best[1]) ? best[0] : null;
-    return { ...(veto && { x: veto }), ...(double && { d: double }) };
+    return { leader, killer: best && !(next && next[1] === best[1]) ? best[0] : null };
   }
 
   // O admin abre a votação com opções sorteadas entre os biomas ainda não jogados. Com uma só opção não há o que votar.
@@ -158,9 +172,10 @@ export function createOnlineMatch({ onRopeTripped = () => {}, onPlayerKilledBy =
   }
 
   function readyRoster() {
-    if (!online.active || (phase !== 'garage' && phase !== 'podium')) return null;
+    if (!online.active || !['garage', 'podium', 'draftReady', 'draft'].includes(phase)) return null;
+    const isReady = id => (phase === 'draftReady' ? draftOks.has(id) : phase === 'draft' ? !draft.players.includes(id) || id in draft.taken || draft.picks.has(id) : ready.has(id));
     const players = race.field.filter(racer => !isBotId(racer.netId))
-      .map(racer => ({ id: racer.netId, name: racer.name, ready: ready.has(racer.netId), isMe: racer === me() }));
+      .map(racer => ({ id: racer.netId, name: racer.name, ready: isReady(racer.netId), isMe: racer === me() }));
     return { canKick: isHost, players };
   }
 
@@ -215,7 +230,7 @@ export function createOnlineMatch({ onRopeTripped = () => {}, onPlayerKilledBy =
       const human = racer && !isBotId(racer.netId);
       return {
         ...(human ? { id: racer.netId } : {}), name: entry.name, position: i + 1, time: entry.time,
-        lead: Math.round((lead.time.get(entry.name) ?? 0) * 10) / 10, lost: lead.lost.get(entry.name) ?? 0,
+        lead: Math.min(entry.time, Math.round((lead.time.get(entry.name) ?? 0) * 10) / 10),   // a liderança é do relógio do admin; o tempo, do piloto lost: lead.lost.get(entry.name) ?? 0,
       };
     });
   }
@@ -244,6 +259,7 @@ export function createOnlineMatch({ onRopeTripped = () => {}, onPlayerKilledBy =
       (isMe ? car.effects : racer.effects).burning > 0 ? 1 : 0,
       (isMe ? car.effects : racer.effects).shield > 0 ? 1 : 0,
       round((isMe ? car.effects : racer.effects).cloak),
+      isMe ? round(race.ownFinishTime) : 0,           // repetido em todo retrato: um pacote perdido ou um admin novo não o perdem
     ];
   }
 
@@ -257,7 +273,8 @@ export function createOnlineMatch({ onRopeTripped = () => {}, onPlayerKilledBy =
   function receiveSnapshot(values) {
     const racer = byId.get(values[0]);
     if (!racer || !racer.remote) return;
-    const [, dist, lane, x, y, z, yaw, pitch, v, vx, vz, health, dead, protectedFor, overturned, nitro, rigActive, rigAngle, rigY, tip, burningNow, shieldNow, cloakNow = 0] = values;
+    const [, dist, lane, x, y, z, yaw, pitch, v, vx, vz, health, dead, protectedFor, overturned, nitro, rigActive, rigAngle, rigY, tip, burningNow, shieldNow, cloakNow = 0, finishedAt = 0] = values;
+    if (finishedAt > 0 && racer.reportsFinish) race.reportFinish(racer, finishedAt);
     racer.snapshot = {
       dist, lane, x, y, z, yaw, pitch, v, vx, vz, health, dead, protectedFor, age: 0,
       overturned: Boolean(overturned), nitro: Boolean(nitro), rigActive: Boolean(rigActive), rigAngle, rigY, tip: tip || null,
@@ -288,13 +305,98 @@ export function createOnlineMatch({ onRopeTripped = () => {}, onPlayerKilledBy =
       if (isHost && (vote.timeLeft <= 0 || humanIds().every(id => vote.votes.has(id)))) resolveVote();
     } else if (phase === 'voteResult' && (phaseTimer -= dt) <= 0) {
       voteScreen.close();
-      openGarage(getMatch().racesDone === 0 ? Infinity : GARAGE_TIME);
+      if (draftEnabled()) openDraftGate();
+      else openGarage(firstGarageOr(GARAGE_TIME));
     }
+  }
+
+  const draftEnabled = () => net.room?.config.weaponDraft === true;   // desligado por padrão: só com o admin ligando
+  const firstGarageOr = seconds => (getMatch().racesDone === 0 ? Infinity : seconds);   // antes da 1ª corrida a garagem não tem tempo
+
+  // As telas do sorteio cobrem tudo: garagem e oficina abertas por baixo ainda receberiam os cliques.
+  function clearForDraft() {
+    voteScreen.close();
+    results.close();
+    closeWorkshop();
+    if (garage.isOpen) garage.closeAfterWait();
+  }
+
+  // Antes de a mesa aparecer, todos os humanos dão OK; só então o admin sorteia as armas.
+  function openDraftGate() {
+    clearForDraft();
+    phase = 'draftReady';
+    draft = null;
+    const match = getMatch();
+    draftScreen.openGate({ myId: net.id, number: match.racesDone + 1, total: match.raceCount });
+  }
+
+  function confirmDraft() {
+    if (phase === 'draftReady' && !draftOks.has(net.id)) broadcast({ k: 'wo' });
+  }
+
+  // Sorteio de armas (game/weaponDraft.js), entre a votação do mapa e a garagem. O admin monta a mesa, junta quem
+  // apontou para onde e decide as disputas; todos animam a mesma revelação e entram juntos na garagem.
+  function startDraft() {
+    const match = getMatch(), players = humanIds();
+    const { offer, seen } = drawOffer(match.weaponCycle.seen, players.length, match.weaponCycle.last);
+    broadcast({ k: 'wd', o: offer, p: players, c: seen, n: match.racesDone + 1, tot: match.raceCount, r: 1, tk: {}, pr: lastRaceLeaders(match) });
+  }
+
+  const draftPlayers = () => draft.players.filter(id => byId.has(id));   // quem saiu no meio não segura o sorteio
+  const stillChoosing = taken => draftPlayers().filter(id => !(id in taken));
+  const freeWeapons = () => draft.offer.filter(id => !Object.values(draft.taken).includes(id));
+  const showPicks = () => { draftScreen.setPlayers(draftPlayers()); draftScreen.setPicks(draft.picks, voteNames()); };
+
+  // O jogador clicou numa arma livre: vale o último clique até a revelação.
+  function pickWeapon(weaponId) {
+    if (phase === 'draft' && draft.players.includes(net.id) && !(net.id in draft.taken) && freeWeapons().includes(weaponId)) broadcast({ k: 'wp', w: weaponId, r: draft.round });
+  }
+
+  // Posição da minha mão na mesa; sai no próximo envio.
+  function pointWeapon(x, y) {
+    if (draft) cursor = [Math.round(x), Math.round(y)];
+  }
+
+  function sendCursor(dt) {
+    if ((cursorTimer -= dt) > 0 || !cursor) return;
+    cursorTimer = CURSOR_INTERVAL;
+    net.relay({ k: 'wc', x: cursor[0], y: cursor[1] });
+    cursor = null;
+  }
+
+  function resolveWeaponDraft() {
+    const players = stillChoosing(draft.taken), result = resolveDraft({ offer: freeWeapons(), players, picks: draft.picks, priority: draft.priority });
+    broadcast({ k: 'wr', a: result.assigned, d: result.duels, p: [...draft.picks].filter(([id]) => players.includes(id)) });
+  }
+
+  function tickDraft(dt) {
+    if (phase === 'draftReady') {
+      if (isHost && humanIds().every(id => draftOks.has(id))) startDraft();
+      return;
+    }
+    if (phase !== 'draft' && phase !== 'draftResult') return;
+    sendCursor(dt);
+    if (phase === 'draft') {
+      // Sem tempo limite: a revelação só vem quando todos que faltam apontarem (o admin pode expulsar quem sumiu).
+      const everyone = stillChoosing(draft.taken).every(id => draft.picks.has(id));
+      draft.settle = everyone ? (draft.settle ?? DRAFT_SETTLE) - dt : null;
+      if (isHost && everyone && draft.settle <= 0) resolveWeaponDraft();
+      return;
+    }
+    phaseTimer -= dt;
+    draftScreen.setElapsed(draft.resultTime - Math.max(0, phaseTimer));
+    if (phaseTimer > 0) return;
+    const taken = { ...draft.taken, ...draft.result.assigned };
+    if (!stillChoosing(taken).length) {
+      draftScreen.close();
+      openGarage(firstGarageOr(GARAGE_TIME));
+    } else if (isHost) broadcast({ k: 'wn', r: draft.round + 1, tk: taken });   // quem perdeu aponta de novo
   }
 
   function update(frameTime) {
     if (!online.active) return;
     tickVote(frameTime);
+    tickDraft(frameTime);
     if (isHost) stepHost(frameTime);
     if (phase === 'race') {
       sendSnapshots(frameTime);
@@ -354,12 +456,56 @@ export function createOnlineMatch({ onRopeTripped = () => {}, onPlayerKilledBy =
       voteScreen.setExcluded(data.b);
       showVotes();
     },
+    wg: () => {                                      // quem entrou no meio: também dá OK antes de a mesa aparecer
+      if (getMatch() && phase !== 'draftReady') openDraftGate();
+    },
+    wo: (data, from) => { draftOks.add(data.by ?? from); },   // `by`: o admin repassa os OKs já dados a quem entrou no meio
+    wd: data => {                                    // mesa nova: o ciclo de armas anda junto, para quem assumir o admin depois
+      const match = getMatch();                      // `r` e `tk`: quem entra no meio pega a rodada em andamento e quem já tem arma
+      if (!match) return;
+      match.weaponCycle = { seen: [...data.c], last: [...data.o] };
+      clearForDraft();
+      phase = 'draft';
+      draft = { offer: data.o, players: data.p, priority: data.pr, round: data.r, taken: data.tk, picks: new Map(), settle: null, result: null, resultTime: 0 };
+      cursor = null;
+      draftScreen.open({ offer: data.o, players: data.p, names: voteNames(), myId: net.id, number: data.n, total: data.tot, priority: data.pr });
+      draftScreen.nextRound(data.r, data.tk);
+      showPicks();
+    },
+    wn: data => {                                    // nova rodada, aberta pelo admin; as escolhas dela chegam sempre depois
+      if (!draft || phase !== 'draftResult') return;
+      phase = 'draft';
+      Object.assign(draft, { round: data.r, taken: data.tk, picks: new Map(), settle: null, result: null });
+      draftScreen.nextRound(data.r, data.tk);
+      showPicks();
+    },
+    wp: (data, from) => {                            // `by`: o admin repassa as escolhas já feitas a quem entrou no meio
+      const player = data.by ?? from;
+      if (phase !== 'draft' || data.r !== draft.round || !draft.players.includes(player) || player in draft.taken || !freeWeapons().includes(data.w)) return;
+      draft.picks.set(player, data.w);
+      draft.settle = null;                           // mudou de ideia: a espera recomeça
+      showPicks();
+    },
+    wc: (data, from) => { if (draft) draftScreen.setCursor(from, data.x, data.y); },
+    wr: data => {
+      if (phase !== 'draft') return;
+      draft.result = { assigned: data.a, duels: data.d };
+      draft.picks = new Map(data.p);
+      draft.resultTime = draftResultTime(data.d);
+      phase = 'draftResult';
+      phaseTimer = data.t ?? draft.resultTime;       // `t`: quem entrou no meio da revelação pega o tempo que falta
+      draftScreen.setNames(voteNames());
+      draftScreen.showResult({ assigned: data.a, duels: data.d, picks: draft.picks });
+      draftScreen.setElapsed(draft.resultTime - phaseTimer);
+      if (data.a[net.id]) garage.lockWeapon(data.a[net.id]);   // a garagem só deixa equipar a arma conquistada
+    },
     rk: (data, from) => { if (isHost) { raceKills.set(from, data.n); shareRaceKills(); } },
     kk: data => { if (!isHost) { killTable.clear(); for (const [name, kills] of data.n) killTable.set(name, kills); } },
     vr: data => {
       const match = getMatch();
       if (!match) return;
       match.biomesPlayed = [...data.p, data.b];
+      draftOks.clear();                              // aqui, e não ao abrir a tela: o OK de quem a abriu antes não se perde
       match.upcomingBiome = data.b;
       if (!data.auto && voteScreen.isOpen) voteScreen.showResult(data.b);
       phase = 'voteResult';
@@ -475,6 +621,7 @@ export function createOnlineMatch({ onRopeTripped = () => {}, onPlayerKilledBy =
     for (const visual of harpoonVisuals.values()) visual.hide();
     for (const op of pool) {
       op.remote = false;
+      op.reportsFinish = false;
       op.snapshot = null;
       op.name = op.profile.name;
       op.model.apply(op.livery);
@@ -482,7 +629,11 @@ export function createOnlineMatch({ onRopeTripped = () => {}, onPlayerKilledBy =
     podium.close();
     results.close();
     voteScreen.close();
+    draftScreen.close();
     vote = null;
+    draft = null;
+    draftOks.clear();
+    garage.lockWeapon(null);                         // fora da partida, a arma volta a ser a do jogador
     setMatch(null);
   }
 
@@ -553,7 +704,13 @@ export function createOnlineMatch({ onRopeTripped = () => {}, onPlayerKilledBy =
     // Quem entra enquanto todos ainda estão na garagem não espera a corrida: todos o encaixam na pista agora
     // e o admin manda a ele o placar para entrar na garagem junto.
     if (phase === 'vote') for (const id of [...vote.votes.keys()]) if (!room.players.some(player => player.id === id)) vote.votes.delete(id);
-    if (phase === 'garage' || phase === 'vote' || phase === 'voteResult') {
+    if (phase === 'draft' || phase === 'draftResult') {
+      for (const id of [...draft.picks.keys()]) if (phase === 'draft' && !byId.has(id)) draft.picks.delete(id);
+      draftScreen.setPlayers(draftPlayers());
+      draftScreen.setNames(voteNames());
+    }
+    if (phase === 'draftReady') for (const id of [...draftOks]) if (!room.players.some(player => player.id === id)) draftOks.delete(id);
+    if (['garage', 'vote', 'voteResult', 'draftReady', 'draft', 'draftResult'].includes(phase)) {
       const joined = room.players.filter(player => !byId.has(player.id));
       if (joined.length) {
         resyncRoster(getMatch().snapshot());
@@ -562,6 +719,16 @@ export function createOnlineMatch({ onRopeTripped = () => {}, onPlayerKilledBy =
           if (phase === 'vote') {
             net.relay({ k: 'vt', c: vote.candidates, p: vote.played, n: getMatch().racesDone + 1, tot: getMatch().raceCount, s: vote.timeLeft, ...(vote.veto && { x: vote.veto }), ...(vote.double && { d: vote.double }), ...(vote.excluded && { e: vote.excluded }) }, player.id);
             for (const [by, b] of vote.votes) net.relay({ k: 'vv', b, by }, player.id);
+          }
+          if (draftEnabled() && (phase === 'voteResult' || phase === 'draftReady')) {
+            net.relay({ k: 'wg' }, player.id);
+            for (const by of draftOks) net.relay({ k: 'wo', by }, player.id);
+          }
+          if ((phase === 'draft' || phase === 'draftResult') && draft) {
+            const match = getMatch();
+            net.relay({ k: 'wd', o: draft.offer, p: draft.players, c: match.weaponCycle.seen, n: match.racesDone + 1, tot: match.raceCount, r: draft.round, tk: draft.taken, pr: draft.priority }, player.id);
+            for (const [by, w] of draft.picks) net.relay({ k: 'wp', w, by, r: draft.round }, player.id);
+            if (draft.result) net.relay({ k: 'wr', a: draft.result.assigned, d: draft.result.duels, p: [...draft.picks], t: Math.max(0.1, phaseTimer) }, player.id);
           }
         }
       }

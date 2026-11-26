@@ -16,7 +16,7 @@ const readSavedConfig = () => {
   try { return JSON.parse(localStorage.getItem(CONFIG_KEY)) ?? {}; } catch { return {}; }
 };
 const saveConfig = config => {
-  const kept = Object.fromEntries(Object.entries({ ...readSavedConfig(), ...config }).filter(([key]) => ['bots', 'races', 'backShots'].includes(key)));
+  const kept = Object.fromEntries(Object.entries({ ...readSavedConfig(), ...config }).filter(([key]) => ['bots', 'races', 'backShots', 'weaponDraft'].includes(key)));
   try { localStorage.setItem(CONFIG_KEY, JSON.stringify(kept)); } catch { /* sem armazenamento: só não lembra */ }
 };
 

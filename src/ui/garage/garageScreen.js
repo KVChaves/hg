@@ -1,7 +1,7 @@
 import { ctxText, textWidth } from '../../art/font.js';
 import { PARTS } from '../../cabin/parts/index.js';
 import { PART_KEYS, partsCost } from '../../game/carUpgrades.js';
-import { saveEquipment, savedParts, savedTrunk } from '../../game/equipment.js';
+import { equipForcedWeapon, releaseForcedWeapon, saveEquipment, savedParts, savedTrunk } from '../../game/equipment.js';
 import { loadSavedCars, SAVED_CAR_SLOTS, storeSavedCars } from '../../game/savedCars.js';
 import { BUDGET, fitsBudget, loadoutCost, maxUpgradeLevel, trunkUnits, UPGRADES, upgradeFactor, upgradePrice } from '../../game/shop.js';
 import { TRAP_TYPES } from '../../game/trapTypes.js';
@@ -11,10 +11,11 @@ import { Raster } from '../../art/raster.js';
 import { CAR_SLOTS, loadCarSelection, randomizeLook, resolveCarSpec, saveCarSelection } from '../../world/car/carOptions.js';
 import { createNameField } from '../nameField.js';
 import { createOptionStrip } from '../optionStrip.js';
-import { COLOR, drawButton, drawSlotTile, drawTooltip, inside, markClickable, outline, panelBox, pointerOnStage } from '../panelKit.js';
+import { COLOR, drawButton, drawCorners, drawSlotTile, drawTooltip, inside, markClickable, outline, panelBox, pointerOnStage } from '../panelKit.js';
 import { createGarageScene } from './garageScene.js';
 import { createReadyPanel } from './readyPanel.js';
 import { createSavedCarsPanel } from './savedCarsPanel.js';
+import { createStatsPanel } from './statsPanel.js';
 import { exteriorThumb, interiorThumb, weaponThumb } from './garageThumbs.js';
 import { createTrunkPanel } from './trunkPanel.js';
 
@@ -26,10 +27,11 @@ const LEFT = { x: 6, y: 40, width: 106, columns: 2 };
 const RIGHT = { x: 484, y: 40, width: 152, columns: 3 };
 const EQUIPMENT = { x: 6, y: 196, width: 106, columns: 2 };
 const UPGRADE_PANEL = { x: 6, y: 306, width: 106, height: 50 };
-const UPGRADE_ROW = 12, NO_FUNDS_TIME = 1.2;
+const UPGRADE_ROW = 12, NO_FUNDS_TIME = 1.2, NOTICE_TIME = 4;
 const TRUNK_BUTTON = { x: 6, y: 266, width: 106, height: 34 };
 const NAME_BOX = { x: 528, y: 6, width: 106, height: 28 };
 const SAVED_CARS_BUTTON = { x: 528, y: 284, width: 106, height: 22 };
+const STATS_BUTTON = { x: 528, y: 310, width: 106, height: 22 };
 const NEXT_BUTTON = { x: 240, y: 6, width: 160, height: 26 };
 const BANNER_Y = 35, BANNER_HEIGHT = 18;             // aviso do próximo mapa, logo abaixo do botão de pronto
 const MENU_BUTTON = { x: 118, y: 6, width: 116, height: 26 };
@@ -130,6 +132,8 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
   let active = slots.find(slot => slot.key === 'body');
   let browsing = false, browseDone = null;           // aberta só para personalizar (menu ou sala), sem corrida; `browseDone` diz para onde voltar
   let noFunds = 0, betweenRaces = 0;                 // segundos que restam do intervalo; 0 fora dele
+  let lockedWeapon = null;                           // arma do sorteio do multiplayer (game/weaponDraft.js): a única que dá para equipar
+  let notice = null, noticeTime = 0;                 // aviso curto no lugar do saldo
   let waitLabel = 'AGUARDANDO...';
   let waitsForHost = false, waiting = false;         // online: o intervalo termina quando o admin largar
   const nameField = createNameField({ box: NAME_BOX, getName, setName });
@@ -164,6 +168,8 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
       cabin.setPartColor(kind, saved.cabin.colors?.[kind] ?? null);
     }
     const savedEquipment = { ...structuredClone(saved.equipment), trunk: savedTrunk(saved.equipment), parts: savedParts(saved.equipment.parts), weaponParts: savedWeaponParts(saved.equipment.weaponParts) };
+    delete savedEquipment.ownWeaponId;
+    if (lockedWeapon) Object.assign(savedEquipment, { weaponId: lockedWeapon, ownWeaponId: equipment.ownWeaponId });   // com arma sorteada, o carro salvo vem com ela
     if (fitsBudget(savedEquipment)) {
       Object.assign(equipment, savedEquipment);
       saveEquipment(equipment);
@@ -200,7 +206,14 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
     return true;
   }
 
-  const chooseEquipment = (slot, id) => purchase(withChoice(slot, id));
+  const chooseEquipment = (slot, id) => {
+    if (lockedWeapon && id !== lockedWeapon) { showNotice('ARMA SORTEADA'); return false; }
+    return purchase(withChoice(slot, id));
+  };
+  function showNotice(text) {
+    notice = text;
+    noticeTime = NOTICE_TIME;
+  }
 
   function changeUpgrade(id, delta) {
     const level = equipment.upgrades[id] + delta;
@@ -220,6 +233,8 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
     setCount: setTrunkCount,
     funds: () => BUDGET - loadoutCost(equipment),
   });
+
+  const statsPanel = createStatsPanel({ getEquipment: () => equipment });
 
   const isPartSlot = slot => slot.group === 'exterior' && PART_KEYS.includes(slot.key);
   const withPart = (slot, id) => ({ ...equipment, parts: { ...equipment.parts, [slot.key]: id } });
@@ -267,12 +282,12 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
     placement: stripPlacement,
     getSlot: () => active, currentId, currentColor,
     priceOf: priceOfEquipment,
-    isLocked: (slot, id) => (isPartSlot(slot) ? !fitsBudget(withPart(slot, id)) : slot.group === 'equipment' && !fitsBudget(withChoice(slot, id))),
+    isLocked: (slot, id) => (isPartSlot(slot) ? !fitsBudget(withPart(slot, id)) : slot.group === 'equipment' && ((lockedWeapon && id !== lockedWeapon) || !fitsBudget(withChoice(slot, id)))),
     originalSwatch: slot => ORIGINAL_SWATCH[slot.key],
     onChoose: choose, onColor: setColor,
   });
 
-  const overUi = (x, y) => savedCarsPanel.isOpen || readyPanel.contains(x, y) || inside(NAME_BOX, x, y) || inside(SAVED_CARS_BUTTON, x, y) || trunkPanel.isOpen || inside(TRUNK_BUTTON, x, y) || inside(UPGRADE_PANEL, x, y) || inside(equipmentPanel, x, y) || inside(WORKSHOP_BUTTON, x, y) || inside(leftPanel, x, y) || inside(rightPanel, x, y) || strip.contains(x, y) || inside(NEXT_BUTTON, x, y) || inside(MENU_BUTTON, x, y);
+  const overUi = (x, y) => savedCarsPanel.isOpen || statsPanel.isOpen || inside(STATS_BUTTON, x, y) || readyPanel.contains(x, y) || inside(NAME_BOX, x, y) || inside(SAVED_CARS_BUTTON, x, y) || trunkPanel.isOpen || inside(TRUNK_BUTTON, x, y) || inside(UPGRADE_PANEL, x, y) || inside(equipmentPanel, x, y) || inside(WORKSHOP_BUTTON, x, y) || inside(leftPanel, x, y) || inside(rightPanel, x, y) || strip.contains(x, y) || inside(NEXT_BUTTON, x, y) || inside(MENU_BUTTON, x, y);
 
   addEventListener('mousemove', e => {
     if (!screen.isOpen) return;
@@ -296,9 +311,11 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
     const { x, y } = pointerOnStage(e, stage);
     if (savedCarsPanel.isOpen) { savedCarsPanel.click(x, y); return; }
     if (trunkPanel.isOpen) { trunkPanel.click(x, y); return; }
+    if (statsPanel.isOpen) { statsPanel.click(x, y); return; }
     if (nameField.click(x, y)) return;
     if (readyPanel.click(x, y)) return;
     if (inside(SAVED_CARS_BUTTON, x, y)) { savedCarsPanel.isOpen = true; return; }
+    if (inside(STATS_BUTTON, x, y)) { statsPanel.isOpen = true; return; }
     if (inside(NEXT_BUTTON, x, y)) {
       if (betweenRaces > 0 && !waitsForHost) stage.requestPointerLock();   // o navegador só captura o mouse dentro de um clique
       screen.proceed();
@@ -370,8 +387,8 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
   function drawFunds(ctx) {
     panelBox(ctx, { x: 6, y: 6, width: 106, height: 26 });
     ctxText(ctx, 'GARAGEM', 6 + Math.floor((106 - textWidth('GARAGEM')) / 2), 10, COLOR.text);
-    const text = noFunds > 0 ? 'SEM SALDO' : `SALDO R$ ${BUDGET - loadoutCost(equipment)}`;
-    ctxText(ctx, text, 6 + Math.floor((106 - textWidth(text)) / 2), 20, noFunds > 0 ? COLOR.danger : COLOR.selected);
+    const text = noFunds > 0 ? 'SEM SALDO' : noticeTime > 0 ? notice : `SALDO R$ ${BUDGET - loadoutCost(equipment)}`;
+    ctxText(ctx, text, 6 + Math.floor((106 - textWidth(text)) / 2), 20, noFunds > 0 || noticeTime > 0 ? COLOR.danger : COLOR.selected);
   }
 
   function hoveredInfo() {
@@ -381,6 +398,7 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
     if (fromStrip) return fromStrip;
     if (rightTab === 'look' && inside(RANDOM_TILE, pointer.x, pointer.y)) return { title: 'Sortear visual', detail: 'Pecas de aparencia e cores' };
     const slot = shownSlots().find(candidate => inside(candidate, pointer.x, pointer.y));
+    if (slot?.group === 'equipment' && lockedWeapon) return { title: slot.options[currentId(slot)].name, detail: 'ARMA SORTEADA PARA ESTA CORRIDA' };
     return slot ? { title: slot.options ? slot.options[currentId(slot)].name : labelOf(slot), detail: labelOf(slot) } : null;
   }
 
@@ -403,6 +421,7 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
         active: slot === active,
         hovered: inside(slot, pointer.x, pointer.y),
       });
+      if (slot.group === 'equipment' && lockedWeapon) drawCorners(ctx, slot, COLOR.gold);   // marca a arma sorteada
     }
 
     if (rightTab === 'look') drawSlotTile(ctx, RANDOM_TILE, { image: RANDOM_TILE.image, chipColor: null, active: false, hovered: inside(RANDOM_TILE, pointer.x, pointer.y) });
@@ -425,10 +444,12 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
       ctxText(ctx, text, box.x + 10, box.y + 6, '#f0d060');
     }
     drawButton(ctx, SAVED_CARS_BUTTON, 'MEUS CARROS', inside(SAVED_CARS_BUTTON, pointer.x, pointer.y));
+    drawButton(ctx, STATS_BUTTON, 'FICHA DO CARRO', inside(STATS_BUTTON, pointer.x, pointer.y));
     const stripBox = strip.box();
     readyPanel.draw(ctx, pointer, stripPlacement(active) === 'top' ? stripBox.y + stripBox.height + 4 : stripTop() + 2);
     if (savedCarsPanel.isOpen) { savedCarsPanel.draw(ctx, pointer); return; }
     if (trunkPanel.isOpen) { trunkPanel.draw(ctx, pointer); return; }
+    if (statsPanel.isOpen) { statsPanel.draw(ctx, pointer); return; }
 
     const info = hoveredInfo();
     if (info) {
@@ -440,6 +461,7 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
   screen.carSpec = () => resolveCarSpec(carSelection);
   screen.update = dt => {
     noFunds = Math.max(0, noFunds - dt);
+    noticeTime = Math.max(0, noticeTime - dt);
     carScene.update(dt);
     strip.applyPending();
   };
@@ -447,6 +469,7 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
   screen.open = () => {
     savedCarsPanel.cancelNaming();
     trunkPanel.isOpen = false;
+    statsPanel.isOpen = false;
     screen.isOpen = true;
     refreshEquipmentThumbs();
   };
@@ -498,12 +521,22 @@ export function createGarageScreen({ stage, cabin, customs, equipment, getName, 
     waiting = waitsForHost = false;
     betweenRaces = 0;
   };
+  // Sorteio de armas: `id` passa a ser a única arma equipável (o saldo se ajusta se preciso); nulo solta e devolve a do jogador.
+  screen.lockWeapon = id => {
+    lockedWeapon = id;
+    if (!id) { releaseForcedWeapon(equipment); return; }
+    if (equipForcedWeapon(equipment, id)) showNotice('ITENS AJUSTADOS');   // a arma sorteada não cabia: o saldo foi refeito
+    syncPartsToCar();
+    refreshCar();
+  };
+  screen.lockedWeapon = () => lockedWeapon;
   screen.isTyping = () => nameField.isEditing() || savedCarsPanel.isNaming();
   screen.changeUpgrade = changeUpgrade;
   screen.savedCarsPanel = savedCarsPanel;
   screen.readyPanel = readyPanel;
   screen.setTrunkCount = setTrunkCount;
   screen.trunkPanel = trunkPanel;
+  screen.statsPanel = statsPanel;
   screen.funds = () => BUDGET - loadoutCost(equipment);
   screen.selectSlot = key => {
     active = slots.find(slot => slot.key === key);

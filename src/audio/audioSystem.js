@@ -1,7 +1,7 @@
 import { MENU_MUSIC, PHASE_AMBIENCE, PHASE_MUSIC, SOUND_FILES } from './soundFiles.js';
 import { effectiveRpm, ENGINE_LAYERS, engineMix } from './engineMix.js';
 import { WEAPON_SOUNDS } from './weaponSounds.js';
-import { familyOf } from '../game/weaponTypes.js';
+import { artOf, familyOf } from '../game/weaponTypes.js';
 
 // Som do jogo: efeitos e motor pelo Web Audio; música por streaming, sem carregar tudo na memória.
 
@@ -149,7 +149,7 @@ export function createAudioSystem(settings) {
 
   // Som novo que ainda não existe como arquivo: toca o `fallback` (o da arma parecida).
   const resolveSound = sound => (sound.fallback && !buffers[sound.url] ? { url: sound.fallback, volume: sound.fallbackVolume } : sound);
-  const soundsOf = weaponId => WEAPON_SOUNDS[weaponId] ?? WEAPON_SOUNDS[familyOf(weaponId)];
+  const soundsOf = weaponId => WEAPON_SOUNDS[weaponId] ?? WEAPON_SOUNDS[artOf(weaponId)] ?? WEAPON_SOUNDS[familyOf(weaponId)];
 
   // Bala acertando o próprio carro: sorteia uma das quatro (nunca a mesma duas vezes seguidas) e varia o tom,
   // para a rajada de uma submetralhadora não soar como um som só repetido.

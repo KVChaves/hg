@@ -5,73 +5,92 @@
 //   recover por segundo, quão rápido volta a parte do salto que volta sozinha (o resto o piloto corrige com o mouse)
 // `bloom`: abertura das automáticas, em frações da tela (as balas se espalham em volta da mira).
 // O recuo segue a arma de verdade: a força do disparo faz o salto, e peso e coronha seguram. Do maior para o menor:
-//   escopeta         dois canos de chumbo grosso numa arma curta: o maior coice
-//   revólver pesado  o cartucho mais forte numa arma de mão, sem apoio
-//   sniper           disparo enorme, mas arma pesada com freio de boca: sobe reto, quase sem sair para o lado
-//   lança-granadas   empurrão grande e lento: demora mais para voltar
-//   escopeta auto    chumbo como a escopeta, num corpo pesado com tambor
-//   rifle            disparo forte seguro pela coronha
-//   revólver         arma de mão comum: salta e volta rápido
-//   submetralhadora  munição leve: pouco por tiro, soma na rajada
-//   besta            sem pólvora: só o tranco da corda
-//   metralhadora     o peso dos canos quase não deixa subir, mas o giro faz tremer para os lados
-// Armas de fogo disponíveis. Com toda a munição e sem errar, cada uma causa cerca de 1000 de dano;
-// o preço (`price`, em reais) depende de quão fácil é aproveitar esse dano numa corrida.
+//   escopetas        chumbo grosso numa arma curta: o maior coice (a MAG-7 mais que a Nova)
+//   Desert Eagle     o cartucho mais forte numa arma de mão, sem apoio
+//   AWP              disparo enorme, mas arma pesada com freio de boca: sobe reto, quase sem sair para o lado
+//   R8               revólver pesado: salta e volta
+//   AK-47            fuzil forte e solto: sobe e espalha a rajada
+//   M4A4 e AUG       fuzis mais contidos (a AUG tem luneta)
+//   CZ75 e P90       munição leve: pouco por tiro, soma na rajada
+//   M249             o peso quase não deixa subir, mas a rajada longa faz tremer para os lados
+// Armas de fogo disponíveis (inspiradas no arsenal clássico de tiro tático). A arma começa descarregada, então
+// `reserve` é toda a munição da corrida: dano × reserva fica perto de 850 para todas.
+// O preço (`price`, em reais) depende de quão fácil é aproveitar esse dano numa corrida.
+// `art`: o desenho reaproveitado (ui/guns/gunArt.js), que também escolhe som, munição do painel e peças desenhadas
+// quando a arma não tem os seus. `style`: o jeito de mover (ui/guns/gunAnimator.js). `family`: o último recurso.
+// `range`: alcance em metros, de 70 (escopetas) a 230 (AWP). Nas escopetas o dano já some antes (`falloff`).
+// `scope`: o botão direito fecha o campo de visão até `fov` graus (ui/scope.js).
 
 export const WEAPON_TYPES = {
-  revolver: {
-    id: 'revolver', family: 'revolver', label: 'REVOLVER', price: 150, summary: 'PRECISO A MEIA DISTANCIA',
-    damage: 34, interval: 0.38, range: 160, magazine: 6, reserve: 24, roundTime: 0.42, recoil: 1, kick: { up: 0.03, side: 0.009, recover: 5 },
+  cz75: {
+    id: 'cz75', family: 'revolver', art: 'pistol', style: 'smg', label: 'CZ75-AUTO', price: 230, summary: 'PISTOLA AUTOMATICA: CURTA E FURIOSA',
+    damage: 11, interval: 0.075, range: 90, magazine: 12, reserve: 78, roundTime: 1.5, recoil: 0.45, kick: { up: 0.009, side: 0.01, recover: 5 },
+    automatic: true, reloadsWholeMagazine: true, bloom: { perShot: 0.004, max: 0.03, decay: 0.14 },
   },
-  shotgun: {
-    id: 'shotgun', family: 'shotgun', label: 'ESCOPETA', price: 240, summary: 'DEVASTADORA DE PERTO',
-    damage: 92, falloff: { full: 30, zero: 50, min: 5 }, shake: 1.4, interval: 0.45, range: 60,
-    magazine: 2, reserve: 10, roundTime: 0.6, recoil: 2.2, kick: { up: 0.075, side: 0.018, recover: 3.5 },
+  deagle: {
+    id: 'deagle', family: 'revolver', art: 'pistol', style: 'smg', label: 'DESERT EAGLE', price: 220, summary: 'PISTOLA PESADA: ACERTE O PRIMEIRO',
+    damage: 64, interval: 0.55, range: 160, magazine: 7, reserve: 13, roundTime: 1.3, recoil: 2, kick: { up: 0.07, side: 0.02, recover: 3.5 },
+    reloadsWholeMagazine: true,
   },
-  smg: {
-    id: 'smg', family: 'smg', label: 'SUBMETRALHADORA', price: 280, summary: 'SEGURE O CLIQUE',
-    damage: 13, interval: 0.09, range: 110, magazine: 30, reserve: 60, roundTime: 1.6, recoil: 0.35, kick: { up: 0.008, side: 0.007, recover: 5 },
-    automatic: true, reloadsWholeMagazine: true, bloom: { perShot: 0.0025, max: 0.025, decay: 0.12 },
+  r8: {
+    id: 'r8', family: 'revolver', art: 'revolver', style: 'revolver', label: 'R8 REVOLVER', price: 170, summary: 'REVOLVER PESADO DE OITO TIROS',
+    damage: 46, interval: 0.6, range: 150, magazine: 8, reserve: 18, roundTime: 0.36, recoil: 1.5, kick: { up: 0.045, side: 0.012, recover: 4.5 },
   },
-  rifle: {
-    id: 'rifle', family: 'rifle', label: 'RIFLE', price: 360, summary: 'LONGO ALCANCE E TIRO LENTO',
-    damage: 75, interval: 0.75, range: 230, magazine: 5, reserve: 13, roundTime: 0.55, recoil: 1.2, kick: { up: 0.036, side: 0.007, recover: 4 },
+  nova: {
+    id: 'nova', family: 'shotgun', art: 'pump', style: 'pump', label: 'NOVA', price: 220, summary: 'ESCOPETA DE BOMBA: OITO CARTUCHOS',
+    damage: 80, falloff: { full: 30, zero: 50, min: 5 }, shake: 1.2, interval: 0.9, range: 80,
+    magazine: 8, reserve: 11, roundTime: 0.5, recoil: 1.9, kick: { up: 0.072, side: 0.017, recover: 3.5 },
   },
-  magnum: {
-    id: 'magnum', family: 'revolver', style: 'topbreak', label: 'REVOLVER PESADO', price: 190, summary: 'DEVAGAR E PESADO',
-    damage: 70, interval: 0.75, range: 150, magazine: 4, reserve: 10, roundTime: 0.5, recoil: 1.9, kick: { up: 0.065, side: 0.017, recover: 3.5 },
+  mag7: {
+    id: 'mag7', family: 'shotgun', art: 'autoshotgun', style: 'autoshotgun', label: 'MAG-7', price: 260, summary: 'ESCOPETA BRUTA DE MUITO PERTO',
+    damage: 100, falloff: { full: 22, zero: 40, min: 6 }, shake: 1.6, interval: 0.8, range: 70,
+    magazine: 5, reserve: 9, roundTime: 0.55, recoil: 2.3, kick: { up: 0.08, side: 0.02, recover: 3.2 },
   },
-  sniper: {
-    id: 'sniper', family: 'rifle', style: 'bolt', label: 'SNIPER', price: 280, summary: 'UM TIRO, ALCANCE ENORME',
-    damage: 105, interval: 1.6, range: 320, magazine: 1, reserve: 7, roundTime: 0.9, recoil: 2, kick: { up: 0.062, side: 0.006, recover: 3 },
+  // `botBurst`: quantos tiros os bots dão por rajada.
+  m249: {
+    id: 'm249', family: 'smg', art: 'gatling', style: 'gatling', label: 'M249', price: 250, summary: 'CEM BALAS NA CAIXA, RECARGA LENTA',
+    damage: 9, interval: 0.075, range: 140, magazine: 100, reserve: 100, roundTime: 3.4, recoil: 0.3, kick: { up: 0.005, side: 0.012, recover: 4.5 },
+    automatic: true, reloadsWholeMagazine: true, botBurst: [14, 28], bloom: { perShot: 0.0014, max: 0.035, decay: 0.08 },
   },
-  autoshotgun: {
-    id: 'autoshotgun', family: 'shotgun', style: 'autoshotgun', label: 'ESCOPETA AUTO', price: 290, summary: 'ESCOPETA QUE ATIRA SEGURANDO',
-    damage: 48, falloff: { full: 30, zero: 42, min: 4 }, shake: 0.8, interval: 0.28, range: 50, magazine: 6, reserve: 18, roundTime: 0.45, recoil: 1.3, kick: { up: 0.042, side: 0.014, recover: 4 },
-    automatic: true, bloom: { perShot: 0.005, max: 0.025, decay: 0.15 },
+  p90: {
+    id: 'p90', family: 'smg', art: 'smg', style: 'smg', label: 'P90', price: 270, summary: 'CINQUENTA BALAS: SEGURE O CLIQUE',
+    damage: 10, interval: 0.07, range: 110, magazine: 50, reserve: 80, roundTime: 1.9, recoil: 0.35, kick: { up: 0.007, side: 0.007, recover: 5 },
+    automatic: true, reloadsWholeMagazine: true, bloom: { perShot: 0.0022, max: 0.025, decay: 0.12 },
   },
-  // `burn`: segundos em chamas para o carro atingido; errando, a flecha deixa o chão queimando (game/burning.js).
-  crossbow: {
-    id: 'crossbow', family: 'rifle', style: 'crossbow', label: 'BESTA INCENDIARIA', price: 250, summary: 'FLECHA QUE INCENDEIA CARRO E CHAO',
-    damage: 70, burn: 9, tracer: 0xff7a20, interval: 1.25, range: 140, magazine: 1, reserve: 8, roundTime: 1, recoil: 0.7, kick: { up: 0.007, side: 0.003, recover: 5 },
+  ak47: {
+    id: 'ak47', family: 'rifle', art: 'assault', style: 'smg', label: 'AK-47', price: 340, summary: 'FORTE E LONGE, MAS PULA MUITO',
+    damage: 22, interval: 0.12, range: 190, magazine: 30, reserve: 38, roundTime: 2.2, recoil: 0.85, kick: { up: 0.02, side: 0.01, recover: 4 },
+    automatic: true, reloadsWholeMagazine: true, bloom: { perShot: 0.004, max: 0.03, decay: 0.1 },
   },
-  // `splash`: explode onde acerta (ou no chão, se errar) e machuca quem estiver em volta, menos quanto mais longe.
-  grenade: {
-    id: 'grenade', family: 'shotgun', style: 'pump', label: 'LANCA-GRANADAS', price: 300, summary: 'GRANADA QUE EXPLODE EM AREA',
-    damage: 85, splash: { radius: 7, min: 0.35 }, tracer: 0xb0b070, interval: 1.1, range: 120, magazine: 3, reserve: 8, roundTime: 0.75, recoil: 1.6, kick: { up: 0.048, side: 0.009, recover: 3 },
+  m4a4: {
+    id: 'm4a4', family: 'rifle', art: 'assault', style: 'smg', label: 'M4A4', price: 330, summary: 'RAJADA PRECISA E CONTROLADA',
+    damage: 18, interval: 0.1, range: 180, magazine: 30, reserve: 46, roundTime: 2, recoil: 0.55, kick: { up: 0.013, side: 0.006, recover: 4.5 },
+    automatic: true, reloadsWholeMagazine: true, bloom: { perShot: 0.003, max: 0.022, decay: 0.12 },
   },
-  // `spinUp`: os canos aceleram enquanto o gatilho está apertado. O intervalo vai de `startInterval` (parado) até
-  // `interval` (girando no máximo) em `time` segundos, e solto os canos param em `spinDown` segundos.
-  // `botBurst`: quantos tiros os bots dão por rajada (o padrão é curto demais para os canos chegarem a girar).
-  heavymg: {
-    id: 'heavymg', family: 'smg', style: 'gatling', label: 'METRALHADORA', price: 230, summary: 'QUANTO MAIS SEGURA, MAIS RAPIDO',
-    damage: 10, interval: 0.06, spinUp: { startInterval: 0.16, time: 0.9, spinDown: 0.9 }, range: 100,
-    magazine: 50, reserve: 50, roundTime: 2.4, recoil: 0.3, kick: { up: 0.004, side: 0.011, recover: 4.5 }, automatic: true, reloadsWholeMagazine: true, botBurst: [12, 24],
-    bloom: { perShot: 0.0012, max: 0.03, decay: 0.08 },
+  aug: {
+    id: 'aug', family: 'rifle', art: 'assault', style: 'smg', label: 'AUG', price: 360, summary: 'FUZIL COM LUNETA NO BOTAO DIREITO',
+    damage: 19, interval: 0.11, range: 210, magazine: 30, reserve: 44, roundTime: 2.3, recoil: 0.5, kick: { up: 0.012, side: 0.006, recover: 4.5 },
+    automatic: true, reloadsWholeMagazine: true, bloom: { perShot: 0.0025, max: 0.02, decay: 0.12 }, scope: { fov: 38 },
+  },
+  awp: {
+    id: 'awp', family: 'rifle', art: 'sniper', style: 'bolt', label: 'AWP', price: 320, summary: 'UM TIRO, ALCANCE ENORME',
+    damage: 120, interval: 1.5, range: 230, magazine: 5, reserve: 7, roundTime: 0.9, recoil: 2.1, kick: { up: 0.065, side: 0.006, recover: 3 },
+    scope: { fov: 20 },
   },
 };
 
-// Aparência, som e animação seguem a família da arma (revolver, shotgun, smg ou rifle).
+export const DEFAULT_WEAPON = 'r8';
+// Armas que saíram do jogo e a que ficou no lugar delas, para não perder o que estava salvo.
+const RETIRED = {
+  revolver: 'r8', magnum: 'deagle', smg: 'p90', heavymg: 'm249', shotgun: 'nova', autoshotgun: 'mag7',
+  grenade: 'nova', rifle: 'ak47', sniper: 'awp', crossbow: 'awp',
+};
+export const currentWeaponId = id => (WEAPON_TYPES[id] ? id : RETIRED[id] ?? DEFAULT_WEAPON);
+
+// Desenho que a arma usa (o próprio id quando ela tem desenho próprio).
+export const artOf = id => WEAPON_TYPES[id]?.art ?? id;
+
+// Família da arma (revolver, shotgun, smg ou rifle): o que não tem pelo id nem pelo desenho segue a família.
 export const familyOf = id => WEAPON_TYPES[id]?.family ?? id;
 
 export function damageAtDistance(type, distance) {

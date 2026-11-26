@@ -21,7 +21,9 @@ import { COLOR, drawButton, drawSlotTile, drawTooltip, inside, panelBox, pointer
 // aparecem na mesma faixa de miniaturas, e o modelo tem a mesma barra de cor das peças.
 
 const TILE = { width: 46, height: 42, gapX: 48, gapY: 44 };
-const LEFT = { x: 6, y: 40, width: 106, height: 16 + Math.ceil(Object.keys(WEAPON_TYPES).length / 2) * 44 + 4, columns: 2 };
+// As armas usam botões mais baixos, para a lista inteira e a ficha caberem na coluna da esquerda.
+const WEAPON_TILE = { ...TILE, height: 34, gapY: 36 };
+const LEFT = { x: 6, y: 40, width: 106, height: 16 + Math.ceil(Object.keys(WEAPON_TYPES).length / 2) * WEAPON_TILE.gapY + 4, columns: 2 };
 const RIGHT = { x: 528, y: 40, width: 106, height: 156, columns: 2 };
 const COMBAT = { x: 528, y: 200, width: 106, height: 16 + 2 * 44 + 4, columns: 2 };
 const STATS = { x: 6, y: LEFT.y + LEFT.height + 4, width: 106, height: 72 };
@@ -31,7 +33,7 @@ const PREVIEW = { x: 320, y: 150, maxWidth: 400, maxScale: 3 };
 const DEMO = { pause: 0.9, shotsPerRound: 3, minInterval: 0.55, burstInterval: 0.09, burstShots: 8, spinShots: 36 };
 // Tiros de cada rodada da demonstração: a metralhadora precisa de uma rajada longa para os canos chegarem no máximo.
 const burstOf = type => (type.spinUp ? DEMO.spinShots : type.automatic ? DEMO.burstShots : DEMO.shotsPerRound);
-const WEAPON_SHORT = { revolver: 'REVOLV', shotgun: 'ESCOP', smg: 'SUBM', rifle: 'RIFLE', magnum: 'MAGNUM', sniper: 'SNIPER', autoshotgun: 'ESC AUT', crossbow: 'BESTA', grenade: 'GRANADA', heavymg: 'METRALH' };
+const WEAPON_SHORT = { cz75: 'CZ75', deagle: 'DEAGLE', r8: 'R8', nova: 'NOVA', mag7: 'MAG-7', m249: 'M249', p90: 'P90', ak47: 'AK-47', m4a4: 'M4A4', aug: 'AUG', awp: 'AWP' };
 
 const SLOT_DEFS = [
   { key: 'metal', short: 'METAL', label: 'Cor do metal', hasColor: true },
@@ -69,9 +71,9 @@ export function createWeaponWorkshop({ stage, customs, equipment, settings, onCh
 
   const weaponTiles = weaponIds.map((id, i) => ({
     id, short: WEAPON_SHORT[id],
-    x: LEFT.x + 6 + (i % LEFT.columns) * TILE.gapX,
-    y: LEFT.y + 16 + Math.floor(i / LEFT.columns) * TILE.gapY,
-    width: TILE.width, height: TILE.height, image: null,
+    x: LEFT.x + 6 + (i % LEFT.columns) * WEAPON_TILE.gapX,
+    y: LEFT.y + 16 + Math.floor(i / LEFT.columns) * WEAPON_TILE.gapY,
+    width: WEAPON_TILE.width, height: WEAPON_TILE.height, image: null,
   }));
 
   const slots = SLOT_DEFS.map((def, i) => ({

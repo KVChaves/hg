@@ -1,4 +1,4 @@
-import { familyOf, WEAPON_TYPES } from './weaponTypes.js';
+import { artOf, familyOf, WEAPON_TYPES } from './weaponTypes.js';
 
 // Personalização visual das armas, guardada por arma. Cor nula = cor original.
 
@@ -19,10 +19,13 @@ export const WEAPON_ACCESSORIES = {
   sniper: { none: { name: 'Nenhum' }, bipod: { name: 'Bipe' }, sling: { name: 'Bandoleira' } },
   autoshotgun: { none: { name: 'Nenhum' }, shells: { name: 'Porta-cartuchos' }, strap: { name: 'Fita no cabo' } },
   crossbow: { none: { name: 'Nenhum' }, scope: { name: 'Luneta' }, quiver: { name: 'Aljava' } },
-  grenade: { none: { name: 'Nenhum' }, bandolier: { name: 'Cartucheira' }, foregrip: { name: 'Empunhadura' } },
-  heavymg: { none: { name: 'Nenhum' }, shield: { name: 'Escudo' }, bipod: { name: 'Bipe' } },
+  pump: { none: { name: 'Nenhum' }, bandolier: { name: 'Cartucheira' }, foregrip: { name: 'Empunhadura' } },
+  gatling: { none: { name: 'Nenhum' }, shield: { name: 'Escudo' }, bipod: { name: 'Bipe' } },
+  pistol: { none: { name: 'Nenhum' }, compensator: { name: 'Compensador' }, laser: { name: 'Mira laser' } },
+  assault: { none: { name: 'Nenhum' }, suppressor: { name: 'Silenciador' }, sling: { name: 'Bandoleira' } },
 };
-export const accessoriesOf = id => WEAPON_ACCESSORIES[id] ?? WEAPON_ACCESSORIES[familyOf(id)];
+// Pelo id da arma, depois pelo desenho que ela usa, depois pela família.
+export const accessoriesOf = id => WEAPON_ACCESSORIES[id] ?? WEAPON_ACCESSORIES[artOf(id)] ?? WEAPON_ACCESSORIES[familyOf(id)];
 
 const STORAGE_KEY = 'halfgrip.weapons';
 const COLOR_KEYS = ['metal', 'grip', 'pattern', 'flash'];

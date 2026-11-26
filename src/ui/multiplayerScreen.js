@@ -17,8 +17,9 @@ const ROOM_PROMPT = { x: 150, y: 70, width: 340, height: 200 };
 
 const ROSTER = { x: 78, top: 66, height: 22 };
 const KICK = { x: 262, width: 70, height: 22 };
-const CONFIG_X = 356, CONFIG_ROWS = [78, 128], ARROW = 26, VALUE_WIDTH = 50, ARROW_X = 460;
-const BACK_SHOTS = { x: 368, y: 188, width: 190, height: 26 };
+const CONFIG_X = 356, CONFIG_ROWS = [72, 102], ARROW = 26, VALUE_WIDTH = 50, ARROW_X = 460;
+const BACK_SHOTS = { x: 368, y: 156, width: 190, height: 26 };
+const WEAPON_DRAFT = { x: 368, y: 188, width: 190, height: 26 };
 const GARAGE = { x: 368, y: 222, width: 190, height: 26 };
 const START = { x: 368, y: 256, width: 190, height: 26 };
 const LEAVE = { x: 368, y: 290, width: 190, height: 26 };
@@ -65,6 +66,7 @@ export function createMultiplayerScreen({ stage, net, getName, setName, onBack, 
     if (!net.isAdmin) return;
     if (inside(START, x, y)) { net.start(); return; }
     if (inside(BACK_SHOTS, x, y)) { net.configure({ backShots: room.config.backShots === false }); return; }
+    if (inside(WEAPON_DRAFT, x, y)) { net.configure({ weaponDraft: room.config.weaponDraft !== true }); return; }
     const arrow = arrows.find(candidate => inside(candidate, x, y));
     if (arrow) { net.configure({ [arrow.field.key]: room.config[arrow.field.key] + arrow.step }); return; }   // o servidor limita ao que cabe na sala
     room.players.forEach((player, i) => {
@@ -152,11 +154,16 @@ export function createMultiplayerScreen({ stage, net, getName, setName, onBack, 
     if (net.isAdmin) for (const arrow of arrows) drawButton(ctx, arrow, arrow.label, inside(arrow, pointer.x, pointer.y));
     const ranked = room.ranked ?? { ok: true };
     const rankedText = ranked.ok ? 'PARTIDA RANKEADA' : `SEM RANKING: ${ranked.reason === 'bots' ? 'COM BOTS' : `MENOS DE ${ranked.min ?? 3} JOGADORES`}`;
-    ctxText(ctx, rankedText, CONFIG_X, 154, ranked.ok ? COLOR.selected : COLOR.muted);
-    const bots = room.config.bots, backShots = room.config.backShots !== false, label = `ATIRAR PARA TRAS: ${backShots ? 'SIM' : 'NAO'}`;
-    if (net.isAdmin) drawButton(ctx, BACK_SHOTS, label, inside(BACK_SHOTS, pointer.x, pointer.y));
-    else ctxText(ctx, label, CONFIG_X, BACK_SHOTS.y + 9, COLOR.text);
-    ctxText(ctx, `${room.players.length} JOGADORES E ${bots} BOTS`, CONFIG_X, 172, COLOR.muted);
+    ctxText(ctx, rankedText, CONFIG_X, 126, ranked.ok ? COLOR.selected : COLOR.muted);
+    // Opções de liga e desliga: botão para o admin, só o texto para os demais.
+    // O sorteio de armas vem desligado (só vale ligado de verdade); atirar para trás vem ligado.
+    const toggles = [[BACK_SHOTS, 'ATIRAR PARA TRAS', room.config.backShots !== false], [WEAPON_DRAFT, 'SORTEIO DE ARMAS', room.config.weaponDraft === true]];
+    for (const [box, name, value] of toggles) {
+      const label = `${name}: ${value ? 'SIM' : 'NAO'}`;
+      if (net.isAdmin) drawButton(ctx, box, label, inside(box, pointer.x, pointer.y));
+      else ctxText(ctx, label, CONFIG_X, box.y + 9, COLOR.text);
+    }
+    ctxText(ctx, `${room.players.length} JOGADORES E ${room.config.bots} BOTS`, CONFIG_X, 141, COLOR.muted);
     if (isWaiting()) {
       // Ocupa o lugar do botão INICIAR (que não aparece enquanto espera), entre GARAGEM e SAIR.
       const lines = [['PARTIDA EM ANDAMENTO', COLOR.selected], ['VOCE ENTRA QUANDO A', COLOR.text], ['CORRIDA ACABAR', COLOR.text]];

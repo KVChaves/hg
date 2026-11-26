@@ -35,6 +35,9 @@ const IDLE_RELOAD = 1.2;                             // segundos sem alvo para c
 // Pesos da escolha de alvo que não dependem do estilo.
 const GRUDGE_FOCUS = 1.5, VULNERABLE_BONUS = 0.5, SHIELDED_PENALTY = 0.9, BURNING_PENALTY = 0.6, SPLASH_NEIGHBOUR = 0.5;
 const MISS_OFFSET = [1.5, 4], MUZZLE_FORWARD = 1.6, MUZZLE_HEIGHT = 1.15, TARGET_HEIGHT = 1.1;
+// Linha de tiro: o que estiver a menos que TARGET_REACH metros do alvo é o próprio carro (ou o chão embaixo dele);
+// com a linha fechada, o bot testa de novo depois de BLOCKED_RECHECK segundos.
+const TARGET_REACH = 2, BLOCKED_RECHECK = 0.25;
 const TRAP_RETRY = 0.4, DROP_BEHIND = 8, TRAP_ALIGN_REACH = 9, TRAP_AIM_TIME = 0.6;
 const TRAP_GAP = { default: [8, 40], dynamite: [6, 22], smoke: [6, 50], paint: [8, 35], barrier: [10, 30] };
 const CURVE_TRAPS = new Set(['oil', 'spikes']), CURVE_SIGHT = 220, CURVE_WAIT_LIMIT = 14;   // óleo e espinhos rendem mais na curva
@@ -191,6 +194,16 @@ export function createOpponentCombat({ scene, car, race, opponents, traps, mines
     onShot(weaponId, Math.hypot(car.x - start[0], car.z - start[2]), -Math.sin(bearingFrom(car, look, start[0], start[2])));
   }
 
+  // A reta do cano do bot até o alvo bate em algo antes de chegar?
+  const lineDir = new THREE.Vector3();
+  function lineBlocked(op, target) {
+    from.set(op.wx, op.wy + MUZZLE_HEIGHT, op.wz);
+    lineDir.set(target.wx, target.wy + TARGET_HEIGHT, target.wz).sub(from);
+    const length = lineDir.length();
+    if (length < 1 || !scene.shotBlock) return false;
+    return scene.shotBlock(from, lineDir.divideScalar(length), length) < length - TARGET_REACH;
+  }
+
   function shoot(op, target, chance) {
     const { arsenal } = op, { type } = arsenal;
     arsenal.ammo--;
@@ -292,6 +305,8 @@ export function createOpponentCombat({ scene, car, race, opponents, traps, mines
     if (!target || op.effects.emp > 0 || (arsenal.aimTime -= dt) > 0 || arsenal.cooldown > 0) return;
     const distance = Math.hypot(target.x - op.x, target.z - op.z) || 1, chance = hitChance(op, target, distance, style);
     if (arsenal.burstLeft <= 0 && !worthShooting(op, target, distance, chance)) return;
+    // Chão ou estrutura no meio (world/shotBlock.js): espera a linha abrir em vez de gastar bala na parede.
+    if (lineBlocked(op, target)) { arsenal.cooldown = BLOCKED_RECHECK; return; }
     shoot(op, target, chance);
     scheduleNextShot(op, target, style);
   }

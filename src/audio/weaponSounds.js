@@ -88,7 +88,7 @@ WEAPON_SOUNDS.crossbow = {
   roundIn: own('crossbow/bolt-in', 0.5, ROUND_IN),
   reloadEnd: own('crossbow/latch', 0.4, LEVER_CLOSE),
 };
-WEAPON_SOUNDS.grenade = {
+WEAPON_SOUNDS.pump = {
   fire: own('grenade/fire', 0.9, BASE.shotgun.fire, 0.9),
   dry: DRY_FIRE,
   reloadStart: own('grenade/port-open', 1.2, BASE.shotgun.reloadStart),
@@ -99,7 +99,7 @@ WEAPON_SOUNDS.grenade = {
 };
 // Metralhadora: só sons que já existem, mais graves. O tiro é o da submetralhadora puxado para baixo, o giro dos canos
 // é o tambor do revólver bem devagar e a caixa de munição usa o pente da submetralhadora e o ferrolho da sniper.
-WEAPON_SOUNDS.heavymg = {
+WEAPON_SOUNDS.gatling = {
   fire: sound('smg/fire', 0.6, 0.72),
   dry: DRY_FIRE,
   spinUp: sound('revolver/spin', 0.6, 0.55),
@@ -108,3 +108,22 @@ WEAPON_SOUNDS.heavymg = {
   reloadEnd: sound('sniper/bolt-close', 0.5, 0.8),
   casing: CASING,
 };
+
+// Armas de agora: cada uma reaproveita os sons do desenho que usa (`art`), com o tom (`rate`) ajustado ao calibre.
+const S = WEAPON_SOUNDS;
+const MAG_OUT = (volume, rate) => sound('smg/mag-out', volume, rate);
+const MAG_IN = (volume, rate) => sound('smg/mag-in', volume, rate);
+const CHARGE = (volume, rate) => sound('sniper/bolt-close', volume, rate);       // puxar a alavanca de armar no fim da recarga
+
+S.cz75 = { fire: sound('smg/fire', 0.42, 1.3), dry: DRY_FIRE, reloadStart: MAG_OUT(0.45, 1.25), magazineIn: MAG_IN(0.45, 1.25), reloadEnd: CHARGE(0.3, 1.5), casing: CASING };
+S.deagle = { fire: S.magnum.fire, dry: DRY_FIRE, reloadStart: MAG_OUT(0.55, 0.95), magazineIn: MAG_IN(0.6, 0.9), reloadEnd: CHARGE(0.4, 1.3), casing: CASING };
+S.r8 = { ...S.revolver, fire: sound('revolver/fire', 0.38, 0.85) };
+S.nova = { ...S.pump, fire: S.shotgun.fire, roundIn: ROUND_IN };
+S.mag7 = { ...S.autoshotgun, fire: sound('shotgun/fire', 1.3, 0.88) };
+S.m249 = { ...S.gatling, fire: sound('smg/fire', 0.6, 0.78) };
+delete S.m249.spinUp;
+S.p90 = { ...S.smg, fire: sound('smg/fire', 0.48, 1.08) };
+S.ak47 = { fire: sound('rifle/fire', 0.42, 1.08), dry: DRY_FIRE, reloadStart: MAG_OUT(0.55, 0.85), magazineIn: MAG_IN(0.6, 0.82), reloadEnd: CHARGE(0.45, 1), casing: CASING };
+S.m4a4 = { fire: sound('smg/fire', 0.55, 0.82), dry: DRY_FIRE, reloadStart: MAG_OUT(0.5, 0.95), magazineIn: MAG_IN(0.55, 0.92), reloadEnd: CHARGE(0.4, 1.15), casing: CASING };
+S.aug = { fire: sound('rifle/fire', 0.38, 1.2), dry: DRY_FIRE, reloadStart: MAG_OUT(0.5, 0.9), magazineIn: MAG_IN(0.55, 0.88), reloadEnd: CHARGE(0.4, 1.1), casing: CASING };
+S.awp = S.sniper;

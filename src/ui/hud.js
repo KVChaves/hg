@@ -82,7 +82,7 @@ function paintDamageBand(width, height, edgeAt) {
   return band;
 }
 
-export function createHud(canvas, { chat, matchTable, isTableHeld, killFeed, pause, scope, featFeed, mainMenu, multiplayer, podium, matchSetup, results, voteScreen, matchLabel, biomeName, biomeChallenge = () => [], race, weapon, hands, garage, workshop, windowView, spectator, spectatorExit, isLocked, combat, car, activeCamera, opponents, isBehindCabin, isInSmoke, roadsideHelp, traps, powerStatus = () => [], settings }) {
+export function createHud(canvas, { chat, matchTable, isTableHeld, killFeed, pause, scope, featFeed, mainMenu, multiplayer, podium, matchSetup, results, voteScreen, draftScreen, matchLabel, biomeName, biomeChallenge = () => [], race, weapon, hands, garage, workshop, windowView, spectator, spectatorExit, isLocked, combat, car, activeCamera, opponents, isBehindCabin, isInSmoke, roadsideHelp, traps, powerStatus = () => [], settings }) {
   canvas.width = VIEW.width;
   canvas.height = VIEW.height;
   const ctx = canvas.getContext('2d');
@@ -273,6 +273,7 @@ export function createHud(canvas, { chat, matchTable, isTableHeld, killFeed, pau
     if (podium.isOpen) { podium.draw(ctx); return; }
     if (matchSetup.isOpen) { matchSetup.draw(ctx); return; }
     if (voteScreen.isOpen) { voteScreen.draw(ctx); return; }
+    if (draftScreen.isOpen) { draftScreen.draw(ctx); return; }
     if (results.isOpen) { results.draw(ctx); return; }
     if (garage.isOpen) {
       if (garage.view === 'cabin') hands.draw(ctx);

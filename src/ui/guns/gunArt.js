@@ -1,17 +1,21 @@
 import { Raster } from '../../art/raster.js';
 import { colorRamp, dither } from '../../art/shade.js';
-import { familyOf } from '../../game/weaponTypes.js';
+import { artOf, familyOf, WEAPON_TYPES } from '../../game/weaponTypes.js';
 import { DARK_STEEL, layerOf, materials, STEEL } from './gunPaint.js';
 import { applyCombatParts } from './gunParts.js';
 import { buildAutoShotgun, buildCrossbow, buildGatling, buildGrenadeLauncher, buildMagnum, buildSniper } from './gunArtNew.js';
+import { buildAssault, buildPistol } from './gunArtModern.js';
 
-// Armas desenhadas em partes móveis (mesmos ids de game/weaponTypes.js). Cada camada é uma imagem do
+// Armas desenhadas em partes móveis. Cada desenho tem um nome (o `art` de game/weaponTypes.js), e várias armas podem
+// usar o mesmo, com cores próprias (BASE_METAL e BASE_GRIP, pelo id da arma). Cada camada é uma imagem do
 // tamanho da arma, e `pose(p)` diz como ela se move. Todos os pontos são pixels da imagem:
 // pivot = eixo das animações, muzzle = saída do tiro, hand = onde a mão segura, load = onde a munição
 // entra, eject = de onde saem as cápsulas.
 
-function buildRevolver(custom, m) {
+// O tambor tem uma câmara por bala do pente (6 no mínimo): a R8 abre com oito.
+function buildRevolver(custom, m, type) {
   const W = 62, H = 54, accessory = custom.options.accessory;
+  const chambers = Math.max(6, type?.magazine ?? 6), ring = chambers > 6 ? 5.9 : 5.4, hole = chambers > 6 ? 1.6 : 2;
   const closedCylinder = phase => layerOf(W, H, r => {
     r.rect(28, 12, 17, 16, m.steel(0.8));
     for (const x of [31, 35, 39, 43]) r.rect(x - 2 + phase, 12, 1, 16, m.metal[0]);
@@ -22,9 +26,9 @@ function buildRevolver(custom, m) {
     r.line(36, 18, 34, 26, m.metal[1], 3);
     r.disc(35, 24, 9, m.steel(0.8));
     r.ring(35, 24, 9.4, 8.4, m.metal[0]);
-    for (let i = 0; i < 6; i++) {
-      const a = i * Math.PI / 3 - Math.PI / 2, cx = 35 + Math.cos(a) * 5.4, cy = 24 + Math.sin(a) * 5.4;
-      r.disc(cx, cy, 2, i < loaded ? 0xd0a040 : 0x08080a);
+    for (let i = 0; i < chambers; i++) {
+      const a = i * Math.PI * 2 / chambers - Math.PI / 2, cx = 35 + Math.cos(a) * ring, cy = 24 + Math.sin(a) * ring;
+      r.disc(cx, cy, hole, i < loaded ? 0xd0a040 : 0x08080a);
       if (i < loaded) r.put(cx, cy, 0x8a5a20);
     }
   });
@@ -65,7 +69,7 @@ function buildRevolver(custom, m) {
       {
         variants: {
           ...Object.fromEntries([0, 1, 2, 3].map(p => [`closed${p}`, closedCylinder(p)])),
-          ...Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map(n => [`open${n}`, openCylinder(n)])),
+          ...Object.fromEntries(Array.from({ length: chambers + 1 }, (_, n) => [`open${n}`, openCylinder(n)])),
         },
         pose: p => (p.open > 0.4 ? { variant: `open${p.ammo}`, dy: (p.open - 0.4) * 4 } : { variant: `closed${Math.floor(p.spin * 4) % 4}` }),
       },
@@ -243,23 +247,32 @@ function buildRifle(custom, m) {
   };
 }
 
+// Desenhos sem arma no jogo agora (escopeta de dois canos, rifle de alavanca, revólver de quebrar e besta) ficam
+// aqui para uma arma nova apontar para eles.
 const BUILDERS = {
-  revolver: buildRevolver, shotgun: buildShotgun, smg: buildSmg, rifle: buildRifle,
-  magnum: buildMagnum, sniper: buildSniper, autoshotgun: buildAutoShotgun, crossbow: buildCrossbow, grenade: buildGrenadeLauncher, heavymg: buildGatling,
+  revolver: buildRevolver, shotgun: buildShotgun, smg: buildSmg, rifle: buildRifle, pistol: buildPistol, assault: buildAssault,
+  magnum: buildMagnum, sniper: buildSniper, autoshotgun: buildAutoShotgun, crossbow: buildCrossbow, pump: buildGrenadeLauncher, gatling: buildGatling,
 };
+const OLIVE_DRAB = colorRamp(0x5a6448), BLACK_POLYMER = [0x141416, 0x222226, 0x323238, 0x46464e, 0x5e5e68];
 const BASE_METAL = {
   revolver: STEEL, shotgun: STEEL, smg: DARK_STEEL, rifle: STEEL,
-  // Armas que dividem o desenho de outra ganham cor própria.
-  magnum: [0x3c3e44, 0x6a6c74, 0x9a9ca4, 0xc4c6cc, 0xe8eaee], sniper: colorRamp(0x5a6448), autoshotgun: colorRamp(0x6a7480), crossbow: colorRamp(0x8c8478), grenade: colorRamp(0x5c6250), heavymg: colorRamp(0x5a5e62),
+  magnum: [0x3c3e44, 0x6a6c74, 0x9a9ca4, 0xc4c6cc, 0xe8eaee], sniper: colorRamp(0x5a6448), autoshotgun: colorRamp(0x6a7480), crossbow: colorRamp(0x8c8478), pump: colorRamp(0x5c6250), gatling: colorRamp(0x5a5e62),
+  // Cores de cada arma, por cima das do desenho.
+  cz75: DARK_STEEL, deagle: [0x3c3e44, 0x6a6c74, 0x9a9ca4, 0xc4c6cc, 0xe8eaee], r8: colorRamp(0x6a6458), nova: colorRamp(0x4a4c50),
+  mag7: colorRamp(0x3a3c40), m249: colorRamp(0x3e4038), p90: colorRamp(0x4a4e44), ak47: colorRamp(0x3a3a3e), m4a4: BLACK_POLYMER,
+  aug: colorRamp(0x6a7458), awp: OLIVE_DRAB,
 };
 
-// Cabo próprio: madrepérola no revólver pesado, coronha cor de areia na sniper e borracha na escopeta automática.
+// Cabo próprio: madeira clara no R8, borracha preta nas pistolas, polímero na P90 e fuzis, madeira escura na AK.
 const BASE_GRIP = {
-  magnum: [0x5a5448, 0x8a8270, 0xb4ac98, 0xd8d0bc, 0xf0ead8], sniper: colorRamp(0x9a8a64), autoshotgun: colorRamp(0x5a4a3a), heavymg: colorRamp(0x4a3a2c),
+  magnum: [0x5a5448, 0x8a8270, 0xb4ac98, 0xd8d0bc, 0xf0ead8], sniper: colorRamp(0x9a8a64), autoshotgun: colorRamp(0x5a4a3a), gatling: colorRamp(0x4a3a2c),
+  cz75: BLACK_POLYMER, deagle: BLACK_POLYMER, r8: colorRamp(0x8a5a30), nova: BLACK_POLYMER, mag7: colorRamp(0x2a2a2e), m249: BLACK_POLYMER,
+  p90: colorRamp(0x3a3e36), ak47: colorRamp(0x8a4a22), m4a4: BLACK_POLYMER, aug: colorRamp(0x5a6448), awp: colorRamp(0x6a7450),
 };
 
 // `parts`: peças de combate da arma (game/weaponParts.js), desenhadas por cima (gunParts.js).
 export function buildGunArt(id, custom, parts = null) {
-  const m = materials(BASE_METAL[id] ?? BASE_METAL[familyOf(id)] ?? STEEL, custom, BASE_GRIP[id]);
-  return applyCombatParts({ ...(BUILDERS[id] ?? BUILDERS[familyOf(id)])(custom, m), flash: m.flash }, id, parts, m);
+  const art = artOf(id), type = WEAPON_TYPES[id];
+  const m = materials(BASE_METAL[id] ?? BASE_METAL[art] ?? BASE_METAL[familyOf(id)] ?? STEEL, custom, BASE_GRIP[id] ?? BASE_GRIP[art]);
+  return applyCombatParts({ ...(BUILDERS[art] ?? BUILDERS[familyOf(id)])(custom, m, type), flash: m.flash }, id, parts, m);
 }

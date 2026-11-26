@@ -10,8 +10,8 @@ import { damageOpponent } from './opponents.js';
 // carro vai estar se seguir reto, então basta trocar de faixa ou frear. Entre um raio e outro o céu pisca sozinho.
 //
 // `config` (do bioma): interval [mín, máx] segundos entre raios, warning (segundos de aviso), radius (m),
-// damage (fração da vida), emp (segundos sem nitro). Online cada navegador mira o próprio carro, e o admin mira
-// também os bots, como os pontos de perigo.
+// damage (fração da vida), emp (segundos sem nitro). Online cada navegador mira o próprio carro, na mesma frequência
+// para todos; o admin mira também os bots, como os pontos de perigo, num sorteio à parte que não alivia os raios dele.
 
 const ROAD_LIMIT = TRACK_WIDTH / 2 - 1.2, AIM_SPREAD = 2.2;
 const HIT_SLOWDOWN = 0.55, HIT_SPIN = 2.4, PLAYER_SHARE = 0.55;
@@ -26,7 +26,7 @@ const between = ([low, high]) => low + Math.random() * (high - low);
 const clamp = (value, limit) => Math.max(-limit, Math.min(limit, value));
 
 export function createLightning({ scene, race, car, isAuthority, onSound, onPlayerHit }) {
-  let config = null, wait = 0, skyWait = 0, flash = 0;
+  let config = null, wait = 0, botWait = 0, skyWait = 0, flash = 0;
   const strikes = [], thunders = [];                 // thunders: trovões esperando a hora de tocar
   const up = new THREE.Vector3(0, 1, 0), direction = new THREE.Vector3();
 
@@ -163,6 +163,22 @@ export function createLightning({ scene, race, car, isAuthority, onSound, onPlay
     }
   }
 
+  const pickOne = list => list[Math.floor(Math.random() * list.length)];
+
+  // Dois sorteios: o do próprio carro é igual em todos os navegadores; o dos bots (só o admin tem candidatos) é mais
+  // espaçado, para eles continuarem levando a mesma parte que no offline.
+  function strikeOnline(dt) {
+    const list = candidates();
+    if ((wait -= dt) <= 0) {
+      const player = list.find(racer => racer.isPlayer);
+      wait = player && aimAt(player) ? between(config.interval) : 0.8;
+    }
+    if ((botWait -= dt) <= 0) {
+      const bot = pickOne(list.filter(racer => !racer.isPlayer));
+      botWait = bot && aimAt(bot) ? between(config.interval) / (1 - PLAYER_SHARE) : 0.8;
+    }
+  }
+
   function reset() {
     for (const s of strikes) {
       disposeGroup(s.marker.group);
@@ -171,6 +187,7 @@ export function createLightning({ scene, race, car, isAuthority, onSound, onPlay
     strikes.length = 0;
     thunders.length = 0;
     wait = config ? between(config.interval) + 3 : 0;
+    botWait = config ? between(config.interval) + 3 : 0;
     skyWait = between(SKY_FLASH_EVERY);
     flash = 0;
   }
@@ -194,9 +211,10 @@ export function createLightning({ scene, race, car, isAuthority, onSound, onPlay
         thunders.splice(n, 1);
       }
       if (race.started && !race.finished) {
-        if ((wait -= dt) <= 0) {
+        if (race.online) strikeOnline(dt);
+        else if ((wait -= dt) <= 0) {
           const list = candidates(), player = list.find(racer => racer.isPlayer), bots = list.filter(racer => !racer.isPlayer);
-          const target = player && (Math.random() < PLAYER_SHARE || !bots.length) ? player : bots[Math.floor(Math.random() * bots.length)];
+          const target = player && (Math.random() < PLAYER_SHARE || !bots.length) ? player : pickOne(bots);
           wait = target && aimAt(target) ? between(config.interval) : 0.8;
         }
       }

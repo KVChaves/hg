@@ -71,6 +71,12 @@ const RACKS = {
   grenade: { roundsPerItem: 1, perRow: 6, stepX: 8, gapY: 13, itemW: 6, itemH: 11, tray: true, plot: plotGrenade },
   heavymg: { roundsPerItem: 50, perRow: 2, stepX: 17, gapY: 18, itemW: 14, itemH: 16, tray: false, plot: plotAmmoBox },
 };
+// Armas de agora: as de pente guardam pentes cheios (do tamanho do delas); as outras, balas soltas como a família.
+const magazinesOf = rounds => ({ ...RACKS.smg, roundsPerItem: rounds });
+Object.assign(RACKS, {
+  cz75: magazinesOf(12), deagle: magazinesOf(7), p90: magazinesOf(50), ak47: magazinesOf(30), m4a4: magazinesOf(30), aug: magazinesOf(30),
+  m249: { ...RACKS.heavymg, roundsPerItem: 100 }, awp: RACKS.rifle, r8: RACKS.revolver, nova: RACKS.shotgun, mag7: RACKS.shotgun,
+});
 
 export function createAmmoRack(parent) {
   let rack = null, raster = null, base = null, sprite = null, last = -1, perRow = 1, stepX = 1;

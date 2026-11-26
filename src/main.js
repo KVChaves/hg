@@ -56,6 +56,8 @@ import { createMatchSetupScreen } from './ui/matchSetupScreen.js';
 import { createResultsScreen } from './ui/resultsScreen.js';
 import { createMatchTable } from './ui/matchTable.js';
 import { createVoteScreen } from './ui/voteScreen.js';
+import { createWeaponDraftScreen } from './ui/weaponDraftScreen.js';
+import { weaponThumb } from './ui/garage/garageThumbs.js';
 import { createWeaponWorkshop } from './ui/weaponWorkshop.js';
 import { createCarDamageEffects } from './world/carDamageEffects.js';
 import { createWindowView } from './world/windowView.js';
@@ -376,7 +378,7 @@ const mainMenu = createMainMenu({
   onMultiplayer: () => multiplayer.open(),
   onGarage: () => garage.openFromMenu(),
   onSettingChange: (key, value) => SETTING_APPLIERS[key](value),
-  onEffectsPreview: () => audio.playWeaponSound('revolver', 'fire'),
+  onEffectsPreview: () => audio.playWeaponSound('r8', 'fire'),
   onQuit: () => window.close(),                      // o navegador só permite em abas abertas por script
 });
 let playerName = loadPlayerName();
@@ -405,6 +407,9 @@ const matchSetup = createMatchSetupScreen({
   onBack: () => mainMenu.open(),
 });
 const voteScreen = createVoteScreen({ stage, onVote: biomeId => online?.castVote(biomeId), onVeto: biomeId => online?.castVeto(biomeId) });   // votação do próximo mapa (multiplayer)
+// Sorteio de armas antes de cada garagem do multiplayer; as miniaturas usam a pintura e as peças que este jogador deu a cada arma.
+const draftScreen = createWeaponDraftScreen({ stage, thumbOf: id => weaponThumb(id, customs[id], equipment.weaponParts?.[id]), onPick: id => online?.pickWeapon(id), onPoint: (x, y) => online?.pointWeapon(x, y),
+  onConfirm: () => online?.confirmDraft(), getRoster: () => online?.readyRoster() ?? null, onKick: id => net.kick(id) });
 const results = createResultsScreen({
   stage,
   onNext: () => garage.openBetweenRaces(TIME_BETWEEN_RACES),
@@ -504,8 +509,8 @@ stage.addEventListener('click', event => {
   else if (isLocked() || !chat.clickIcon(x, y)) return;
   event.stopImmediatePropagation();
 }, true);
-const drawHud = createHud(hudCanvas, { settings, chat, matchTable, isTableHeld: () => Boolean(keys.scoreboard) && !(garage.isTyping() || multiplayer.isTyping() || chat.isOpen()), killFeed, pause, scope, featFeed, mainMenu, multiplayer, podium, matchSetup, results, voteScreen, matchLabel: () => `CORRIDA ${match ? match.currentRace : 1} DE ${match ? match.raceCount : 1}`, biomeName: () => biome.name, biomeChallenge: () => biome.challenge ?? [], race, weapon, hands, garage, workshop, windowView, spectator, spectatorExit: () => (online.active ? 'ESPACO IR PARA A GARAGEM' : 'ESPACO VER RESULTADOS'), isLocked, combat, car, roadsideHelp, traps, powerStatus, opponents, activeCamera: () => (spectator.active ? spectator.camera : camera), isBehindCabin: (x, y, z) => !spectator.active && cabin.isBehindCabin(x, y, z), isInSmoke: (x, z) => darkness.level > 0.5 || sandstorm.level > 0.6 || car.effects.smoke > 0 || traps.smokeBlocks(car.x, car.z, x, z) });
-const inMenus = () => pause.isOpen || mainMenu.isOpen || multiplayer.isOpen || podium.isOpen || matchSetup.isOpen || results.isOpen || voteScreen.isOpen || garage.isOpen || workshop.isOpen;
+const drawHud = createHud(hudCanvas, { settings, chat, matchTable, isTableHeld: () => Boolean(keys.scoreboard) && !(garage.isTyping() || multiplayer.isTyping() || chat.isOpen()), killFeed, pause, scope, featFeed, mainMenu, multiplayer, podium, matchSetup, results, voteScreen, draftScreen, matchLabel: () => `CORRIDA ${match ? match.currentRace : 1} DE ${match ? match.raceCount : 1}`, biomeName: () => biome.name, biomeChallenge: () => biome.challenge ?? [], race, weapon, hands, garage, workshop, windowView, spectator, spectatorExit: () => (online.active ? 'ESPACO IR PARA A GARAGEM' : 'ESPACO VER RESULTADOS'), isLocked, combat, car, roadsideHelp, traps, powerStatus, opponents, activeCamera: () => (spectator.active ? spectator.camera : camera), isBehindCabin: (x, y, z) => !spectator.active && cabin.isBehindCabin(x, y, z), isInSmoke: (x, z) => darkness.level > 0.5 || sandstorm.level > 0.6 || car.effects.smoke > 0 || traps.smokeBlocks(car.x, car.z, x, z) });
+const inMenus = () => pause.isOpen || mainMenu.isOpen || multiplayer.isOpen || podium.isOpen || matchSetup.isOpen || results.isOpen || voteScreen.isOpen || draftScreen.isOpen || garage.isOpen || workshop.isOpen;
 
 // ESC (o navegador solta o mouse) ou perder o foco no meio da corrida abre a pausa; ESC de novo continua.
 const inRaceView = () => !inMenus() && !garageReopening;
@@ -642,8 +647,9 @@ function setRacerCount(cars) {
 online = createOnlineMatch({ onRopeTripped: announceRopeTrip,
   onPlayerKilledBy: killer => { announceDestruction(race.field.find(racer => racer.isPlayer), killer); feats.playerDestroyed(killer); },
   onPlayerShot: () => audio.playBulletHit(),
-  net, scene: world, race, car, opponents, combat, traps, mines, nets, emp, burning, foam, harpoon, pulls, weapon, look, garage, results, podium, voteScreen, playAt, setRacerCount, creditKill, rewardKillFor, announceTrapCatch, obstacles, raceKills, addRaceKill,
+  net, scene: world, race, car, opponents, combat, traps, mines, nets, emp, burning, foam, harpoon, pulls, weapon, look, garage, results, podium, voteScreen, draftScreen, playAt, setRacerCount, creditKill, rewardKillFor, announceTrapCatch, obstacles, raceKills, addRaceKill,
   onLateJoin: () => multiplayer.close(),
+  closeWorkshop: () => { workshop.isOpen = false; },
   getSpec: () => garage.carSpec(),
   setMatch: created => {
     match = created;

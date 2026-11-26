@@ -265,7 +265,9 @@ class Room:
         self.match_id = ""
         self.race_no = 0
         self.back_shots = True              # liberar tiro com o olhar virado para trás (Q)
+        self.weapon_draft = False           # sorteio de armas entre a votação do mapa e a garagem (o admin liga na sala)
         self.phase = "lobby"
+        self.live = None                     # corrida rankeada em andamento: quem largou (id -> nome) e quem abandonou
         self.combat_pending = set()          # quem correu a última corrida rankeada e ainda pode mandar as estatísticas de combate
         self.ranked = True                  # partida com bots ou com poucos humanos não conta para ranking nem histórico; decidido na largada
         self.banned = set()
@@ -284,7 +286,7 @@ class Room:
     def state(self):
         return {
             "id": self.id, "name": self.name, "hostId": self.host.id, "phase": self.phase, "matchId": self.match_id,
-            "config": {"cars": MAX_RACERS, "bots": self.bots, "races": self.races, "backShots": self.back_shots},
+            "config": {"cars": MAX_RACERS, "bots": self.bots, "races": self.races, "backShots": self.back_shots, "weaponDraft": self.weapon_draft},
             "ranked": self.ranked_status(),
             "players": [{"id": member.id, "name": member.name} for member in self.members],
         }
@@ -338,8 +340,13 @@ class Lobby:
         room = client.room
         if room is None:
             return
+        if reason != "kicked":                # expulso não abandonou: senão o admin poderia jogar alguém para último
+            self.mark_deserter(room, client)
         room.members.remove(client)
         client.room = None
+        # Ninguém que largou continua na sala: não há mais quem encerre a corrida, então o servidor a registra.
+        if room.live and not any(member.id in room.live["roster"] and member.id not in room.live["left"] for member in room.members):
+            self.finish_race(room, [], room.live["biome"])
         if reason:
             client.send({"t": "left", "reason": reason})
         if not room.members:
@@ -419,6 +426,8 @@ class Lobby:
             room.races = max(MIN_RACES, min(MAX_RACES, races))
         if isinstance(message.get("backShots"), bool):
             room.back_shots = message["backShots"]
+        if isinstance(message.get("weaponDraft"), bool):
+            room.weapon_draft = message["weaponDraft"]
         self.publish_room(room)
 
     def on_start(self, client, _message):
@@ -429,6 +438,7 @@ class Lobby:
             return client.send({"t": "error", "code": "need_racers"})
         room.phase = "playing"
         room.match_id, room.race_no = secrets.token_hex(3), 0
+        room.live = None
         room.ranked = room.bots == 0 and len(room.members) >= MIN_RANKED_PLAYERS
         state = room.state()
         for member in room.members:
@@ -461,41 +471,68 @@ class Lobby:
         except OSError:
             pass                                  # histórico é extra: falhar ao gravar não derruba a sala
 
+    def start_race(self, room, biome):
+        """A largada (`go` do admin): quem está na sala e conectado passa a valer nesta corrida até ela ser encerrada."""
+        away = set(self.pending.values())
+        room.live = {"biome": biome, "left": {},          # left: id -> nome, na ordem em que abandonaram
+                     "roster": {member.id: member.name for member in room.members if member not in away}} if room.ranked else None
+
+    @staticmethod
+    def mark_deserter(room, client):
+        if room.live and client.id in room.live["roster"]:
+            room.live["left"].setdefault(client.id, client.name)
+
     def on_race(self, client, message):
         """O admin reporta cada corrida que termina: quem correu, em que posição e em que mapa."""
         room = self.admin_room(client)
         results = message.get("results")
         if room is None or room.phase != "playing" or not room.ranked or not isinstance(results, list) or not 0 < len(results) <= MAX_RACERS:
             return
-        members = {member.id: member for member in room.members}
-        racers, humans = [], []
-        if len(results) < 2 or sorted(result.get("position") if isinstance(result, dict) else 0 for result in results) != list(range(1, len(results) + 1)):
+        if sorted(result.get("position") if isinstance(result, dict) and isinstance(result.get("position"), int) else 0
+                  for result in results) != list(range(1, len(results) + 1)):
             return                                # posições têm de ser 1..N sem repetir, senão a nota não faz sentido
-        for result in results:
-            if not isinstance(result, dict) or not isinstance(result.get("position"), int) or not 1 <= result["position"] <= MAX_RACERS:
-                return
-            member = members.get(result.get("id"))
+        for member in room.members:               # quem está desconectado na hora do encerramento também abandonou
+            if member in self.pending.values():
+                self.mark_deserter(room, member)
+        self.finish_race(room, sorted(results, key=lambda result: result["position"]), message.get("biome"))
+
+    def finish_race(self, room, results, biome):
+        """Grava uma corrida rankeada. `results` vem em ordem de chegada; quem abandonou sai de onde estiver e vai para o fim:
+        o primeiro a sair fica em último, para que abandonar nunca renda uma posição melhor."""
+        left = room.live["left"] if room.live else {}
+        room.live = None
+        members = {member.id: member for member in room.members}
+        finishers = [result for result in results if result.get("id") not in left]
+        deserters = [{"id": key, "name": name} for key, name in reversed(left.items())]
+        field = finishers + deserters
+        if not 2 <= len(field) <= MAX_RACERS:
+            return
+        racers, humans = [], []
+        for position, result in enumerate(field, 1):
+            gave_up = position > len(finishers)
+            member = None if gave_up else members.get(result.get("id"))
             seconds = result.get("time")
+            name = result["name"] if gave_up else member.name if member else clean_text(result.get("name"), NAME_LENGTH) or "Bot"
             racers.append({
-                "name": member.name if member else clean_text(result.get("name"), NAME_LENGTH) or "Bot",
-                "human": member is not None, "position": result["position"],
-                "time": round(seconds, 2) if isinstance(seconds, (int, float)) and not isinstance(seconds, bool) and 0 <= seconds < 36000 else None,
+                "name": name, "human": gave_up or member is not None, "position": position,
+                "time": round(seconds, 2) if is_number(seconds) and 0 <= seconds < 36000 else None,
+                **({"left": True} if gave_up else {}),
             })
-            if member:
-                humans.append((member.name, result["position"], result, racers[-1]["time"]))
+            if gave_up or member:
+                humans.append((name, position, result, racers[-1]["time"]))
         if not humans:
             return
         for name, position, result, seconds in humans:
-            self.ranking.record_race(name, position, len(results))
+            self.ranking.record_race(name, position, len(field))
             lead, lost = result.get("lead"), result.get("lost")
             if seconds and is_number(lead) and 0 <= lead <= seconds + 1 and isinstance(lost, int) and 0 <= lost <= MAX_COMBAT_COUNT:
                 self.ranking.record_lead(name, min(lead, seconds), lost, seconds)
-        room.combat_pending = {name.casefold() for name, *_ in humans}
+        room.combat_pending = {racer["name"].casefold() for racer in racers if racer["human"] and not racer.get("left")}
         self.ranking.save()
         self.leader_days.record(self.ranking.table())
         room.race_no += 1
         self.append_history({"at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "room": room.name, "match": room.match_id, "n": room.race_no,
-                             "biome": clean_text(message.get("biome"), 20), "racers": sorted(racers, key=lambda racer: racer["position"])})
+                             "biome": clean_text(biome, 20), "racers": racers})
 
     @staticmethod
     def find_history(player=None, match=None):
@@ -743,6 +780,7 @@ class Lobby:
             return
         self.record_results(room, message.get("results"))
         room.phase = "lobby"
+        room.live = None
         state = room.state()
         for member in room.members:
             member.send({"t": "ended", "room": state})
@@ -776,6 +814,8 @@ class Lobby:
             return
         if not self.allow_game_message(client, room, message["d"]):
             return
+        if client is room.host and isinstance(message["d"], dict) and message["d"].get("k") == "go":
+            self.start_race(room, message["d"].get("b"))
         outgoing = {"t": "g", "from": client.id, "d": message["d"]}
         target = message.get("to")
         for member in room.members:
