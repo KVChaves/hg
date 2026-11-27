@@ -82,7 +82,7 @@ export function createAudioSystem(settings) {
   menuMusic.volume = settings.menuMusic * VOLUME.menuMusic;
   let menuTrack = Math.floor(Math.random() * MENU_MUSIC.length), menuMusicWanted = false;
   menuMusic.src = MENU_MUSIC[menuTrack];
-  const playMenuMusic = () => menuMusic.play().catch(() => { /* bloqueado pelo navegador: tenta de novo no próximo clique */ });
+  const playMenuMusic = () => { if (!document.hidden) menuMusic.play().catch(() => { /* bloqueado pelo navegador: tenta de novo no próximo clique */ }); };   // escondida, a aba online segue rodando, mas calada
   menuMusic.addEventListener('ended', () => {
     menuTrack = (menuTrack + 1) % MENU_MUSIC.length;
     menuMusic.src = MENU_MUSIC[menuTrack];

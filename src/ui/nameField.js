@@ -33,6 +33,7 @@ export function createNameField({ box, getName, setName, isReadOnly = () => fals
   return {
     box,
     isEditing: () => editing,
+    commit: () => stopEditing(true),
     click(x, y) {
       if (!inside(box, x, y)) { stopEditing(true); return false; }
       if (!isReadOnly() && !editing) { editing = true; draft = getName(); }

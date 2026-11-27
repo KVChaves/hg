@@ -21,7 +21,7 @@ O `./run.sh` também é o servidor das salas. Quem está na mesma rede abre o en
 internet, é preciso liberar a porta no roteador ou publicar o servidor em uma máquina acessível.
 
 Quem cria a sala é o admin: define corredores (até 8, contando os bots) e corridas, expulsa jogadores e inicia a partida.
-A primeira corrida só larga quando todos clicarem em Pronto na garagem. Se o admin sair, a sala é encerrada. Cada navegador simula o próprio carro e o do admin simula também os bots.
+A primeira corrida só larga quando todos clicarem em Pronto na tela de ajustes. Com a partida em andamento só dá para mexer no que muda o desempenho (arma, peças, melhorias e bagageiro); a aparência é editada na garagem, fora das partidas. Se o admin sair, a sala é encerrada. Cada navegador simula o próprio carro e o do admin simula também os bots.
 
 ## Controles
 

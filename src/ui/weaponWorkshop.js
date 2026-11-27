@@ -33,7 +33,7 @@ const PREVIEW = { x: 320, y: 150, maxWidth: 400, maxScale: 3 };
 const DEMO = { pause: 0.9, shotsPerRound: 3, minInterval: 0.55, burstInterval: 0.09, burstShots: 8, spinShots: 36 };
 // Tiros de cada rodada da demonstração: a metralhadora precisa de uma rajada longa para os canos chegarem no máximo.
 const burstOf = type => (type.spinUp ? DEMO.spinShots : type.automatic ? DEMO.burstShots : DEMO.shotsPerRound);
-const WEAPON_SHORT = { cz75: 'CZ75', deagle: 'DEAGLE', r8: 'R8', nova: 'NOVA', mag7: 'MAG-7', m249: 'M249', p90: 'P90', ak47: 'AK-47', m4a4: 'M4A4', aug: 'AUG', awp: 'AWP' };
+export const WEAPON_SHORT = { cz75: 'CZ75', deagle: 'DEAGLE', r8: 'R8', nova: 'NOVA', mag7: 'MAG-7', m249: 'M249', p90: 'P90', ak47: 'AK-47', m4a4: 'M4A4', aug: 'AUG', awp: 'AWP' };
 
 const SLOT_DEFS = [
   { key: 'metal', short: 'METAL', label: 'Cor do metal', hasColor: true },

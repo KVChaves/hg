@@ -462,6 +462,7 @@ const garage = createGarageScreen({
   onPurchase: () => audio.playBuy(),
   onKickPlayer: id => net.kick(id),
   onOpenWorkshop: id => workshop.open(id),
+  onGunChange: id => hands.rebuildGun(id),
   onProceed: () => {
     windowView.applySpec(garage.carSpec());
     startMatch(matchSetup.matchConfig());
@@ -671,6 +672,8 @@ net.connect(() => net.setName(playerName));            // o chat é global: cone
 net.onChat = message => { if (message.name !== playerName && message.name !== race.field[0]?.name) audio.playMessage(); };   // mensagem dos outros
 net.onStarted = room => {
   multiplayer.close();
+  workshop.isOpen = false;                           // quem estava personalizando pela sala sai da oficina e da garagem
+  garage.closeBrowse();
   online.start(room);
 };
 net.onRoomChange = room => online.onRoomChange(room);
@@ -905,6 +908,11 @@ function step(frameTime) {
   workshop.update(frameTime);
   garage.tickBetweenRaces(frameTime);
   online.update(frameTime);
+  if (!document.hidden) drawFrame();                // escondida, a aba online segue só com a partida, sem desenhar
+  finishRaceFlow(frameTime);
+}
+
+function drawFrame() {
   if (mainMenu.isOpen || multiplayer.isOpen || matchSetup.isOpen || garage.isOpen && garage.view === 'car') {
     garage.renderCar(renderer);
   } else if (spectator.active) {
@@ -921,7 +929,6 @@ function step(frameTime) {
     renderer.render(cabin.scene, camera);
   }
   drawHud();
-  finishRaceFlow(frameTime);
 }
 
 // A câmera para logo depois do fim da neblina: além dela tudo já tem a cor do céu e só gastaria a placa de vídeo.
@@ -933,12 +940,20 @@ function fitViewDistance(view) {
 }
 
 let lastTime = performance.now();
-function frame(now) {
-  requestAnimationFrame(frame);
+function tick(now) {
   const dt = Math.max(0, Math.min((now - lastTime) / 1000, MAX_FRAME_TIME));
   lastTime = now;
   step(dt);
 }
+function frame(now) {
+  requestAnimationFrame(frame);
+  tick(now);
+}
+// Com a aba escondida o navegador para o `requestAnimationFrame`. Online a partida não pode parar junto (a aba do admin
+// marca a largada e simula os bots), então quem marca o passo é um worker, cujo relógio não é segurado em segundo plano.
+const BACKGROUND_STEP_MS = 30;
+const backgroundClock = new Worker(URL.createObjectURL(new Blob([`setInterval(() => postMessage(0), ${BACKGROUND_STEP_MS});`], { type: 'text/javascript' })));
+backgroundClock.onmessage = () => { if (document.hidden && online?.active) tick(performance.now()); };
 applyQuality(settings.quality);
 requestAnimationFrame(frame);
 

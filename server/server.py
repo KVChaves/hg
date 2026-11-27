@@ -231,6 +231,7 @@ class Client:
     def __init__(self, writer):
         self.id = secrets.token_hex(4)
         self.token = secrets.token_hex(8)       # só quem tem o token retoma a vaga depois de uma queda
+        self.tab = None                         # identificação da aba; uma aba duplicada tem a mesma da original
         self.yaw = None                         # último rumo informado nos snapshots, para validar tiros
         self.last_chat = 0.0
         self.name = DEFAULT_NAME
@@ -368,6 +369,10 @@ class Lobby:
         room.members.append(client)
         client.room = room
 
+    def on_hello(self, client, message):
+        tab = message.get("tab")
+        client.tab = tab if isinstance(tab, str) else None
+
     def on_create(self, client, message):
         if client.room or len(self.rooms) >= MAX_ROOMS:
             return client.send({"t": "error", "code": "cannot_create"})
@@ -384,6 +389,14 @@ class Lobby:
             return client.send({"t": "error", "code": "no_room"})
         if client.id in room.banned:
             return client.send({"t": "error", "code": "banned"})
+        twin = next((member for member in room.members if client.tab and member.tab == client.tab), None)
+        if twin is not None:
+            if self.pending.pop(twin.token, None) is not twin:     # a original segue conectada: a cópia não entra
+                return client.send({"t": "error", "code": "other_tab"})
+            twin.grace.cancel()                                    # era a mesma aba antes de um F5: toma o lugar dela
+            self.remove_from_room(twin)
+            if room.id not in self.rooms:
+                return client.send({"t": "error", "code": "no_room"})
         if len(room.members) >= MAX_RACERS:               # em partida, o jogador entra e espera a próxima corrida
             return client.send({"t": "error", "code": "full"})
         self.join(client, room)
@@ -836,7 +849,7 @@ class Lobby:
         client.send({"t": "resumed", "id": client.id, "room": room.state(), "chat": list(self.chat)})
         self.publish_room(room)
 
-    HANDLERS = {"create": on_create, "join": on_join, "name": on_name, "leave": on_leave,
+    HANDLERS = {"hello": on_hello, "create": on_create, "join": on_join, "name": on_name, "leave": on_leave,
                 "kick": on_kick, "config": on_config, "start": on_start, "race": on_race, "end": on_end_match, "ranking": on_ranking, "history": on_history, "legacy": on_legacy, "stats": on_stats, "combat": on_combat, "chat": on_chat, "resume": on_resume, "g": on_game}
 
     def handle(self, client, text):

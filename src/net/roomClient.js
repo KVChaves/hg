@@ -4,7 +4,7 @@
 const SERVER_ADDRESS = new URLSearchParams(location.search).get('server') ?? location.host;
 const SERVER_ERRORS = {
   full: 'SALA CHEIA', in_progress: 'PARTIDA EM ANDAMENTO', banned: 'VOCE FOI EXPULSO DESTA SALA',
-  no_room: 'SALA NAO ENCONTRADA', need_racers: 'ADICIONE UM BOT PARA INICIAR', cannot_create: 'NAO FOI POSSIVEL CRIAR A SALA',
+  no_room: 'SALA NAO ENCONTRADA', other_tab: 'VOCE JA ESTA NESTA SALA EM OUTRA ABA', need_racers: 'ADICIONE UM BOT PARA INICIAR', cannot_create: 'NAO FOI POSSIVEL CRIAR A SALA',
 };
 export const LEFT_REASONS = { kicked: 'VOCE FOI EXPULSO DA SALA', closed: 'O ADMIN ENCERROU A SALA', lost: 'CONEXAO COM O SERVIDOR PERDIDA' };
 
@@ -20,7 +20,21 @@ const saveConfig = config => {
   try { localStorage.setItem(CONFIG_KEY, JSON.stringify(kept)); } catch { /* sem armazenamento: só não lembra */ }
 };
 
+// Duplicar a aba copia o `sessionStorage` (abrir uma aba nova, não), então a cópia tem a mesma identificação da original.
+// O servidor usa isso para a cópia não entrar como um segundo piloto na sala em que a original está.
+const TAB_KEY = 'halfgrip.tab';
+function readTabId() {
+  const fresh = Array.from(crypto.getRandomValues(new Uint32Array(3)), n => n.toString(36)).join('');   // `randomUUID` não existe em http na rede local
+  try {
+    const saved = sessionStorage.getItem(TAB_KEY);
+    if (saved) return saved;
+    sessionStorage.setItem(TAB_KEY, fresh);
+  } catch { /* sem armazenamento: não há como reconhecer a cópia */ }
+  return fresh;
+}
+
 export function createRoomClient() {
+  const tabId = readTabId();
   let socket = null, resumeDeadline = 0;
   const waiting = [];                                // pedidos à espera da conexão (rodam no `welcome`)
 
@@ -96,7 +110,10 @@ export function createRoomClient() {
     if (socket && socket.readyState <= WebSocket.OPEN) return;
     client.status = resumeDeadline ? 'reconnecting' : 'connecting';
     socket = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${SERVER_ADDRESS}/ws`);
-    socket.onopen = () => { if (resumeDeadline) send({ t: 'resume', token: client.token }); };
+    socket.onopen = () => {
+      send({ t: 'hello', tab: tabId });               // antes de qualquer pedido de sala
+      if (resumeDeadline) send({ t: 'resume', token: client.token });
+    };
     socket.onmessage = event => {
       const message = JSON.parse(event.data);
       HANDLERS[message.t]?.(message);
